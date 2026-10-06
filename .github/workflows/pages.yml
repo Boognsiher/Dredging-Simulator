@@ -1,8 +1,8 @@
 name: Pages
 
+# Läuft nur noch von Hand (Actions → Pages → Run workflow). Die Seite wird derzeit direkt aus dem Branch veröffentlicht ("pages build and deployment");
+# der automatische Lauf bei jedem Push schlug am Deploy-Schritt fehl (Umgebungsregel von github-pages erlaubt main nicht).
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
