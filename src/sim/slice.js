@@ -1,0 +1,270 @@
+import { CONFIG, DEBRIS, KIND } from '../config.js';
+
+// Querschnitt: Seitenansicht quer zum Fluss. Die Pumpe fährt über die Flussbreite (x = Zellkoordinate quer zum Fluss, absolut),
+// Höhe h in m über dem Bezugshorizont. Der Kasten umfasst CONFIG.box.cols Spalten in Flussrichtung; die Pumpenleistung
+// verteilt sich auf alle. Die Anzeige zeigt die Hüllkurve (höchster Punkt = engste Stelle für Schiffe).
+// work = Arbeitsrichtung: nur nach rechts wird gesaugt; der Rückweg saugt nicht.
+export const SLICE = { cols: 16, viewH: 7.6, below: 6.1, work: { x: 1, y: 1 }, returnBoost: 1.6, minWaterDepth: 0.5 };
+
+const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, hard: 0 };
+
+const AUTO_ERRORS = [
+  { id: 'stuck', text: 'Automatik hängt sich auf und starrt aufs Wasser' },
+  { id: 'wrongway', text: 'Automatik saugt rückwärts und ist sehr stolz darauf' },
+  { id: 'high', text: 'Automatik hebt den Kopf und saugt Wasser (sehr sauber, aber nutzlos)' },
+];
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+export class SliceSim {
+  constructor(river, stats, mapX, mapY, rng = Math.random, targetDepth = CONFIG.echolot.defaultDepth, speedSetting = CONFIG.pumpSpeed.default) {
+    this.river = river;
+    this.stats = stats;
+    this.rng = rng;
+    const B = CONFIG.box.cols;
+    this.c0 = clamp(Math.round(mapX) - Math.floor(B / 2), 0, river.cols - B);
+    this.cols = Array.from({ length: B }, (_, k) => this.c0 + k); // Spalten des Kastens
+    this.centerCol = this.cols[Math.floor(B / 2)];
+    this.x0 = clamp(Math.round(mapY) - SLICE.cols / 2, 0, river.rows - SLICE.cols); // linke Zelle des Fensters (quer zum Fluss)
+    const b = this.bounds();
+    this.x = clamp(mapY - 0.5, b.min, b.max); // Pumpe startet an der Pontonposition
+    this.h = Math.min(this.maxH(), this.surfaceAt(this.x) + 1.5);
+    this.suctioning = false;
+    this.moving = false;
+    this.speedSetting = speedSetting;
+    this.targetDepth = targetDepth; // Solltiefe (m unter Wasser) für die Automatik
+    this.sounding = null;
+    this.sound();
+    this.blocked = false; // Puffer voll: kein Saugen
+    this.tilt = 0;
+    this.tipped = 0;
+    this.overNote = 0;
+    this.clog = 0;
+    this.freeing = null;
+    this.auto = { on: false, dir: 'sweep', error: null, errLeft: 0, startX: this.x, didWork: false };
+    this.notes = [];
+  }
+
+  get h() { return this._h; }
+  set h(v) { this._h = v; this.setH = v; }
+
+  get wl() { return this.river.wl; }
+  maxH() { return this.wl - CONFIG.pump.maxHeightBelowWater; }
+  // Erlaubter Bereich quer zum Fluss: nur dort, wo genug Wasser ist (Ufer und Flachstellen gehen nicht)
+  bounds() {
+    let min = Infinity, max = -Infinity;
+    for (let c = 0; c < SLICE.cols; c++) {
+      if (this.wl - this.envTop(this.x0 + c) >= SLICE.minWaterDepth) { min = Math.min(min, this.x0 + c + 0.01); max = Math.max(max, this.x0 + c + 0.99); }
+    }
+    if (min > max) return { min: this.x0 + 0.01, max: this.x0 + SLICE.cols - 0.01 };
+    return { min, max };
+  }
+
+  _debrisNames() { return DEBRIS; }
+
+  _startFreeing(idx) {
+    const U = CONFIG.unclog, info = CONFIG.debrisInfo[idx] ?? {};
+    const f = { pos: 0, dir: 1, speed: info.speed ?? U.speed, zone: info.zone ?? U.zone, hits: 0, need: info.hits ?? U.hits, item: DEBRIS[idx] ?? null };
+    this.freeing = f;
+    f.zoneC = this._zone(f);
+  }
+  _zone(f = this.freeing) { const half = (f?.zone ?? CONFIG.unclog.zone) / 2; return half + this.rng() * (1 - 2 * half); }
+  freeAttempt() {
+    const f = this.freeing, U = CONFIG.unclog;
+    if (!f || this.clog <= 0) return null;
+    if (Math.abs(f.pos - f.zoneC) <= f.zone / 2) {
+      f.hits++;
+      if (f.hits >= f.need) { this.clog = 0; this.freeing = null; this.say('good', 'Pfropfen gelöst! Die Pumpe spuckt den Fremdstoff aus.'); return 'cleared'; }
+      f.speed *= U.speedUp; f.zoneC = this._zone();
+      return 'hit';
+    }
+    this.clog += U.missPenalty;
+    return 'miss';
+  }
+
+  say(kind, text, extra = {}) { this.notes.push({ kind, text, ...extra }); }
+
+  // Höchster Punkt der Sohle in der Zelle y über alle Spalten des Kastens (Hüllkurve)
+  envTop(y) {
+    const r = this.river, yy = clamp(Math.floor(y), 0, r.rows - 1);
+    let m = -Infinity;
+    for (const c of this.cols) m = Math.max(m, r.top[r.idx(c, yy)]);
+    return m;
+  }
+  envLow(y) {
+    const r = this.river, yy = clamp(Math.floor(y), 0, r.rows - 1);
+    let m = Infinity;
+    for (const c of this.cols) m = Math.min(m, r.top[r.idx(c, yy)]);
+    return m;
+  }
+  surfaceAt(x) { return this.envTop(x); }
+
+  mouth() { return { x: this.x + CONFIG.pump.offsetX, h: this.h - CONFIG.pump.offsetY }; }
+  mouthCol() { return clamp(Math.floor(this.mouth().x) - this.x0, 0, SLICE.cols - 1); }
+  autoFromCol() { return clamp(Math.floor(this.auto.startX + CONFIG.pump.offsetX - this.x0), 0, SLICE.cols - 1); }
+  targetTop() { return this.wl - this.targetDepth; }
+
+  // Echolot: lotet das Profil aus (mit Messfehler je nach Stufe); ohne Echolot ist die Peilung grob
+  sound() {
+    const amp = CONFIG.echolot.noise[this.stats.echolot] ?? 0;
+    this.sounding = new Float32Array(SLICE.cols);
+    for (let c = 0; c < SLICE.cols; c++) this.sounding[c] = this.envTop(this.x0 + c) + (this.rng() - 0.5) * 2 * amp;
+  }
+
+  // Ist die Spalte c des Fensters nach Peilung auf Solltiefe (oder gehört nicht zum Korridor)?
+  _inZone(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)]); }
+  _colOpen(c) { return this._inZone(c) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
+  colDone(c) { return !this._colOpen(c); }
+  allDone() { for (let c = this.auto.on ? this.autoFromCol() : 0; c < SLICE.cols; c++) if (this._colOpen(c)) return false; return true; }
+  _openLeft() { for (let c = 0; c < this.autoFromCol(); c++) if (this._colOpen(c)) return c; return -1; }
+
+  // Wirklicher Stand (ohne Messfehler) für die Anzeige: so viele Zellen quer liegen noch über der Solltiefe
+  restCount() {
+    let n = 0;
+    for (let c = 0; c < SLICE.cols; c++) if (this._inZone(c) && this.envTop(this.x0 + c) > this.targetTop() + CONFIG.echolot.doneEps) n++;
+    return n;
+  }
+
+  toggleAuto() {
+    if (this.stats.autoLevel <= 0) return false;
+    this.auto.on = !this.auto.on;
+    this.auto.error = null;
+    this.auto.startX = this.x;
+    this.auto.didWork = false;
+    this.auto.dir = 'sweep';
+    if (this.auto.on) { this.sound(); this.say('info', `Peilung: Automatik fährt auf ${this.targetDepth.toFixed(1)} m Tiefe.`); }
+    else this.say('info', 'Automatik aus.');
+    return true;
+  }
+
+  fixAuto() {
+    if (!this.auto.error) return false;
+    this.auto.error = null;
+    this.say('good', 'Aus- und wieder einschalten hilft auch hier.');
+    return true;
+  }
+
+  _autoControl(dt) {
+    const a = this.auto, lvl = this.stats.autoLevel;
+    if (a.error) {
+      a.errLeft -= dt;
+      if (a.errLeft <= 0) { a.error = null; this.say('info', 'Automatik hat sich von selbst gefangen.'); }
+    } else if (this.rng() < CONFIG.auto.errorRate[lvl] * dt) {
+      const e = AUTO_ERRORS[Math.floor(this.rng() * AUTO_ERRORS.length)];
+      a.error = e.id; a.errLeft = CONFIG.auto.errorSeconds;
+      this.say('bad', `${e.text}! (R = Reset)`);
+    }
+    if (a.error === 'stuck') return { dx: 0, dy: 0, suction: false };
+    if (a.error === 'wrongway') return { dx: -1, dy: 0, suction: true };
+    if (a.error === 'high') return { dx: 0, dy: -1, suction: true };
+    if (lvl >= 2 && this.tilt > 0.5) return { dx: 0, dy: -1, suction: false };
+    const b = this.bounds();
+    if (a.dir === 'sweep' && this.x >= b.max - CONFIG.pump.offsetX - 0.05) a.dir = 'return';
+    else if (a.dir === 'return' && this.x <= Math.max(a.startX, b.min) + 0.05) { a.dir = 'sweep'; this.sound(); }
+    const need = this._colOpen(this.mouthCol());
+    return a.dir === 'sweep' ? { dx: 1, dy: 0, suction: need } : { dx: -1, dy: 0, suction: false };
+  }
+
+  // input: { dx, dy (dy>0 = nach unten), suction }
+  update(dt, input) {
+    const s = this.stats, a = this.auto, lvl = s.autoLevel, P = CONFIG.pump, R = this.river;
+    if (this.tipped > 0) {
+      this.tipped -= dt;
+      this.suctioning = false; this.moving = false;
+      this.h = Math.min(this.maxH(), this.h + 3 * dt);
+      if (this.tipped <= 0) { this.tipped = 0; this.tilt = 0; this.say('info', 'Pumpe steht wieder. Sie tut so, als wäre nichts gewesen.'); }
+      return ZERO;
+    }
+    this.overNote = Math.max(0, this.overNote - dt);
+    let ctl = input;
+    if (a.on) {
+      const manual = Math.abs(input.dx || 0) > 0.2 || Math.abs(input.dy || 0) > 0.2;
+      if (manual) { a.on = false; a.error = null; this.say('info', 'Du übernimmst das Steuer.'); }
+      else if (this.allDone()) {
+        const left = a.didWork ? -1 : this._openLeft();
+        if (left >= 0) {
+          a.startX = Math.max(this.x0 + 0.01, this.x0 + left - P.offsetX + 0.01); a.dir = 'return';
+          this.say('info', 'Ab hier ist alles fertig. Automatik fährt zur nächsten offenen Stelle.');
+          ctl = this._autoControl(dt);
+        } else {
+          a.on = false;
+          this.say('good', 'Profil auf Solltiefe. Automatik meldet Feierabend.');
+        }
+      } else ctl = this._autoControl(dt);
+    }
+    const clogged = this.clog > 0;
+    if (clogged) this.clog = Math.max(0, this.clog - dt);
+    if (this.freeing) {
+      const f = this.freeing;
+      if (this.clog <= 0) this.freeing = null;
+      else { f.pos += f.dir * f.speed * dt; if (f.pos >= 1) { f.pos = 1; f.dir = -1; } else if (f.pos <= 0) { f.pos = 0; f.dir = 1; } }
+    }
+
+    let dx = ctl.dx || 0, dy = ctl.dy || 0;
+    if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0;
+    dx = clamp(dx, -1, 1); dy = clamp(dy, -1, 1);
+    this.moving = Math.abs(dx) + Math.abs(dy) > 0.01;
+
+    const along = dx * SLICE.work.x + dy * SLICE.work.y;
+    const pumpOk = !a.on || input.pumpOn !== false;
+    const working = !!ctl.suction && pumpOk && !clogged && !this.blocked && along > -0.05;
+    const af = a.on ? CONFIG.auto.speedFactor[lvl] : 1;
+    const speed = s.headSpeed * this.speedSetting * af * (working ? s.suctionSpeedFactor : along < -0.05 ? SLICE.returnBoost : 1);
+
+    const oldX = this.x, b = this.bounds();
+    this.x = clamp(this.x + dx * speed * dt, b.min, b.max - P.offsetX);
+    const floor = this.surfaceAt(this.x);
+    const top = this.maxH();
+    if (dy) { this._h = clamp(this._h - dy * speed * dt, Math.min(floor, top), top); this.setH = this._h; }
+    if (a.on && !a.error && this.tilt <= 0.5) {
+      const v = s.headSpeed * this.speedSetting * af * 0.8, target = floor + (lvl === 1 ? 0.4 : 0);
+      this._h += clamp(target - this._h, -v * dt, v * dt);
+      this.setH = this._h;
+    }
+    if (this._h < floor) this._h = floor;
+    else if (this._h > this.setH && !dy) this._h = Math.max(this.setH, floor, this._h - s.headSpeed * this.speedSetting * 0.8 * dt);
+    this._h = Math.min(this._h, Math.max(top, floor));
+    const lift = Math.max(0, this._h - this.setH - P.liftTolerance), liftGain = lift * P.liftTiltRate * dt;
+
+    if (a.on && working) a.didWork = true;
+    this.suctioning = working;
+    if (!this.suctioning) {
+      if (liftGain > 0) this.tilt += liftGain; else this.tilt = Math.max(0, this.tilt - P.tiltRecover * dt);
+      if (this.tilt >= 1) this._tip();
+      return ZERO;
+    }
+
+    // Fremdstoff an der Einsaugstelle? Wer den Kopf anhebt, fährt drüber weg.
+    const m = this.mouth(), my = clamp(Math.floor(m.x), 0, R.rows - 1);
+    let di;
+    for (const c of this.cols) { const i = R.idx(c, my); if (R.debris[i]) { di = i; break; } }
+    const d = di === undefined ? 0 : R.debris[di];
+    if (d && m.h <= this.surfaceAt(m.x) + 1.5) {
+      R.debris[di] = 0;
+      this.clog = a.on ? CONFIG.auto.clogSeconds[lvl] : (CONFIG.debrisInfo[d - 1]?.clog ?? CONFIG.debris.clogSeconds);
+      if (!a.on) this._startFreeing(d - 1);
+      this.suctioning = false;
+      this.say('clog', `Pumpe verstopft: ${DEBRIS[d - 1]}!`, { item: DEBRIS[d - 1], bomb: d === DEBRIS.length });
+      return ZERO;
+    }
+    const res = R.suckSwath(this.cols, this.centerCol, m.x, m.h, s.radius, s.power * dt, s.rockFirmness);
+
+    // Zu tief abgetragen: pro gefahrene Zelle wird zu viel weggesaugt, der Boden bricht vor der Pumpe weg und sie kippt.
+    const dist = Math.max(Math.abs(this.x - oldX), P.minTravel * dt), cut = res.removed / R.area / dist;
+    if (cut > s.stability || liftGain > 0) this.tilt += Math.max(0, cut - s.stability) * P.tiltRate * dt + liftGain;
+    else this.tilt = Math.max(0, this.tilt - P.tiltRecover * dt);
+    if (res.out > 1e-6 && this.overNote <= 0) {
+      this.say('bad', 'Naturschutzzone! Die Fischereiaufsicht schaut zu (Busse pro m³).');
+      this.overNote = 8;
+    }
+    if (this.tilt >= 1) this._tip();
+    return res;
+  }
+
+  _tip() {
+    this.tilt = 1; this.tipped = CONFIG.pump.tipSeconds; this.suctioning = false;
+    this.say('tip', 'Pumpe gekippt! Sie liegt jetzt am Grund und nennt es Mittagspause.');
+  }
+}
+
+export { KIND };

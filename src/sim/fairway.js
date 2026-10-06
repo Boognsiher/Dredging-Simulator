@@ -1,0 +1,184 @@
+import { CONFIG, SHIPS } from '../config.js';
+
+// Fahrrinnen-Analyse: Für jede Schiffsklasse wird die günstigste Rinne von links nach rechts gesucht (Dijkstra über die Zellen).
+// Eine Rinnenposition (x, y) deckt `beam` Zellen quer zum Fluss ab; jede davon muss im Baggerkorridor liegen und genug Wasser
+// haben (Tiefgang + Kielfreiheit). Kosten = fehlende Tiefe (m·Zellen, Fels zählt mehr), damit die Suche an den Schwachstellen baggert.
+// Ergebnis je Klasse: passable (Rinne ohne Baggern), volume (m³ bis zur Passierbarkeit), twoWay (zwei getrennte Rinnen: Gegenverkehr),
+// path (geglättete Mittellinie in Zellkoordinaten, zum Fahren und Zeichnen), weakest (engste Stelle: Spalte, die am meisten fehlt).
+const EPS = 0.02;
+const INF = Infinity;
+
+class Heap {
+  constructor() { this.k = []; this.v = []; }
+  get size() { return this.k.length; }
+  push(key, val) {
+    const k = this.k, v = this.v; let i = k.length; k.push(key); v.push(val);
+    while (i > 0) { const p = (i - 1) >> 1; if (k[p] <= k[i]) break; [k[p], k[i]] = [k[i], k[p]]; [v[p], v[i]] = [v[i], v[p]]; i = p; }
+  }
+  pop() {
+    const k = this.k, v = this.v, top = [k[0], v[0]], lk = k.pop(), lv = v.pop();
+    if (k.length) {
+      k[0] = lk; v[0] = lv; let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < k.length && k[l] < k[m]) m = l;
+        if (r < k.length && k[r] < k[m]) m = r;
+        if (m === i) break;
+        [k[m], k[i]] = [k[i], k[m]]; [v[m], v[i]] = [v[i], v[m]]; i = m;
+      }
+    }
+    return top;
+  }
+}
+
+export const needDepth = (cls) => cls.draught + CONFIG.clearance;
+const lanes = (beam) => { const lo = Math.floor((beam - 1) / 2); return { lo, hi: beam - 1 - lo }; };
+
+// Fehlende Tiefe je Zelle (m) für Klasse cls; Zellen ausserhalb des Korridors sind gesperrt (-1)
+function deficits(river, wl, need) {
+  const def = new Float32Array(river.cols * river.rows), needTop = wl - need;
+  for (let i = 0; i < def.length; i++) {
+    if (!river.zone[i]) { def[i] = -1; continue; }
+    const miss = river.top[i] - needTop - EPS; // wie viel Sohle noch zu hoch liegt
+    if (miss <= 0) { def[i] = 0; continue; }
+    const rockMiss = Math.max(0, river.rock[i] - needTop); // davon steckt im Fels
+    def[i] = miss + rockMiss * 2;
+  }
+  return def;
+}
+
+// Günstigste Rinne; blocked = Zellen, die nicht benutzt werden dürfen (zweite Rinne neben der ersten)
+function bestPath(river, def, beam, flow, blocked) {
+  const { cols, rows } = river, { lo, hi } = lanes(beam);
+  const n = cols * rows, cost = new Float32Array(n).fill(INF);
+  for (let x = 0; x < cols; x++) {
+    for (let y = lo; y < rows - hi; y++) {
+      let s = 0, f = 0, ok = true;
+      for (let k = y - lo; k <= y + hi; k++) {
+        const i = k * cols + x;
+        if (def[i] < 0 || (blocked && blocked[i])) { ok = false; break; }
+        s += def[i]; f += flow[i];
+      }
+      if (ok) cost[y * cols + x] = s * 10 + 0.05 + 0.12 * (1 - f / beam);
+    }
+  }
+  const dist = new Float64Array(n).fill(INF), prev = new Int32Array(n).fill(-1), heap = new Heap();
+  for (let y = 0; y < rows; y++) { const i = y * cols; if (cost[i] < INF) { dist[i] = cost[i]; heap.push(dist[i], i); } }
+  let goal = -1;
+  while (heap.size) {
+    const [d, i] = heap.pop();
+    if (d > dist[i]) continue;
+    const x = i % cols, y = (i / cols) | 0;
+    if (x === cols - 1) { goal = i; break; }
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const j = ny * cols + nx;
+        if (cost[j] === INF) continue;
+        const nd = d + cost[j] * (dx && dy ? 1.2 : 1);
+        if (nd < dist[j]) { dist[j] = nd; prev[j] = i; heap.push(nd, j); }
+      }
+    }
+  }
+  if (goal < 0) return null;
+  const nodes = [];
+  for (let i = goal; i >= 0; i = prev[i]) nodes.push({ x: i % cols, y: (i / cols) | 0 });
+  return nodes.reverse();
+}
+
+// Alle Zellen, die die Rinne belegt (Fenster entlang des Weges), als Menge
+function covered(river, nodes, beam, margin = 0) {
+  const { lo, hi } = lanes(beam), set = new Set();
+  for (const p of nodes) for (let k = p.y - lo - margin; k <= p.y + hi + margin; k++) if (k >= 0 && k < river.rows) set.add(k * river.cols + p.x);
+  return set;
+}
+
+// Mittellinie glätten und über den Kartenrand verlängern, damit Schiffe von ausserhalb ein- und ausfahren
+function smoothPath(river, nodes, beam) {
+  const { lo, hi } = lanes(beam), off = (hi - lo) / 2 + 0.5;
+  const pts = nodes.map((p) => ({ x: p.x + 0.5, y: p.y + off }));
+  const out = pts.map((p, i) => {
+    let sx = 0, sy = 0, c = 0;
+    for (let k = Math.max(0, i - 3); k <= Math.min(pts.length - 1, i + 3); k++) { sx += pts[k].x; sy += pts[k].y; c++; }
+    return { x: sx / c, y: sy / c };
+  });
+  out.unshift({ x: -2.5, y: out[0].y }); out.push({ x: river.cols + 2.5, y: out[out.length - 1].y });
+  let len = 0;
+  out[0].s = 0;
+  for (let i = 1; i < out.length; i++) { len += Math.hypot(out[i].x - out[i - 1].x, out[i].y - out[i - 1].y); out[i].s = len; }
+  return { points: out, length: len };
+}
+
+export function analyzeClass(river, wl, cls) {
+  const need = needDepth(cls), def = deficits(river, wl, need), beam = cls.beam;
+  const nodes = bestPath(river, def, beam, river.flow, null);
+  const res = { id: cls.id, need, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null };
+  if (!nodes) return res; // Baggerkorridor ist zu schmal für dieses Schiff
+  const cov = covered(river, nodes, beam);
+  let miss = 0, worst = 0, worstX = nodes[0].x;
+  const perCol = new Map();
+  for (const i of cov) { const m = def[i]; miss += m; if (m > 0) perCol.set(i % river.cols, (perCol.get(i % river.cols) ?? 0) + m); }
+  for (const [x, m] of perCol) if (m > worst) { worst = m; worstX = x; }
+  res.volume = miss * river.area;
+  res.passable = miss <= 1e-6;
+  const sp = smoothPath(river, nodes, beam);
+  res.path = sp; res.length = sp.length; res.nodes = nodes;
+  res.weakest = worst > 0 ? { x: worstX, miss: worst } : null;
+  if (res.passable) { // zweite, getrennte Rinne daneben: Gegenverkehr ohne Wartezeit
+    const blocked = new Uint8Array(river.cols * river.rows);
+    for (const i of covered(river, nodes, beam, 1)) blocked[i] = 1;
+    const second = bestPath(river, def, beam, river.flow, blocked);
+    if (second) {
+      let m2 = 0;
+      for (const i of covered(river, second, beam)) m2 += def[i];
+      res.twoWay = m2 <= 1e-6;
+    }
+  }
+  return res;
+}
+
+export function analyzeFairway(river, wl) {
+  const out = {};
+  for (const cls of SHIPS) out[cls.id] = analyzeClass(river, wl, cls);
+  return out;
+}
+
+// Geringste Wassertiefe (m) unter einem Schiff der Breite beam bei (x, yMid): wird für Grundberührung gebraucht
+export function minDepthAt(river, wl, x, yMid, beam) {
+  const cx = Math.min(river.cols - 1, Math.max(0, Math.floor(x))), { lo } = lanes(beam);
+  const y0 = Math.floor(yMid - beam / 2 + 0.5);
+  let m = INF;
+  for (let k = 0; k < beam; k++) {
+    const y = Math.min(river.rows - 1, Math.max(0, y0 + k));
+    m = Math.min(m, wl - river.top[y * river.cols + cx]);
+  }
+  void lo;
+  return m;
+}
+
+// Punkt auf dem Pfad bei Strecke s (Richtung + / -), mit Fahrtrichtung als Winkel
+export function pointOnPath(path, s) {
+  const pts = path.points, total = path.length;
+  s = Math.max(0, Math.min(total, s));
+  let lo = 0, hi = pts.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (pts[mid].s <= s) lo = mid; else hi = mid; }
+  const a = pts[lo], b = pts[hi], t = b.s > a.s ? (s - a.s) / (b.s - a.s) : 0;
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, angle: Math.atan2(b.y - a.y, b.x - a.x) };
+}
+
+// Mindestrinne ausheben (Spielstart): hebt die günstigste Rinne der Klasse genau auf die nötige Tiefe aus, damit die kleinste Klasse von Anfang an fahren kann
+export function carveFairway(river, wl, cls, margin = 0.4) {
+  const res = analyzeClass(river, wl, cls);
+  if (!res.nodes) return res;
+  const needTop = wl - needDepth(cls) - margin, { lo, hi } = lanes(cls.beam);
+  for (const p of res.nodes) {
+    for (let k = p.y - lo; k <= p.y + hi; k++) {
+      const i = k * river.cols + p.x;
+      if (river.zone[i] && river.top[i] > needTop && river.rock[i] <= needTop) river.top[i] = needTop;
+      river.pending.add(i);
+    }
+  }
+  return analyzeClass(river, wl, cls);
+}

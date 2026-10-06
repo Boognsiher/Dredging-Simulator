@@ -1,0 +1,10 @@
+{
+  "name": "dredging-simulator",
+  "version": "0.1.0",
+  "description": "Fahrrinne frei: Fluss ausbaggern, Schiffe durchlassen, Fracht und Markt im Blick.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node --test"
+  }
+}

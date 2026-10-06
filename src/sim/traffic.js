@@ -1,0 +1,156 @@
+import { CONFIG, SHIPS, CARGOS, shipById, cargoById } from '../config.js';
+import { priceOf, ratioOf } from './market.js';
+import { minDepthAt, pointOnPath } from './fairway.js';
+import { creditContracts } from './contracts.js';
+
+// Schiffsverkehr. Schiffe erscheinen an beiden Enden des Abschnitts (Fracht, Richtung und Klasse nach Marktnachfrage), warten vor der Einfahrt,
+// bis für ihre Klasse eine Fahrrinne da ist (sonst drehen sie nach `patience` Sekunden ab: Fracht geht auf die Bahn), fahren die Rinne ab
+// und zahlen beim Verlassen Gebühr + Anteil am Frachtwert. Reine Daten in g.traffic (speicherbar); Pfade sind abgeleitet und werden nicht gespeichert.
+// Zustände: 'queue' (wartet), 'sail' (fährt), 'grounded' (aufgelaufen), 'done' / 'left' (fertig, wird entfernt).
+export const createTraffic = () => ({ ships: [], seq: 0, spawnIn: 5 });
+
+const rate = (g) => CONFIG.traffic.shipsPerDay * g.level.traffic * g.stats.trafficMult * (g.time < (g.strikeUntil ?? 0) ? 0.3 : 1);
+
+function pickWeighted(items, weightOf, rng) {
+  const w = items.map(weightOf);
+  let r = rng() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < items.length; i++) { r -= w[i]; if (r <= 0) return items[i]; }
+  return items[items.length - 1];
+}
+
+export function spawnShip(g) {
+  const T = g.traffic, C = CONFIG.traffic, rng = g.rng;
+  const classes = SHIPS.filter((s) => g.level.classes.includes(s.id));
+  const demand = (s) => s.cargo.reduce((a, c) => a + Math.min(1.8, Math.max(0.5, ratioOf(g.market, c))), 0) / s.cargo.length;
+  const cls = pickWeighted(classes, (s) => s.share * demand(s), rng);
+  const cargo = cargoById(pickWeighted(cls.cargo, (c) => ratioOf(g.market, c) ** 2, rng));
+  const dir = rng() < 0.5 ? 1 : -1;
+  if (T.ships.filter((s) => s.state === 'queue' && s.dir === dir).length >= C.maxQueue || T.ships.length >= C.maxShips) { g.totals.turnedAway++; return null; }
+  const tons = Math.round((cls.tons * rng.range(0.7, 1)) / 10) * 10;
+  const ship = { id: ++T.seq, cls: cls.id, dir, cargo: cargo.id, tons, price: priceOf(g.market, cargo.id), state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one' };
+  T.ships.push(ship);
+  g.totals.spawned++;
+  return ship;
+}
+
+const income = (g, ship) => {
+  const cls = shipById(ship.cls), k = 1 + 0.15 * g.stats.pilot;
+  return Math.round(((cls.fee + CONFIG.traffic.levy * ship.tons * ship.price) * k) / 10) * 10;
+};
+
+// Position eines fahrenden Schiffs auf seinem Pfad (Strecke s in Fahrtrichtung)
+export function shipPos(ship) {
+  if (!ship.path) return null;
+  const sp = ship.dir > 0 ? ship.s : ship.path.length - ship.s, p = pointOnPath(ship.path, sp);
+  return ship.dir > 0 ? p : { ...p, angle: p.angle + Math.PI };
+}
+
+// Warteplatz vor der Einfahrt: die Schiffe reihen sich vor dem Ende der Rinne auf
+export function queuePos(g, ship, rank) {
+  const cls = shipById(ship.cls), f = g.fair?.[ship.cls];
+  const pts = f?.path?.points, edge = ship.dir > 0 ? pts?.[0] : pts?.[pts.length - 1], y = edge?.y ?? g.river.rows / 2;
+  const back = rank * (cls.len + 0.6);
+  return ship.dir > 0 ? { x: -0.3 - back, y, angle: 0 } : { x: g.river.cols + 0.3 + back, y, angle: Math.PI };
+}
+
+export function updateTraffic(g, dt) {
+  const T = g.traffic, C = CONFIG.traffic, ships = T.ships, vts = g.stats.vts;
+  T.spawnIn -= dt;
+  if (T.spawnIn <= 0) { spawnShip(g); T.spawnIn = (CONFIG.daySeconds / Math.max(0.05, rate(g))) * g.rng.range(0.5, 1.5); }
+
+  const site = g.site, near = {};
+  for (const cls of SHIPS) { // liegt der Ponton in dieser Rinne?
+    const pts = g.fair?.[cls.id]?.path?.points;
+    near[cls.id] = !!(site && pts && pts.some((p) => Math.hypot(p.x - site.x, p.y - site.y) < C.siteRadius));
+  }
+  const sailing = () => ships.filter((s) => s.state === 'sail' || s.state === 'grounded');
+
+  for (const ship of ships) {
+    if (ship.state !== 'sail' && ship.state !== 'grounded') continue;
+    const cls = shipById(ship.cls);
+    if (!ship.path) { // nach dem Laden: Pfad der Klasse wieder einsetzen
+      ship.path = g.fair?.[ship.cls]?.path;
+      if (!ship.path) { ship.state = 'left'; continue; }
+      ship.s = Math.min(ship.s, ship.path.length);
+    }
+    if (ship.state === 'grounded') {
+      ship.ground -= dt;
+      if (ship.ground <= 0) {
+        const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
+        if (depth >= cls.draught) { ship.state = 'sail'; g.say(`${cls.name} ist wieder flott.`, 'info'); }
+        else { ship.state = 'left'; g.totals.towed++; g.say(`${cls.name} wurde abgeschleppt (ohne Gebühr).`, 'bad'); }
+      }
+      continue;
+    }
+    let v = cls.speed * (ship.dir > 0 ? C.downFactor : C.upFactor);
+    const p0 = shipPos(ship);
+    if (site && Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius) v *= C.siteSlow;
+    let gapMin = Infinity;
+    for (const o of ships) {
+      if (o === ship || o.dir !== ship.dir || (o.state !== 'sail' && o.state !== 'grounded') || o.s <= ship.s) continue;
+      const gap = o.s - ship.s - (shipById(o.cls).len + cls.len) / 2;
+      if (gap < gapMin) gapMin = gap;
+    }
+    const safe = C.gap * (1 - 0.15 * vts);
+    if (gapMin < safe) v = 0; else if (gapMin < safe + 1.5) v *= (gapMin - safe) / 1.5;
+    ship.s += v * dt;
+    if (ship.s >= ship.path.length) {
+      ship.state = 'done';
+      const inc = income(g, ship);
+      g.money += inc;
+      const t = g.totals;
+      t.ships++; t.tons += ship.tons; t.trafficIncome += inc; t.byCargo[ship.cargo] = (t.byCargo[ship.cargo] ?? 0) + ship.tons; t.byClass[ship.cls] = (t.byClass[ship.cls] ?? 0) + 1;
+      g.today.ships++; g.today.tons += ship.tons; g.today.income += inc;
+      creditContracts(g, ship.cargo, ship.tons);
+      g.flash.push({ x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
+      continue;
+    }
+    const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
+    if (p.x > 0 && p.x < g.river.cols && depth < cls.draught - 0.02) {
+      const cost = Math.round((cls.fee * C.salvageFactor * (1 - 0.25 * vts)) / 10) * 10;
+      ship.state = 'grounded'; ship.ground = C.groundSeconds * (1 - 0.25 * vts);
+      g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost;
+      g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
+      g.notify(`${cls.name} aufgelaufen! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad');
+      g.flash.push({ x: p.x, y: p.y, text: '⚠', color: '#ff7a6b' });
+    }
+  }
+
+  // wartende Schiffe: das am längsten wartende zuerst
+  const open = !g.closed;
+  const queue = ships.filter((s) => s.state === 'queue').sort((a, b) => b.wait - a.wait);
+  for (const ship of queue) {
+    const cls = shipById(ship.cls), f = g.fair?.[ship.cls];
+    if (open) ship.wait += dt;
+    if (ship.wait > C.patience) {
+      ship.state = 'left';
+      g.totals.rejected++; g.totals.lostValue += income(g, ship); g.today.rejected++;
+      g.rejectedBy[ship.cls] = (g.rejectedBy[ship.cls] ?? 0) + 1;
+      continue;
+    }
+    if (!open || !f?.passable || !f.path) continue;
+    const lane = f.twoWay && !near[ship.cls] ? 'two' : 'one';
+    let ok = true;
+    const sl = sailing();
+    for (const o of sl) {
+      if (o.dir === ship.dir && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2) { ok = false; break; }
+      if (lane === 'one' && o.dir !== ship.dir && o.lane === 'one') { ok = false; break; }
+    }
+    if (ok && lane === 'one' && sl.some((o) => o.dir === ship.dir && o.lane === 'one')) { // Gegenseite wartet schon lange: keine neuen Schiffe mehr nachschieben
+      const oppWait = Math.max(0, ...queue.filter((o) => o.dir !== ship.dir && o.wait > 0 && g.fair?.[o.cls]?.passable).map((o) => o.wait));
+      if (oppWait > C.switchAfter && oppWait > ship.wait) ok = false;
+    }
+    if (!ok) continue;
+    ship.state = 'sail'; ship.s = 0; ship.lane = lane; ship.path = f.path;
+  }
+  T.ships = ships.filter((s) => s.state !== 'done' && s.state !== 'left');
+}
+
+// Wie viele Schiffe warten gerade (je Klasse)?
+export function waitingByClass(g) {
+  const out = {};
+  for (const s of g.traffic.ships) if (s.state === 'queue') out[s.cls] = (out[s.cls] ?? 0) + 1;
+  return out;
+}
+
+export { CARGOS };

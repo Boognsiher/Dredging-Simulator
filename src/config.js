@@ -1,0 +1,196 @@
+// Zentrale Spielbalance. Alle Zahlen hier ändern, nichts in der Logik verstecken.
+//
+// Spielidee: Der Fluss fliesst von links nach rechts. Schiffe brauchen eine Fahrrinne mit genug Wasser unter dem Kiel
+// (Tiefgang + Kielfreiheit) und genug Breite. Du baggerst die Flusssohle aus, damit grössere Schiffe und mehr Schiffe
+// durchkommen. Jedes Schiff bringt Gebühr + Anteil am Frachtwert (Markt!), das Baggergut wird aufbereitet und verkauft
+// oder entsorgt. Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel schaltet das nächste Level frei.
+export const CONFIG = {
+  river: { cols: 44, rows: 24 },
+  daySeconds: 12, // ein Spieltag in Sekunden (120 Tage = 24 Minuten)
+  startMoney: 50000, // CHF
+  deadlineDays: 120,
+  bankruptcyLimit: -40000, // darunter: Konzession entzogen
+  clearance: 0.3, // m Wasser, die zusätzlich zum Tiefgang unter dem Kiel bleiben müssen
+  water: { base: 8, floodClose: 1.0, floodMax: 1.6, followRate: 0.35 }, // Bezugspegel (m), ab +floodClose wird die Schifffahrt gesperrt
+  // Flusssohle: Raster, jede Zelle hat cellArea m² (m³ = Höhe * cellArea)
+  layer: {
+    cellArea: 16,
+    snap: 0.02, // m: so kleine Reste über Fels gelten beim Absaugen als erledigt
+    slope: 1.1, // m Höhenunterschied pro Zelle, den eine Böschung hält; steiler rutscht Material nach
+    relaxPerTick: 160, // so viele Zellen rutschen pro Spielschritt nach (sichtbar, aber nicht schlagartig)
+  },
+  hard: { factor: 1.5 }, // harte Schicht: Leistung geteilt durch (1 + Härte * factor)
+  box: { cols: 4 }, // der Ponton baggert gleichzeitig 4 Karten-Spalten (Flussrichtung) und 16 Zellen quer zum Fluss
+  // Baggerentgelt der Wasserstrassenverwaltung für Material aus dem Baggerkorridor; Naturschutzzone (Ufer, Flachwasser) kostet
+  pay: { perM3: 28, protectFine: 220 },
+  // Material der Flusssohle (Index = Wert in river.kind). Preis in CHF pro m³ nach der Aufbereitung: positiv = Verkauf, negativ = Entsorgung.
+  // Der Kiespreis folgt dem Markt (Fracht "Kies & Sand").
+  materials: [
+    { id: 'schlick', name: 'Schlick', price: -34, color: '#6e5f4b', particle: '#7d6c55' },
+    { id: 'sand', name: 'Sand', price: 12, color: '#c8b27c', particle: '#d9c590' },
+    { id: 'kies', name: 'Kies', price: 26, color: '#9d9488', particle: '#b5ab9d' },
+    { id: 'altlast', name: 'Altlast', price: -160, color: '#7a4a33', particle: '#ff7a3d' },
+    { id: 'fels', name: 'Fels', price: 6, color: '#6f747a', particle: '#9aa1a8' },
+  ],
+  // Sedimentation: der Fluss lagert Schwebstoffe ab, besonders in langsamem Wasser (Rand, Innenkurve). Die Rinne verlandet wieder.
+  sediment: { rate: 0.003, maxAbove: 0.3, floodDeposit: [0.18, 0.34], flowPower: 2 },
+  // Anlage an Land: nimmt Baggergut aus dem Puffer, sortiert, verkauft oder entsorgt
+  plant: { batchFee: 0 },
+  // Pumpe an der Kette: Einsaugbereich liegt unten rechts. Wer zu tief abträgt, bringt sie zum Kippen.
+  pump: {
+    offsetX: 0.3, offsetY: 0.1,
+    fullDraw: 2.0, // Summe der Saugwichte, ab der die volle Leistung ankommt
+    minTravel: 1.0, // Zellen/s: so schnell gilt die Pumpe mindestens als bewegt
+    tiltRate: 0.6, tiltRecover: 0.4,
+    liftTolerance: 0.3, liftTiltRate: 0.5,
+    tipSeconds: 6, repairCost: 1500,
+    maxHeightBelowWater: 0.35, // die Pumpe hängt mindestens so tief unter dem Wasserspiegel
+  },
+  unclog: { hits: 2, zone: 0.24, speed: 1.1, speedUp: 1.4, missPenalty: 1.0 },
+  // Fremdstoffe verstopfen die Pumpe; jeder hat im Freispülen eine eigene Schwierigkeit (Reihenfolge wie DEBRIS)
+  debris: { count: 22, clogSeconds: 6 },
+  debrisInfo: [
+    { zone: 0.24, hits: 2, speed: 1.1, clog: 6 }, // Einkaufswagen
+    { zone: 0.22, hits: 2, speed: 1.2, clog: 6 }, // Velo
+    { zone: 0.34, hits: 1, speed: 1.0, clog: 4 }, // Gummiente
+    { zone: 0.18, hits: 3, speed: 1.3, clog: 8 }, // Schiffsanker
+    { zone: 0.42, hits: 1, speed: 0.9, clog: 3 }, // Fischernetz-Rest: weich
+    { zone: 0.16, hits: 3, speed: 1.2, clog: 9 }, // Autowrack
+    { zone: 0.14, hits: 3, speed: 1.0, clog: 10 }, // Fliegerbombe (Blindgänger, bitte nicht zucken)
+  ],
+  turbidityFineThreshold: 0.8, turbidityFinePerSecond: 150, turbidityGain: 30, turbidityDecay: 0.08,
+  // Automatik: Stufe 0 = Handbetrieb, 1 = experimentell, 2 = zuverlässig, 3 = voll
+  auto: {
+    speedFactor: [1, 0.8, 1, 1.25],
+    errorRate: [0, 0.08, 0.025, 0],
+    errorSeconds: 6,
+    clogSeconds: [3, 5, 3, 1.5],
+  },
+  // Echolot: lotet das Profil vor dem Abtrag aus. Ohne Echolot ist die Messung ungenau (±), die Automatik trifft die Solltiefe schlechter.
+  echolot: { noise: [0.35, 0.12, 0.04], doneEps: 0.03, defaultDepth: 2.8, minDepth: 1.0, maxDepth: 5.5 },
+  pumpSpeed: { min: 0.2, max: 1, default: 1 },
+  // Verkehr: Schiffe erscheinen an beiden Enden, fahren die Fahrrinne ab und zahlen beim Verlassen des Abschnitts
+  traffic: {
+    shipsPerDay: 1.5, // Grundrate, mal Level-Faktor, Marktnachfrage und Betonnung
+    levy: 0.01, // Anteil am Frachtwert, der als Abgabe an die Verwaltung (also an dich) geht
+    patience: 45, // Sekunden, die ein Schiff vor der Einfahrt wartet, bevor es abdreht und die Fracht auf die Bahn geht
+    maxQueue: 7, // so viele Schiffe warten je Ende; weitere drehen sofort ab
+    downFactor: 1.15, upFactor: 0.85, // talwärts schneller als bergwärts
+    gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
+    enterGap: 3.0,
+    groundSeconds: 18, salvageFactor: 2.0, // Havarie: Schlepper-Zeit; Bergungskosten = Faktor * Gebühr
+    siteRadius: 3.5, siteSlow: 0.5, // Ponton in der Rinne: langsame Fahrt, Wechselverkehr
+    switchAfter: 10, // Sekunden Wartezeit auf der Gegenseite, ab der in einer Einbahnrinne die Richtung gewechselt wird
+    maxShips: 28,
+    marketSpread: 0.2,
+  },
+  // Markt: Frachtpreise schwanken (Mean-Reversion + Ereignisse); hohe Preise locken mehr Schiffe dieser Fracht an
+  market: { sigma: 0.07, revert: 0.1, minRatio: 0.45, maxRatio: 2.2, history: 24 },
+  // Frachtaufträge der Reedereien: X Tonnen einer Fracht bis zu einem Termin durchbringen = Prämie
+  contracts: {
+    firstAtDay: 7, everyDays: [9, 16], offerDays: 8, dueDays: 28, maxOpen: 3,
+    tons: [4, 9], // Vielfache der Schiffsladung
+    bonusShare: 0.012, // Prämie in Anteilen des Frachtwerts
+    penaltyShare: 0.3,
+  },
+  dailyCost: 450, perUpgradeLevelCost: 22, // Betrieb und Wartung pro Tag (CHF), plus je ausgebaute Stufe
+  advisor: { firstAfter: 18, gap: 55, tipCooldown: 240, tau: 30, eventWindow: 120, bufferFull: 0.45, turbidity: 0.55, richMoney: 40000 },
+  refundShare: 0.75,
+};
+
+// Materialindex
+export const KIND = { schlick: 0, sand: 1, kies: 2, altlast: 3, fels: 4 };
+
+// Basiswerte ohne Upgrades
+export const BASE_STATS = {
+  power: 6.0, // m³/s Saugleistung
+  radius: 1.8, // Zellen
+  speed: 4.0, // Zellen/s (Ponton auf der Karte)
+  headSpeed: 4.8, // Einheiten/s: Höchsttempo der Pumpe an Katze und Kette
+  curtain: 0, // Trübungsschutz (0..1)
+  suctionSpeedFactor: 0.55,
+  plantCapacity: 3.5, // m³/s, die die Anlage verarbeitet
+  bufferCapacity: 120, // m³ Puffer vor der Anlage; ist er voll, muss das Saugen pausieren
+  disposalFactor: 1, // Faktor auf Entsorgungskosten (Entwässerung senkt ihn)
+  sortBonus: 1, // Faktor auf Verkaufserlöse (Sortieranlage hebt ihn)
+  rockFirmness: 0.04, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
+  stability: 0.7,
+  autoLevel: 0,
+  echolot: 0,
+  trafficMult: 1, // Betonnung & Leuchtfeuer: mehr Schiffe
+  vts: 0, // Verkehrsleitsystem: schnellere Bergung, kleinere Abstände
+  pilot: 0, // Lotsendienst: höhere Gebühren
+};
+
+// Jedes Upgrade: Stufe n kostet baseCost * growth^n, wirkt über apply()
+export const UPGRADES = {
+  power: { group: 'ponton', name: 'Saugpumpe', desc: 'Mehr m³ pro Sekunde', maxLevel: 8, baseCost: 8000, growth: 1.5, apply: (s, l) => { s.power += l * 1.6; } },
+  radius: { group: 'ponton', name: 'Saugkopf', desc: 'Grössere Saugfläche', maxLevel: 5, baseCost: 6000, growth: 1.6, apply: (s, l) => { s.radius += l * 0.5; } },
+  speed: { group: 'ponton', name: 'Ponton-Antrieb', desc: 'Schnelleres Fahren auf der Karte', maxLevel: 5, baseCost: 5000, growth: 1.5, apply: (s, l) => { s.speed += l * 0.6; } },
+  winch: { group: 'ponton', name: 'Katze & Winde', desc: 'Pumpe fährt und taucht schneller (Höchsttempo)', maxLevel: 5, baseCost: 5000, growth: 1.5, apply: (s, l) => { s.headSpeed += l * 0.7; } },
+  ballast: { group: 'ponton', name: 'Pumpen-Ballast', desc: 'Pumpe steht fester und kippt später', maxLevel: 4, baseCost: 6000, growth: 1.5, apply: (s, l) => { s.stability += l * 0.25; } },
+  curtain: { group: 'ponton', name: 'Trübungsschutz', desc: 'Schlammvorhang: weniger Trübung, weniger Bussen', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.curtain = Math.min(0.8, l * 0.2); } },
+  cutter: { group: 'ponton', name: 'Felsfräse', desc: 'Schneidkopf: Felsriegel lassen sich abtragen (ohne Fräse kaum)', maxLevel: 4, baseCost: 14000, growth: 1.7, apply: (s, l) => { s.rockFirmness += l * 0.14; } },
+  echolot: { group: 'ponton', name: 'Echolot', desc: 'Genauere Peilung: die Automatik trifft die Solltiefe besser', maxLevel: 2, baseCost: 9000, growth: 1.8, apply: (s, l) => { s.echolot = l; } },
+  auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 15000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
+  plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer', maxLevel: 6, baseCost: 10000, growth: 1.5, apply: (s, l) => { s.plantCapacity += l * 1.2; s.bufferCapacity += l * 45; } },
+  dewater: { group: 'plant', name: 'Entwässerung', desc: 'Trockeneres Material: Entsorgung wird günstiger', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.disposalFactor = Math.max(0.4, 1 - l * 0.15); } },
+  sorter: { group: 'plant', name: 'Sortieranlage', desc: 'Kies und Sand besser verkaufen', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.sortBonus = 1 + l * 0.2; } },
+  beacons: { group: 'traffic', name: 'Betonnung & Leuchtfeuer', desc: 'Sicher auch bei Nacht: mehr Schiffe pro Tag', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.trafficMult = 1 + l * 0.18; } },
+  vts: { group: 'traffic', name: 'Verkehrsleitsystem', desc: 'Kürzere Abstände, schnellere Bergung bei Havarien', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.vts = l; } },
+  pilot: { group: 'traffic', name: 'Lotsendienst', desc: 'Höhere Gebühren pro Schiff', maxLevel: 3, baseCost: 10000, growth: 1.7, apply: (s, l) => { s.pilot = l; } },
+};
+
+// Schiffsklassen. draught = Tiefgang (m), beam = Breite in Zellen, len = Länge in Zellen, tons = Ladung, share = Anteil am Verkehr
+export const SHIPS = [
+  { id: 'kahn', name: 'Lastkahn', icon: '🛶', draught: 1.4, beam: 2, len: 2.4, speed: 1.6, tons: 300, fee: 350, share: 0.34, cargo: ['kies', 'getreide'], color: '#a07a52' },
+  { id: 'motor', name: 'Motorgüterschiff', icon: '🚤', draught: 2.0, beam: 2, len: 3.2, speed: 2.0, tons: 800, fee: 700, share: 0.3, cargo: ['getreide', 'kohle', 'kies'], color: '#4f86b8' },
+  { id: 'tank', name: 'Tankschiff', icon: '🛢️', draught: 2.6, beam: 3, len: 3.8, speed: 1.9, tons: 1500, fee: 900, share: 0.16, cargo: ['oel', 'chemie'], color: '#b5483a' },
+  { id: 'container', name: 'Containerschiff', icon: '🚢', draught: 3.2, beam: 3, len: 4.6, speed: 2.2, tons: 2500, fee: 1500, share: 0.13, cargo: ['container'], color: '#3b9a78' },
+  { id: 'schub', name: 'Schubverband', icon: '⛴️', draught: 4.0, beam: 4, len: 5.4, speed: 1.7, tons: 4500, fee: 3500, share: 0.07, cargo: ['kohle', 'erz'], color: '#7a69b8' },
+];
+export const shipById = (id) => SHIPS.find((s) => s.id === id);
+
+// Frachtarten: base = Basispreis in CHF pro Tonne
+export const CARGOS = [
+  { id: 'kies', name: 'Kies & Sand', base: 18, color: '#c9b27a' },
+  { id: 'getreide', name: 'Getreide', base: 120, color: '#e0c040' },
+  { id: 'kohle', name: 'Kohle', base: 60, color: '#4a4a4a' },
+  { id: 'erz', name: 'Erz', base: 75, color: '#a0603c' },
+  { id: 'oel', name: 'Mineralöl', base: 180, color: '#2b2b33' },
+  { id: 'chemie', name: 'Chemie', base: 320, color: '#7bd88f' },
+  { id: 'container', name: 'Container', base: 160, color: '#e0803a' },
+];
+export const cargoById = (id) => CARGOS.find((c) => c.id === id);
+
+// Fremdstoffe im Fluss (Index = Wert in river.debris - 1)
+export const DEBRIS = ['Einkaufswagen', 'Velo', 'Gummiente (gross)', 'Schiffsanker', 'Fischernetz', 'Autowrack', 'Fliegerbombe (Blindgänger!)'];
+
+// ---------- Levels ----------
+// river: Parameter der Flussgenerierung. bars = Barren über die ganze Breite (Höhe in m, die die Rinne dort flacher ist),
+// ridges = Felsriegel (Tiefe unter Bezugspegel, ab der Fels beginnt). classes = Schiffsklassen, die in diesem Level fahren.
+// Freigeschaltet wird ein Level, wenn das Verkehrsziel des vorherigen erreicht und mit Gewinn abgeschlossen wurde.
+export const LEVELS = [
+  {
+    id: 'hochrhein', name: 'Hochrhein: Basel–Birsfelden', short: 'Hochrhein',
+    blurb: 'Der Klassiker: breiter Fluss, ein paar Barren, ein harmloser Felsriegel. Erst kommen nur Kähne durch, mit Baggern kommen Tanker und Containerschiffe.',
+    river: { halfWidth: 6.8, depthMax: 2.4, rockDepth: 6.4, meander: 2.4, bars: [{ x: 9, w: 3.5, raise: 0.5 }, { x: 22, w: 4, raise: 0.55 }, { x: 36, w: 3.5, raise: 0.45 }], ridges: [{ x: 30, w: 4, depth: 4.3 }], shoals: 5, altlast: 2, hardBlobs: 3, debris: 14 },
+    classes: ['kahn', 'motor', 'tank', 'container'], traffic: 1, goalTons: 90000, startMoney: 50000, deadlineDays: 120, turbidityMult: 1,
+    palette: { water: [38, 120, 160], land: [96, 130, 78] },
+  },
+  {
+    id: 'loreley', name: 'Mittelrhein: Loreley-Enge', short: 'Loreley',
+    blurb: 'Schmal, felsig und viel Verkehr. Zwei Felsriegel sperren die Grossen aus: ohne Felsfräse kommt kein Schubverband durch, und an der Enge ist Gegenverkehr ein Thema.',
+    river: { halfWidth: 5.6, depthMax: 2.3, rockDepth: 5.2, meander: 2.8, bars: [{ x: 7, w: 3, raise: 0.5 }, { x: 18, w: 3.5, raise: 0.5 }, { x: 38, w: 3, raise: 0.5 }], ridges: [{ x: 13, w: 4.5, depth: 3.6 }, { x: 30, w: 4, depth: 3.3 }], shoals: 4, altlast: 3, hardBlobs: 7, debris: 18 },
+    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.3, goalTons: 160000, startMoney: 55000, deadlineDays: 120, turbidityMult: 1.1,
+    palette: { water: [44, 104, 124], land: [92, 100, 84] },
+  },
+  {
+    id: 'donau', name: 'Donau: Eisernes Tor', short: 'Eisernes Tor',
+    blurb: 'Breiter Strom, harter Fels und alte Industrie am Ufer: viele Altlasten, viele Blindgänger. Wer hier den Schubverbänden die Rinne öffnet, verdient richtig.',
+    river: { halfWidth: 7.4, depthMax: 2.6, rockDepth: 5.0, meander: 2.2, bars: [{ x: 8, w: 3.5, raise: 0.6 }, { x: 20, w: 4, raise: 0.6 }, { x: 33, w: 3.5, raise: 0.6 }], ridges: [{ x: 14, w: 4, depth: 3.5 }, { x: 27, w: 5, depth: 3.2 }, { x: 40, w: 3, depth: 3.6 }], shoals: 6, altlast: 6, hardBlobs: 8, debris: 22 },
+    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.5, goalTons: 260000, startMoney: 60000, deadlineDays: 130, turbidityMult: 1,
+    palette: { water: [56, 110, 110], land: [108, 112, 80] },
+  },
+];
+export const levelById = (id) => LEVELS.find((l) => l.id === id) ?? LEVELS[0];
