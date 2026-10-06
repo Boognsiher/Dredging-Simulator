@@ -300,6 +300,32 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
   g.money = 0; const sec2 = g.shoreSections().find((q) => q.cells.length > 0); assert.ok(g.shoreBlock(sec2.side, sec2.part));
 });
 
+import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock } from '../src/sim/port.js';
+test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
+  const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
+  assert.ok(openBlock(g), 'ohne Motorschiff gesperrt');
+  g.unlocked.motor = true;
+  assert.ok(openPort(g));
+  assert.equal(build(g, 1, 'kies'), false, 'ohne Kai kein Lager');
+  assert.ok(build(g, 0, 'kai')); assert.ok(hasKai(g));
+  assert.equal(build(g, 2, 'kai'), false, 'Kai nur einmal');
+  assert.ok(build(g, 1, 'kies')); assert.ok(build(g, 2, 'tank'));
+  assert.equal(capacity(g, 'kies'), 600);
+  assert.ok(upgrade(g, 1)); assert.equal(capacity(g, 'kies'), 1600);
+  const m0 = g.money; const q = buy(g, 'oel', 50);
+  assert.equal(q, 50); assert.ok(g.money < m0); assert.equal(g.port.stock.oel, 50);
+  const s0 = g.money; sell(g, 'oel', 50); assert.ok(g.money > s0 && g.port.stock.oel === 0);
+  assert.ok(m0 - g.money > 0, 'Spread kostet Geld');
+  // Schiff entlädt bei tiefem Preis, belädt bei hohem
+  g.market.dev.oel = -0.4; portShip(g, { cargo: 'oel', tons: 400 }); assert.ok(g.port.stock.oel > 0);
+  const st = g.port.stock.oel; g.market.dev.oel = 0.5; portShip(g, { cargo: 'oel', tons: 400 }); assert.ok(g.port.stock.oel < st);
+  // Automatik kauft billig und verkauft teuer
+  g.port.stock.oel = 0; g.port.auto.oel.on = true; g.market.dev.oel = -0.4; portDay(g); assert.ok(g.port.stock.oel > 0);
+  g.market.dev.oel = 0.5; const before = g.port.stock.oel; portDay(g); assert.ok(g.port.stock.oel < before);
+  // Sanierung spart Entsorgung
+  assert.ok(build(g, 3, 'sanierung'));
+});
+
 test('Ponton: bleibt im Wasser, ankert nur dort', () => {
   const r = flat(2); for (let y = 0; y < 5; y++) for (let x = 0; x < r.cols; x++) r.top[r.idx(x, y)] = r.wl + 1;
   const sim = new DredgeSim(r, computeStats({}), createRng(1));

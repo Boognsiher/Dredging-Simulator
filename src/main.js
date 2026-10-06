@@ -14,6 +14,7 @@ import { serializeGame, restoreGame, savedSummary } from './sim/save.js';
 import { createInput } from './ui/input.js';
 import { setupTouch } from './ui/touch.js';
 import { steerToward } from './ui/touch-logic.js';
+import { setupPort } from './ui/port.js';
 import { fitSize, renderQuality } from './ui/layout.js';
 import { hintsFor } from './ui/hints.js';
 import { Fx } from './ui/fx.js';
@@ -688,6 +689,11 @@ canvas.addEventListener('pointermove', (e) => {
   sim.setAutoBounds(k, m); game.autoRange = sim.autoRange;
 });
 addEventListener('pointerup', () => { lineDrag = null; });
+const portUi = setupPort($('port-page'), () => game, () => updatePanel());
+const portOpen = () => !$('port-page').hidden;
+function togglePort() { if (!portOpen() && overlayOpen()) return; $('port-page').hidden = portOpen(); if (portOpen()) portUi.render(true); }
+$('port-page').addEventListener('click', (e) => { if (e.target.closest('#port-close')) togglePort(); });
+$('btn-port').onclick = togglePort;
 $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
 $('btn-fix').onclick = fixAuto;
@@ -701,6 +707,9 @@ let last = performance.now(), panelTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   ui.dt = dt; ui.t += dt;
+  if (readInput.tap('KeyH')) togglePort();
+  if (portOpen() && readInput.tap('Escape')) togglePort();
+  if (portOpen()) portUi.render();
   if (readInput.tap('KeyP')) togglePause();
   if (readInput.tap('KeyB') && !overlayOpen()) setFritz(!advisor.enabled);
   const running = !paused && !sheetOpen && !overlayOpen() && !tipOpen && game.status === 'playing';

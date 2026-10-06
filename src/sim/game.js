@@ -7,6 +7,7 @@ import { EVENTS } from './events.js';
 import { computeStats, upgradeCost } from './stats.js';
 import { createRng } from './rng.js';
 import { createMarket, stepMarket } from './market.js';
+import { createPort, portDay, refundFrac } from './port.js';
 import { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } from './traffic.js';
 import { processPlant, stockTotal, materialPrice } from './plant.js';
 import { updateContracts } from './contracts.js';
@@ -42,6 +43,7 @@ export class Game {
     this.market = createMarket();
     this.traffic = createTraffic();
     this.fleet = createFleet();
+    this.port = createPort(); // Hafen an Land (Kai, Lager, Handel)
     this.zones = []; // Kreuzungsstellen: { id, x (Spalte der Mitte), w }
     this.zoneSeq = 0;
     this.unlocked = {}; // Schiffsklassen, die schon einmal fahren konnten
@@ -307,6 +309,7 @@ export class Game {
     }
     if (pl.vol > 0) {
       this.money += pl.net; this.totals.plantNet += pl.net; this.today.plant += pl.net;
+      const rf = refundFrac(this); if (rf > 0 && pl.by[KIND.altlast] < 0) { const back = -pl.by[KIND.altlast] * rf; this.money += back; this.totals.plantNet += back; this.today.plant += back; this.port.refunded = (this.port.refunded ?? 0) + back; } // Sanierungsanlage
       for (let k = 0; k < 5; k++) { if (pl.by[k] >= 0) this.totals.sold += pl.by[k]; else this.totals.disposal -= pl.by[k]; }
     }
 
@@ -338,6 +341,7 @@ export class Game {
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();
     stepMarket(this.market, this.rng);
+    portDay(this);
     for (const e of this.eventsOn ? EVENTS : []) {
       if (this.rng() < e.chance && (!e.when || e.when(this))) {
         const r = e.apply(this);

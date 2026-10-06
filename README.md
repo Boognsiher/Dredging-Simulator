@@ -102,3 +102,9 @@ Reedereien nach Klasse freischalten, Betonqualitäten, weitere Geräte (Eimerket
 **Trübungsbussen** hängen vom Ort des Saugkopfs ab: in der Durchfahrt (Rinne) praktisch vernachlässigbar, im Altlastenbereich normal, im Naturschutzgebiet sehr hoch (und schon bei geringerer Trübung). Die Anzeige neben dem Trübungsbalken nennt den aktuellen Bereich.
 
 **Uferstreifen kaufen:** Im Panel «Uferstreifen» lassen sich die Naturschutz-Flachwasserstreifen abschnittsweise (Nord-/Südufer × Ober-/Mittel-/Unterlauf, 350 CHF pro Zelle) freikaufen. Sie werden zum Baggerkorridor (keine Schutzbussen), die Rinne kann dort breiter ausgebaggert werden.
+
+## Hafen (neue Spielseite)
+Taste `H` oder Knopf «🏗 Hafen» öffnet die Hafen-Seite (das Spiel läuft im Hintergrund weiter). Voraussetzung: Das Motorschiff hat die Rinne schon befahren. Dann:
+- **Hafengelände erwerben** (30 000 CHF), danach bis zu 6 Bauplätze: **Kai & Verladestation** (Pflicht, nur einmal), **Kieslager**, **Tanklager** (je 3 Stufen) und **Sanierungsanlage** (spart 50–80 % der Altlast-Entsorgung).
+- **Handel:** Kies und Öl kaufst du zum Marktpreis plus Spread und verkaufst sie minus Spread, von Hand oder per **Automatik** (kaufen unter X %, verkaufen ab Y % des Basispreises). Durchfahrende Schiffe mit passender Fracht laden bei hohem Preis aus deinem Lager und entladen bei tiefem Preis; der Kai kassiert eine Umschlaggebühr.
+- Geplant: Baumaschinen im Gelände (Planieren/Nivellieren), eigene Hallen, Reedereiverträge.

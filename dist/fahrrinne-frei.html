@@ -313,6 +313,17 @@ body.touch #classbar { padding-right: 4px; }
 .fleet-widen { display: block; margin-top: 8px; font-size: 12px; } .fleet-widen select { margin-left: 6px; padding: 2px; border-radius: 4px; background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; }
 #btn-tow:not(:disabled) { background: var(--accent); color: #04222b; font-weight: 600; }
 
+/* ---------- Hafen-Seite ---------- */
+#port-page { position: fixed; inset: 0; z-index: 25; overflow-y: auto; background: #0b1a26; padding: 14px; text-align: left; }
+#port-page[hidden] { display: none; }
+.port-head { display: flex; align-items: center; gap: 12px; max-width: 900px; margin: 0 auto 10px; } .port-head h2 { margin: 0; flex: 1; } .port-money { font-weight: 700; color: var(--good); }
+.port-plots, .port-trade, .port-card { max-width: 900px; margin: 0 auto 10px; }
+.port-plots { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.plot { background: #1b3a52; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; } .plot.empty { background: #ffffff0d; border: 1px dashed #ffffff40; }
+.plot-icon { font-size: 34px; } .plot button { margin-top: 2px; } .plot .ghost { opacity: .6; font-size: 12px; }
+.port-card { background: #142a3d; border-radius: 10px; padding: 10px 12px; } .port-card .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; } .port-card .auto label { font-size: 13px; }
+.port-card .bar { height: 10px; background: #0007; border-radius: 5px; overflow: hidden; margin: 6px 0 2px; } .port-card .bar i { display: block; height: 100%; background: var(--accent); }
+
 </style>
 </head>
 <body>
@@ -355,6 +366,7 @@ body.touch #classbar { padding-right: 4px; }
       </div>
       <div id="shift-actions" hidden>
         <button id="btn-anchor" class="primary">⚓ Anker werfen (E)</button>
+        <button id="btn-port">🏗 Hafen (H)</button>
         <button id="btn-leave">↩ Zurück zur Karte (Q)</button>
         <button id="btn-auto">🤖 Auto (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
@@ -367,6 +379,7 @@ body.touch #classbar { padding-right: 4px; }
         <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="5.5" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
       </div>
       <div id="toast"></div>
+      <div id="port-page" hidden></div>
       <div id="overlay"></div>
       <div id="bruno" hidden></div>
       <div id="touch-ui" hidden>
@@ -422,25 +435,27 @@ const __defs = [
 function(){
 const { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } = __m(1);
 const { Game } = __m(2);
-const { acceptContract } = __m(12);
-const { waitingByClass } = __m(11);
-const { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, targetClass } = __m(13);
-const { bayCapacity, maxZones, zoneClasses } = __m(11);
-const { materialPrice } = __m(14);
-const { TowSim, groundedNear } = __m(15);
+const { acceptContract } = __m(13);
+const { waitingByClass } = __m(12);
+const { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, targetClass } = __m(14);
+const { bayCapacity, maxZones, zoneClasses } = __m(12);
+const { materialPrice } = __m(15);
+const { TowSim, groundedNear } = __m(16);
 const { toolName } = __m(6);
 const { priceOf, trend } = __m(8);
 const { needDepth } = __m(5);
-const { Advisor } = __m(16);
-const { serializeGame, restoreGame, savedSummary } = __m(17);
-const { createInput } = __m(18);
-const { setupTouch } = __m(20);
-const { steerToward } = __m(19);
-const { fitSize, renderQuality } = __m(21);
-const { hintsFor } = __m(22);
-const { Fx } = __m(23);
-const { createAudio } = __m(24);
-const { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(25);
+const { Advisor } = __m(17);
+const { serializeGame, restoreGame, savedSummary } = __m(18);
+const { createInput } = __m(19);
+const { setupTouch } = __m(21);
+const { steerToward } = __m(20);
+const { setupPort } = __m(22);
+const { fitSize, renderQuality } = __m(23);
+const { hintsFor } = __m(24);
+const { Fx } = __m(25);
+const { createAudio } = __m(26);
+const { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(27);
+
 
 
 
@@ -1131,6 +1146,11 @@ canvas.addEventListener('pointermove', (e) => {
   sim.setAutoBounds(k, m); game.autoRange = sim.autoRange;
 });
 addEventListener('pointerup', () => { lineDrag = null; });
+const portUi = setupPort($('port-page'), () => game, () => updatePanel());
+const portOpen = () => !$('port-page').hidden;
+function togglePort() { if (!portOpen() && overlayOpen()) return; $('port-page').hidden = portOpen(); if (portOpen()) portUi.render(true); }
+$('port-page').addEventListener('click', (e) => { if (e.target.closest('#port-close')) togglePort(); });
+$('btn-port').onclick = togglePort;
 $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
 $('btn-fix').onclick = fixAuto;
@@ -1144,6 +1164,9 @@ let last = performance.now(), panelTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   ui.dt = dt; ui.t += dt;
+  if (readInput.tap('KeyH')) togglePort();
+  if (portOpen() && readInput.tap('Escape')) togglePort();
+  if (portOpen()) portUi.render();
   if (readInput.tap('KeyP')) togglePause();
   if (readInput.tap('KeyB') && !overlayOpen()) setFritz(!advisor.enabled);
   const running = !paused && !sheetOpen && !overlayOpen() && !tipOpen && game.status === 'playing';
@@ -1573,10 +1596,12 @@ const { EVENTS } = __m(7);
 const { computeStats, upgradeCost } = __m(9);
 const { createRng } = __m(10);
 const { createMarket, stepMarket } = __m(8);
-const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(11);
-const { processPlant, stockTotal, materialPrice } = __m(14);
-const { updateContracts } = __m(12);
-const { createFleet, updateFleet } = __m(13);
+const { createPort, portDay, refundFrac } = __m(11);
+const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(12);
+const { processPlant, stockTotal, materialPrice } = __m(15);
+const { updateContracts } = __m(13);
+const { createFleet, updateFleet } = __m(14);
+
 
 
 
@@ -1621,6 +1646,7 @@ class Game {
     this.market = createMarket();
     this.traffic = createTraffic();
     this.fleet = createFleet();
+    this.port = createPort(); // Hafen an Land (Kai, Lager, Handel)
     this.zones = []; // Kreuzungsstellen: { id, x (Spalte der Mitte), w }
     this.zoneSeq = 0;
     this.unlocked = {}; // Schiffsklassen, die schon einmal fahren konnten
@@ -1886,6 +1912,7 @@ class Game {
     }
     if (pl.vol > 0) {
       this.money += pl.net; this.totals.plantNet += pl.net; this.today.plant += pl.net;
+      const rf = refundFrac(this); if (rf > 0 && pl.by[KIND.altlast] < 0) { const back = -pl.by[KIND.altlast] * rf; this.money += back; this.totals.plantNet += back; this.today.plant += back; this.port.refunded = (this.port.refunded ?? 0) + back; } // Sanierungsanlage
       for (let k = 0; k < 5; k++) { if (pl.by[k] >= 0) this.totals.sold += pl.by[k]; else this.totals.disposal -= pl.by[k]; }
     }
 
@@ -1917,6 +1944,7 @@ class Game {
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();
     stepMarket(this.market, this.rng);
+    portDay(this);
     for (const e of this.eventsOn ? EVENTS : []) {
       if (this.rng() < e.chance && (!e.when || e.when(this))) {
         const r = e.apply(this);
@@ -3201,11 +3229,149 @@ function createRng(seed = 1) {
 return { createRng: createRng };
 },
 function(){
+const { CONFIG } = __m(1);
+const { priceOf, ratioOf } = __m(8);
+
+
+
+// Hafen an Land: Kai mit Verladestation plus Lager (Kies, Tanklager) und Sanierungsanlage (Altlasten). Reine Daten und Logik, speicherbar.
+// Der Hafen handelt mit Waren: Schiffe der passenden Fracht laden bei hohen Preisen aus deinem Lager (du verkaufst) und entladen bei tiefen
+// Preisen in dein Lager (du kaufst). Zusätzlich kannst du von Hand kaufen/verkaufen oder den Handel automatisieren (Kauf-/Verkaufsschwelle).
+const PORT = {
+  openCost: 30000, slots: 6, spread: 0.06, handlingFee: 0.012, reserve: 5000, shipShare: 0.3,
+  buildings: {
+    kai: { name: 'Kai & Verladestation', icon: '🏗', cost: 12000, max: 1, text: 'Pflicht: Hier laden und entladen die Schiffe. Ohne Kai kein Handel.' },
+    kies: { name: 'Kieslager', icon: '⛰', commodity: 'kies', cost: 9000, up: [14000, 30000], cap: [600, 1600, 3600], text: 'Lager für Kies und Sand. Billig im Einkauf, wenig Marge pro Tonne, dafür viel Menge.' },
+    tank: { name: 'Tanklager', icon: '🛢', commodity: 'oel', cost: 20000, up: [28000, 60000], cap: [500, 1300, 3000], text: 'Lager für Mineralöl. Teuer, aber hohe Preise und grosse Preisausschläge.' },
+    sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
+  },
+  commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' } },
+};
+
+function createPort() {
+  const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
+  return {
+    open: false, slots: Array(PORT.slots).fill(null), stock: { kies: 0, oel: 0 }, cost: { kies: 0, oel: 0 }, // cost = Einstandspreis je t (Durchschnitt)
+    auto: { kies: auto(), oel: auto() }, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
+  };
+}
+
+const slotsOf = (p, type) => p.slots.filter((s) => s?.type === type);
+const hasKai = (g) => g.port.open && slotsOf(g.port, 'kai').length > 0;
+const capacity = (g, id) => slotsOf(g.port, id === 'oel' ? 'tank' : 'kies').reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0);
+const refundFrac = (g) => { const s = slotsOf(g.port, 'sanierung')[0]; return s ? PORT.buildings.sanierung.refund[s.level - 1] : 0; };
+const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
+const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
+
+function openBlock(g) {
+  if (g.port.open) return 'Hafen ist schon eröffnet';
+  if (!g.unlocked.motor) return 'Erst muss das Motorschiff die Rinne befahren';
+  if (g.money < PORT.openCost) return `Braucht ${PORT.openCost.toLocaleString('de-CH')} CHF`;
+  return g.status === 'playing' ? null : 'Spiel beendet';
+}
+function openPort(g) {
+  if (openBlock(g)) return false;
+  g.money -= PORT.openCost; g.port.open = true; g.port.spent += PORT.openCost;
+  g.say('Hafengelände erworben: Baue zuerst einen Kai mit Verladestation.', 'upgrade');
+  return true;
+}
+
+function buildBlock(g, slot, type) {
+  const p = g.port, B = PORT.buildings[type];
+  if (!p.open) return 'Hafen noch nicht eröffnet';
+  if (!B || slot < 0 || slot >= PORT.slots) return 'Ungültig';
+  if (p.slots[slot]) return 'Platz ist belegt';
+  if (type !== 'kai' && !hasKai(g)) return 'Zuerst einen Kai bauen';
+  if (B.max && slotsOf(p, type).length >= B.max) return 'Gibt es nur einmal';
+  if (g.money < B.cost) return `Braucht ${B.cost.toLocaleString('de-CH')} CHF`;
+  return g.status === 'playing' ? null : 'Spiel beendet';
+}
+function build(g, slot, type) {
+  if (buildBlock(g, slot, type)) return false;
+  const B = PORT.buildings[type];
+  g.money -= B.cost; g.port.spent += B.cost; g.port.slots[slot] = { type, level: 1 };
+  g.say(`${B.name} gebaut (−${B.cost.toLocaleString('de-CH')} CHF).`, 'upgrade');
+  return true;
+}
+function upgradeBlock(g, slot) {
+  const s = g.port.slots[slot], B = s && PORT.buildings[s.type];
+  if (!s || !B.up) return 'Nicht ausbaubar';
+  if (s.level > B.up.length) return 'Voll ausgebaut';
+  const c = B.up[s.level - 1];
+  if (g.money < c) return `Braucht ${c.toLocaleString('de-CH')} CHF`;
+  return g.status === 'playing' ? null : 'Spiel beendet';
+}
+function upgrade(g, slot) {
+  if (upgradeBlock(g, slot)) return false;
+  const s = g.port.slots[slot], c = PORT.buildings[s.type].up[s.level - 1];
+  g.money -= c; g.port.spent += c; s.level++;
+  g.say(`${PORT.buildings[s.type].name} ausgebaut (Stufe ${s.level}).`, 'upgrade');
+  return true;
+}
+function demolish(g, slot) { // Abriss: Lagerinhalt, der nicht mehr reinpasst, wird zum Marktpreis verkauft
+  const p = g.port; if (!p.slots[slot]) return false;
+  const t = p.slots[slot].type; p.slots[slot] = null;
+  if (t === 'kai') for (const id of Object.keys(p.stock)) sell(g, id, p.stock[id]);
+  for (const id of Object.keys(p.stock)) { const over = p.stock[id] - capacity(g, id); if (over > 0) sell(g, id, over); }
+  return true;
+}
+
+// Von Hand kaufen/verkaufen (Tonnen)
+function buy(g, id, tons) {
+  const p = g.port; if (!hasKai(g) || !PORT.commodities[id]) return 0;
+  const room = capacity(g, id) - p.stock[id], price = buyPrice(g, id);
+  const q = Math.max(0, Math.min(tons, room, Math.floor((g.money - PORT.reserve) / price)));
+  if (q <= 0) return 0;
+  const c = q * price;
+  p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q;
+  g.money -= c; p.spent += c; g.today.costs += c;
+  return q;
+}
+function sell(g, id, tons) {
+  const p = g.port; if (!PORT.commodities[id]) return 0;
+  const q = Math.max(0, Math.min(tons, p.stock[id]));
+  if (q <= 0) return 0;
+  const r = q * sellPrice(g, id);
+  p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r;
+  if (p.stock[id] < 1e-6) { p.stock[id] = 0; p.cost[id] = 0; }
+  return q;
+}
+
+// Ein Schiff hat die Rinne durchfahren: bei passender Fracht und Lager wird umgeschlagen
+function portShip(g, ship) {
+  const p = g.port; if (!hasKai(g) || !PORT.commodities[ship.cargo] || capacity(g, ship.cargo) <= 0) return;
+  const id = ship.cargo, amount = ship.tons * PORT.shipShare, price = priceOf(g.market, id), fee = ship.tons * price * PORT.handlingFee;
+  g.money += fee; p.fees += fee; g.today.income += fee; p.ships++;
+  if (ratioOf(g.market, id) >= 1) { // Preis hoch: Schiff lädt aus deinem Lager
+    const q = Math.min(amount, p.stock[id]), r = q * price * (1 + PORT.spread / 2);
+    if (q > 0) { p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; p.handled += q; }
+  } else { // Preis tief: Schiff entlädt, du kaufst günstig
+    const q = Math.min(amount, capacity(g, id) - p.stock[id], Math.max(0, Math.floor((g.money - PORT.reserve) / (price * (1 - PORT.spread / 2)))));
+    if (q > 0) { const c = q * price * (1 - PORT.spread / 2); p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q; g.money -= c; p.spent += c; g.today.costs += c; p.handled += q; }
+  }
+}
+
+// Tagesende: automatischer Handel nach den eingestellten Schwellen
+function portDay(g) {
+  const p = g.port; if (!hasKai(g)) return;
+  for (const id of Object.keys(PORT.commodities)) {
+    const a = p.auto[id], cap = capacity(g, id); if (!a.on || cap <= 0) continue;
+    const r = ratioOf(g.market, id);
+    if (r <= a.buyBelow) buy(g, id, cap * 0.3);
+    else if (r >= a.sellAbove) sell(g, id, p.stock[id] * 0.5);
+  }
+}
+
+return { PORT: PORT, createPort: createPort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, buy: buy, sell: sell, portShip: portShip, portDay: portDay };
+},
+function(){
+const { portShip } = __m(11);
 const { CONFIG, SHIPS, CARGOS, DEBRIS, shipById, cargoById } = __m(1);
 const { priceOf, ratioOf } = __m(8);
 const { minDepthAt, pointOnPath } = __m(5);
-const { creditContracts } = __m(12);
-const { fleetSites } = __m(13);
+const { creditContracts } = __m(13);
+const { fleetSites } = __m(14);
+
 
 
 
@@ -3393,6 +3559,7 @@ function updateTraffic(g, dt) {
       t.ships++; t.tons += ship.tons; t.trafficIncome += inc; t.byCargo[ship.cargo] = (t.byCargo[ship.cargo] ?? 0) + ship.tons; t.byClass[ship.cls] = (t.byClass[ship.cls] ?? 0) + 1;
       g.today.ships++; g.today.tons += ship.tons; g.today.income += inc;
       creditContracts(g, ship.cargo, ship.tons);
+      portShip(g, ship);
       g.flash.push({ x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
       continue;
     }
@@ -3454,7 +3621,7 @@ return { createTraffic: createTraffic, bayCapacity: bayCapacity, maxZones: maxZo
 function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(1);
 const { priceOf } = __m(8);
-const { activeClasses } = __m(11);
+const { activeClasses } = __m(12);
 
 
 
@@ -3523,7 +3690,7 @@ return { makeContract: makeContract, acceptContract: acceptContract, creditContr
 function(){
 const { CONFIG, SHIPS, shipById } = __m(1);
 const { toolAvailable } = __m(3);
-const { zoneSupports } = __m(11);
+const { zoneSupports } = __m(12);
 
 
 
@@ -3881,7 +4048,7 @@ return { stockTotal: stockTotal, materialPrice: materialPrice, processPlant: pro
 },
 function(){
 const { CONFIG, shipById } = __m(1);
-const { shipPos } = __m(11);
+const { shipPos } = __m(12);
 
 
 
@@ -3949,9 +4116,9 @@ return { TowSim: TowSim, groundedNear: groundedNear };
 function(){
 const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(1);
 const { upgradeCost } = __m(9);
-const { waitingByClass, bayCapacity, activeClasses } = __m(11);
+const { waitingByClass, bayCapacity, activeClasses } = __m(12);
 const { ratioOf } = __m(8);
-const { hireBlock, nextHireCost } = __m(13);
+const { hireBlock, nextHireCost } = __m(14);
 
 
 
@@ -4183,7 +4350,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(19);
+const { isTap } = __m(20);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -4277,7 +4444,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(19);
+const { snapStick } = __m(20);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -4354,6 +4521,89 @@ function setupTouch(input, hooks) {
 }
 
 return { setupTouch: setupTouch };
+},
+function(){
+const { CONFIG } = __m(1);
+const { PORT, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } = __m(11);
+const { priceOf, ratioOf } = __m(8);
+
+
+
+
+// Hafen-Seite: Vollbild-Overlay mit Bauplätzen, Lagern, Handel und Automatik. Die Simulation läuft im Hintergrund weiter.
+const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
+const t = (n) => `${Math.round(n).toLocaleString('de-CH')} t`;
+
+function setupPort(root, getGame, onChange) {
+  let sig = '', pick = null; // pick = Bauplatz, für den das Baumenü offen ist
+  const render = (force = false) => {
+    const g = getGame(), p = g.port;
+    const s = JSON.stringify([p, Math.floor(g.money / 200), Object.keys(PORT.commodities).map((id) => Math.round(priceOf(g.market, id))), pick, !!g.unlocked.motor]);
+    if (s === sig && !force) return;
+    sig = s;
+    let h = `<div class="port-head"><h2>🏗 Hafen</h2><span class="port-money">${chf(g.money)}</span><button id="port-close">✕ Schliessen (H)</button></div>`;
+    if (!p.open) {
+      const b = openBlock(g);
+      h += `<div class="port-card"><p>Ein eigener Hafen an Land: Kai mit Verladestation, Kies-Lager, Tanklager und Sanierungsanlage. Du kaufst Waren, wenn sie günstig sind, lagerst sie und verkaufst sie an die Schiffe oder von Hand, sobald der Preis steigt.</p>
+        <p><small>Voraussetzung: das Motorschiff fährt schon durch die Rinne.</small></p>
+        <button class="primary" data-act="open" ${b ? 'disabled' : ''}>Hafengelände erwerben · ${chf(PORT.openCost)}</button>${b ? `<small class="warn"> ${b}</small>` : ''}</div>`;
+    } else {
+      h += `<div class="port-plots">`;
+      p.slots.forEach((sl, i) => {
+        if (!sl) { h += `<div class="plot empty"><b>Bauplatz ${i + 1}</b>${pick === i ? Object.entries(PORT.buildings).map(([k, B]) => { const bl = buildBlock(g, i, k); return `<button data-act="build" data-slot="${i}" data-type="${k}" ${bl ? 'disabled' : ''} title="${B.text} ${bl ?? ''}">${B.icon} ${B.name} · ${chf(B.cost)}</button>`; }).join('') + `<button data-act="pick" data-slot="-1">Abbrechen</button>` : `<button data-act="pick" data-slot="${i}">+ Bauen</button>`}</div>`; return; }
+        const B = PORT.buildings[sl.type], cm = B.commodity, up = B.up && sl.level <= B.up.length;
+        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
+          ${up ? `<button data-act="up" data-slot="${i}" ${upgradeBlock(g, i) ? 'disabled' : ''}>Ausbauen · ${chf(B.up[sl.level - 1])}</button>` : ''}<button class="ghost" data-act="demo" data-slot="${i}">Abreissen</button></div>`;
+      });
+      h += `</div>`;
+      if (!hasKai(g)) h += `<div class="port-card"><b>Ohne Kai kein Handel.</b> Baue zuerst einen Kai mit Verladestation.</div>`;
+      else {
+        h += `<div class="port-trade">`;
+        for (const [id, C] of Object.entries(PORT.commodities)) {
+          const cap = capacity(g, id), st = p.stock[id], r = ratioOf(g.market, id), a = p.auto[id];
+          if (cap <= 0) { h += `<div class="port-card"><b>${C.icon} ${C.name}</b><small> braucht ein ${id === 'oel' ? 'Tanklager' : 'Kieslager'}</small></div>`; continue; }
+          const gain = p.cost[id] > 0 ? st * (sellPrice(g, id) - p.cost[id]) : 0;
+          h += `<div class="port-card"><b>${C.icon} ${C.name}</b> <span class="${r > 1.1 ? 'tr-up' : r < 0.9 ? 'tr-down' : ''}">${Math.round(priceOf(g.market, id))} CHF/t (${Math.round(r * 100)} %)</span>
+            <div class="bar"><i style="width:${(st / cap) * 100}%"></i></div><small>Lager ${t(st)} von ${t(cap)}${p.cost[id] > 0 ? ` · Einstand ${Math.round(p.cost[id])} CHF/t · ${gain >= 0 ? 'Gewinn' : 'Verlust'} bei Verkauf ${chf(Math.abs(gain))}` : ''}</small>
+            <div class="row"><button data-act="buy" data-id="${id}" data-n="${C.lot}">Kaufen ${C.lot} t · ${chf(C.lot * buyPrice(g, id))}</button><button data-act="sell" data-id="${id}" data-n="${C.lot}" ${st <= 0 ? 'disabled' : ''}>Verkaufen ${C.lot} t · ${chf(C.lot * sellPrice(g, id))}</button><button data-act="sell" data-id="${id}" data-n="999999" ${st <= 0 ? 'disabled' : ''}>Alles verkaufen</button></div>
+            <div class="row auto"><label><input type="checkbox" data-act="auto" data-id="${id}" ${a.on ? 'checked' : ''}> 🤖 Automatisch</label>
+              <label>kaufen unter <input type="range" min="50" max="100" step="5" value="${Math.round(a.buyBelow * 100)}" data-act="lo" data-id="${id}"> <b>${Math.round(a.buyBelow * 100)} %</b></label>
+              <label>verkaufen ab <input type="range" min="100" max="180" step="5" value="${Math.round(a.sellAbove * 100)}" data-act="hi" data-id="${id}"> <b>${Math.round(a.sellAbove * 100)} %</b></label></div></div>`;
+        }
+        h += `</div>`;
+      }
+      h += `<div class="port-card"><small>Schiffe mit Kies oder Öl laden bei Preis ≥ 100 % aus deinem Lager (du verkaufst, mit Aufschlag) und entladen bei tieferem Preis (du kaufst günstig); der Kai verdient pro Schiff zusätzlich eine Umschlaggebühr.<br>
+        Bisher: ${p.ships} Schiffe umgeschlagen · ${t(p.handled)} · Handelserlös ${chf(p.earned)} · Einkäufe/Bauten ${chf(p.spent)} · Gebühren ${chf(p.fees)}${refundFrac(g) > 0 ? ` · Sanierung spart ${chf(p.refunded ?? 0)}` : ''}</small></div>
+        <div class="port-card"><small>Demnächst: Baumaschinen im Gelände (Planieren und Nivellieren), eigene Lagerhallen, Verträge mit Reedereien.</small></div>`;
+    }
+    root.innerHTML = h;
+  };
+  root.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT') return;
+    const g = getGame(), a = b.dataset.act, slot = +b.dataset.slot, id = b.dataset.id;
+    if (a === 'open') openPort(g);
+    else if (a === 'pick') pick = slot < 0 ? null : slot;
+    else if (a === 'build') { if (build(g, slot, b.dataset.type)) pick = null; }
+    else if (a === 'up') upgrade(g, slot);
+    else if (a === 'demo') { if (confirm('Abreissen? Es gibt kein Geld zurück.')) demolish(g, slot); }
+    else if (a === 'buy') buy(g, id, +b.dataset.n);
+    else if (a === 'sell') sell(g, id, +b.dataset.n);
+    render(true); onChange?.();
+  });
+  root.addEventListener('input', (e) => {
+    const el = e.target, g = getGame(), a = el.dataset.act, id = el.dataset.id; if (!a || !id) return;
+    const au = g.port.auto[id];
+    if (a === 'auto') au.on = el.checked;
+    else if (a === 'lo') au.buyBelow = Math.min(+el.value / 100, 1);
+    else if (a === 'hi') au.sellAbove = Math.max(+el.value / 100, 1);
+    el.parentElement.querySelector('b').textContent = `${el.value} %`;
+    sig = '';
+  });
+  root.addEventListener('change', () => render(true));
+  return { render };
+}
+
+return { setupPort: setupPort };
 },
 function(){
 
@@ -4526,10 +4776,10 @@ return { createAudio: createAudio };
 function(){
 const { SLICE } = __m(3);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(1);
-const { shipPos, queuePos, bayCapacity } = __m(11);
+const { shipPos, queuePos, bayCapacity } = __m(12);
 const { needDepth } = __m(5);
-const { Chain, drawChain } = __m(26);
-const { groundedNear } = __m(15);
+const { Chain, drawChain } = __m(28);
+const { groundedNear } = __m(16);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 
 

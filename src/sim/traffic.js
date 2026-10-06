@@ -1,3 +1,4 @@
+import { portShip } from './port.js';
 import { CONFIG, SHIPS, CARGOS, DEBRIS, shipById, cargoById } from '../config.js';
 import { priceOf, ratioOf } from './market.js';
 import { minDepthAt, pointOnPath } from './fairway.js';
@@ -185,6 +186,7 @@ export function updateTraffic(g, dt) {
       t.ships++; t.tons += ship.tons; t.trafficIncome += inc; t.byCargo[ship.cargo] = (t.byCargo[ship.cargo] ?? 0) + ship.tons; t.byClass[ship.cls] = (t.byClass[ship.cls] ?? 0) + 1;
       g.today.ships++; g.today.tons += ship.tons; g.today.income += inc;
       creditContracts(g, ship.cargo, ship.tons);
+      portShip(g, ship);
       g.flash.push({ x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
       continue;
     }
