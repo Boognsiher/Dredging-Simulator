@@ -310,7 +310,7 @@ test('Verkehr: bei freier Rinne fahren Schiffe durch und zahlen', () => {
 });
 
 test('Verkehr: ohne befahrbare Rinne kommen gar keine Schiffe, ein Warteplatz mit Gegenverkehr wird knapp', () => {
-  const g = emptyGame(3);
+  const g = emptyGame(3); g.eventsOn = false;
   g.river.setFlat(1.0, 9); g.analyze(true);
   for (let i = 0; i < 14 * 20 * 20; i++) g.update(0.05);
   assert.equal(g.totals.ships, 0);
