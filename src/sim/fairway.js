@@ -39,7 +39,7 @@ const lanes = (beam) => { const lo = Math.floor((beam - 1) / 2); return { lo, hi
 function deficits(river, wl, need) {
   const def = new Float32Array(river.cols * river.rows), needTop = wl - need;
   for (let i = 0; i < def.length; i++) {
-    if (!river.zone[i]) { def[i] = -1; continue; }
+    if (!river.zone[i] || river.bay[i]) { def[i] = -1; continue; } // Hafenbecken gehört nicht zur Fahrrinne
     const miss = river.top[i] - needTop - EPS; // wie viel Sohle noch zu hoch liegt
     if (miss <= 0) { def[i] = 0; continue; }
     const rockMiss = Math.max(0, river.rock[i] - needTop); // davon steckt im Fels
@@ -141,7 +141,7 @@ export function zonePlan(river, wl, cls, xc, w = 3) {
     const c = new Array(rows);
     for (let y = 0; y < rows; y++) {
       const i = y * river.cols + x;
-      c[y] = river.zone[i] ? Math.max(0, river.top[i] - needTop) : river.ext[i] ? Math.max(0.05, river.top[i] - needTop) : Infinity;
+      c[y] = river.bay[i] ? Infinity : river.zone[i] ? Math.max(0, river.top[i] - needTop) : river.ext[i] ? Math.max(0.05, river.top[i] - needTop) : Infinity;
     }
     const wc = [];
     for (let a = 0; a + beam <= rows; a++) { let t = 0; for (let k = a; k < a + beam; k++) t += c[k]; wc.push(t); }

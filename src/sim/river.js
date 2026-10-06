@@ -23,6 +23,7 @@ export class River {
     this.hard = new Uint8Array(n); // 0 weich, 1 verdichtet, 2 hart (mehrere Überfahrten)
     this.debris = new Uint8Array(n); // 0 nichts, sonst Index in DEBRIS + 1
     this.zone = new Uint8Array(n);
+    this.bay = new Uint8Array(n); // Hafenbecken (zählt als Korridor zum Baggern, aber nicht zur Fahrrinne der Schiffe)
     this.dep = new Uint8Array(n); // Rohstoffvorkommen: 0 = keins, sonst Nummer in this.deposits
     this.depLeft = new Float32Array(n); // wie viele Meter des Vorkommens (von oben) in dieser Zelle noch Aufschlag bringen
     this.deposits = []; // { id, type, name, kind, mult, cx, cy, rx, ry, owned, known, cost }
@@ -141,7 +142,7 @@ export class River {
   setFlat(depth = 3, rockDepth = 8, kind = KIND.sand) {
     const WL = this.wl;
     this.top.fill(WL - depth); this.rock.fill(WL - rockDepth); this.cap.fill(WL - depth + CONFIG.sediment.maxAbove);
-    this.zone.fill(1); this.flow.fill(0.7); this.kind.fill(kind); this.hard.fill(0); this.debris.fill(0);
+    this.zone.fill(1); this.bay.fill(0); this.flow.fill(0.7); this.kind.fill(kind); this.hard.fill(0); this.debris.fill(0);
     this.pending.clear();
     return this;
   }

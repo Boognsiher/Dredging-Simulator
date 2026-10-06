@@ -2,7 +2,7 @@ import { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, car
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass } from './sim/traffic.js';
-import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, targetClass } from './sim/fleet.js';
+import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
@@ -58,6 +58,7 @@ sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false;
+let areaMode = false; // Arbeitsgebiet für gemietete Pontons aufziehen (Karte): zwei Ecken antippen
 let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
 const curMode = () => (tow ? 'tow' : sim.mode);
@@ -290,6 +291,23 @@ function toggleZoneMode() {
   updateTrafficPanel();
   if (zoneMode) { const c = shipById(game.zoneClassId); toast(`Planen für ${c.name}: Spalte antippen, die Zahl zeigt den fehlenden Aushub`, 'info', true); }
 }
+function toggleAreaMode() {
+  if (tow || sim.mode !== 'map') { toast('Arbeitsgebiete gibst du auf der Karte vor (Anker lichten mit Q)', 'info', true); return; }
+  if (zoneMode) toggleZoneMode();
+  areaMode = !areaMode; ui.areaMode = areaMode; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
+  $('btn-area').textContent = areaMode ? '✔ Gebiet: fertig (G)' : '▭ Arbeitsgebiet (G)';
+  if (areaMode) toast(`Zwei Ecken antippen: das Rechteck wird von den gemieteten Pontons auf die Gebietstiefe gebaggert (max. ${MAX_AREAS} Gebiete)`, 'info', true);
+}
+function cellAt(px, py) { return { x: (px - OX) / CELL, y: py / CELL }; }
+function areaClick(px, py) {
+  const c = cellAt(px, py);
+  if (!ui.areaA) { ui.areaA = c; toast('Zweite Ecke antippen', 'info', true); return; }
+  const a = addArea(game, ui.areaA.x, ui.areaA.y, c.x, c.y);
+  ui.areaA = null;
+  if (!a) { toast(`Hier geht nichts: höchstens ${MAX_AREAS} Gebiete, und das Rechteck muss Baggerkorridor oder Ausbaustreifen enthalten`, 'bad', true); return; }
+  toast(`Gebiet ${a.id} angelegt: Tiefe ${a.depth.toFixed(1)} m (im Panel Flotte änderbar)`, 'good', true);
+  fleetSig = null; updateFleet();
+}
 function zoneClick(px, py) {
   void py;
   const x = Math.floor((px - OX) / CELL), near = game.zones.find((z) => Math.abs(z.x - x) <= 1);
@@ -321,8 +339,9 @@ function updateConcrete() {
 
 let fleetSig = null;
 function updateFleet() {
+  $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10)]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, areaWork(game, a)]), areaMode]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
@@ -333,6 +352,9 @@ function updateFleet() {
     <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-mine" ${F.mine ? 'checked' : ''}> Rohstoffe abbauen: freie Pontons baggern Vorkommen mit Konzession (Preisaufschlag)</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-pour" ${F.pour ? 'checked' : ''} ${game.stats.betonrohr > 0 ? '' : 'disabled'}> Rinne betonieren (Betoniergerät und Beton nötig): freie Pontons verhärten Rinne und Böschung</label>
+    ${(F.areas ?? []).map((a) => `<div class="unit"><div><b>▭ Gebiet ${a.id}</b> <small>Spalten ${a.x0 + 1}–${a.x1 + 1}, Zeilen ${a.y0 + 1}–${a.y1 + 1} · ${areaWork(game, a) ? `noch ${areaWork(game, a)} Spalten offen` : '✓ fertig'}</small>
+      <div class="row"><button data-area-d="${a.id}:-0.1">−</button> <b>${a.depth.toFixed(1)} m</b> <button data-area-d="${a.id}:0.1">+</button> <select data-area-u="${a.id}"><option value="">alle Pontons</option>${F.units.map((u) => `<option value="${u.id}" ${a.unit === u.id ? 'selected' : ''}>${u.name}</option>`).join('')}</select></div></div><button data-area-x="${a.id}">Löschen</button></div>`).join('')}
+    <button id="btn-area2" ${F.units.length ? '' : 'disabled'} title="Zwei Ecken auf der Karte antippen">${areaMode ? '✔ Gebiet: fertig (G)' : `▭ Arbeitsgebiet vorgeben (G) · ${(F.areas ?? []).length}/${MAX_AREAS}`}</button>
     <label class="fleet-goal">Ausbauziel <select id="fleet-goal">${opts}</select></label>
     <small>${cls ? `Aktuell: ${cls.icon} ${cls.name}` : 'Alle Klassen fahren'}</small>
     <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
@@ -342,6 +364,10 @@ function updateFleet() {
   $('fleet-widthsel').onchange = (e) => { setWiden(game, F.widen, +e.target.value); fleetSig = null; updateFleet(); };
   $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
   $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
+  $('btn-area2').onclick = toggleAreaMode;
+  for (const b of box.querySelectorAll('[data-area-d]')) b.onclick = () => { const [id, d] = b.dataset.areaD.split(':'); const a = F.areas.find((q) => q.id === +id); setAreaDepth(game, +id, a.depth + +d); fleetSig = null; updateFleet(); };
+  for (const sEl of box.querySelectorAll('[data-area-u]')) sEl.onchange = () => { setAreaUnit(game, +sEl.dataset.areaU, sEl.value ? +sEl.value : null); fleetSig = null; updateFleet(); };
+  for (const b of box.querySelectorAll('[data-area-x]')) b.onclick = () => { removeArea(game, +b.dataset.areaX); fleetSig = null; updateFleet(); };
   for (const b of box.querySelectorAll('[data-fire]')) b.onclick = () => { dismissUnit(game, +b.dataset.fire); fleetSig = null; updateFleet(); };
 }
 
@@ -504,7 +530,7 @@ function syncMode() {
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
   document.body.classList.toggle('mode-slice', mode === 'slice'); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
-  $('btn-zone').hidden = mode !== 'map';
+  $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
   if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
@@ -654,7 +680,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; tow = null;
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; areaMode = false; ui.areaMode = false; ui.areaA = null; tow = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -680,18 +706,22 @@ addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); 
 
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
 readInput.onTap((px, py) => {
+  if (areaMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { areaClick(px, py); return; }
   if (zoneMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { zoneClick(px, py); return; }
   if (sim.mode !== 'map' || paused || sheetOpen || overlayOpen()) return;
   mapTarget = { x: Math.min(game.river.cols, Math.max(0, (px - OX) / CELL)), y: Math.min(game.river.rows, Math.max(0, py / CELL)) };
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
+$('btn-area').onclick = toggleAreaMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
+  if (areaMode) { const r = canvas.getBoundingClientRect(); ui.hoverCell = cellAt(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH); return; }
   if (!zoneMode) { ui.hoverX = null; return; }
   const r = canvas.getBoundingClientRect();
   ui.hoverX = Math.floor((((e.clientX - r.left) / r.width) * canvas.logicalW - OX) / CELL);
 });
 canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfernt eine Kreuzungsstelle (Touch läuft über onTap)
+  if (areaMode && e.pointerType !== 'touch' && sim.mode === 'map' && !tow) { const r0 = canvas.getBoundingClientRect(); areaClick(((e.clientX - r0.left) / r0.width) * canvas.logicalW, ((e.clientY - r0.top) / r0.height) * canvas.logicalH); return; }
   if (!zoneMode || e.pointerType === 'touch' || sim.mode !== 'map' || tow) return;
   const r = canvas.getBoundingClientRect();
   zoneClick(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH);
@@ -749,7 +779,7 @@ function frame(now) {
     const inMap = sim.mode === 'map';
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
-    if (tow || zoneMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    if (tow || zoneMode || areaMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
     ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {
@@ -765,6 +795,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyV')) toggleTool();
       if (!tow && readInput.tap('KeyT')) startTow();
       if (!tow && readInput.tap('KeyK')) toggleZoneMode();
+      if (!tow && readInput.tap('KeyG')) toggleAreaMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
       if (readInput.tap('Escape', 'KeyQ')) leave();

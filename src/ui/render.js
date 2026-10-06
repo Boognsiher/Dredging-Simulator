@@ -3,6 +3,8 @@ import { SLICE } from '../sim/slice.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
 import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
+import { PORT, bayDepth, bayReady } from '../sim/port.js';
+import { areaWork } from '../sim/fleet.js';
 import { Chain, drawChain } from './chain.js';
 import { groundedNear } from '../sim/tow.js';
 
@@ -90,6 +92,8 @@ export function drawMap(ctx, game, sim, ui = {}) {
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
   if (sel) drawClassOverlay(ctx, game, sel);
   drawZones(ctx, game, ui);
+  drawHarbor(ctx, game);
+  drawAreas(ctx, game, ui);
   drawShips(ctx, game, ui);
   drawFleet(ctx, game);
   if (sim) drawPontoon(ctx, game, sim, ui);
@@ -243,6 +247,43 @@ function drawZoneWindows(ctx, game, plan, alpha = 0.45) {
   }
   ctx.strokeStyle = 'rgba(255,230,120,.9)'; ctx.lineWidth = 1.5;
   for (const w of plan.wins ?? []) for (const a of [w.a, w.b]) ctx.strokeRect(OX + w.x * CELL + 1, a * CELL + 1, CELL - 2, plan.beam * CELL - 2);
+}
+
+// Arbeitsgebiete der gemieteten Pontons (Rechtecke) und die gerade aufgezogene Ecke
+function drawAreas(ctx, game, ui) {
+  ctx.font = font(12);
+  for (const a of game.fleet.areas ?? []) {
+    const x = OX + a.x0 * CELL, y = a.y0 * CELL, w = (a.x1 - a.x0 + 1) * CELL, h = (a.y1 - a.y0 + 1) * CELL, left = areaWork(game, a);
+    ctx.fillStyle = left ? 'rgba(90,200,255,.14)' : 'rgba(120,230,150,.14)'; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = left ? '#5ac8ff' : '#7be39a'; ctx.lineWidth = 2; ctx.setLineDash([7, 4]); ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); ctx.setLineDash([]);
+    const t = `▭ ${a.id} · ${a.depth.toFixed(1)} m${left ? '' : ' ✓'}`, tw = ctx.measureText(t).width + 8;
+    ctx.fillStyle = '#000b'; ctx.fillRect(x, y - fs(12) - 3 < 0 ? y : y - fs(12) - 3, tw, fs(12) + 3); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, x + 4, (y - fs(12) - 3 < 0 ? y : y - fs(12) - 3) + fs(12));
+  }
+  if (ui.areaMode) {
+    const A = ui.areaA, H = ui.hoverCell;
+    if (A && H) {
+      const x0 = Math.floor(Math.min(A.x, H.x)), x1 = Math.floor(Math.max(A.x, H.x)), y0 = Math.floor(Math.min(A.y, H.y)), y1 = Math.floor(Math.max(A.y, H.y));
+      ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(OX + x0 * CELL, y0 * CELL, (x1 - x0 + 1) * CELL, (y1 - y0 + 1) * CELL);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(OX + x0 * CELL + 1, y0 * CELL + 1, (x1 - x0 + 1) * CELL - 2, (y1 - y0 + 1) * CELL - 2);
+    } else if (A) { ctx.fillStyle = '#fff'; ctx.fillRect(OX + Math.floor(A.x) * CELL, Math.floor(A.y) * CELL, CELL, CELL); }
+    ctx.font = font(13); const t = A ? 'Zweite Ecke wählen' : 'Arbeitsgebiet: erste Ecke wählen (Baggerkorridor, Ausbaustreifen mit Löffel)';
+    ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H0() - fs(13) - 14, Math.min(ctx.measureText(t).width + 18, W - OX - 12), fs(13) + 8); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, OX + 14, H0() - 12);
+  }
+}
+const H0 = () => H;
+
+// Eigener Hafen: Hafenbecken (Bucht) am Ufer. Gelb gerahmt = muss noch vertieft werden, grün = bereit
+function drawHarbor(ctx, game) {
+  const bay = game.port?.bay; if (!bay?.cells?.length) return;
+  const d = bayDepth(game), ready = bayReady(game), open = game.port.open;
+  const x = OX + bay.x0 * CELL, y = bay.y0 * CELL, w = (bay.x1 - bay.x0 + 1) * CELL, h = (bay.y1 - bay.y0 + 1) * CELL;
+  ctx.fillStyle = ready ? 'rgba(120,230,150,.22)' : 'rgba(255,200,70,.18)'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = ready ? '#7be39a' : '#ffc94a'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [6, 4]); ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); ctx.setLineDash([]);
+  const cx = x + w / 2, label = open ? (ready ? '⚓ Hafen' : `⚓ Hafen ${d.toFixed(1)}/${PORT.bay.target.toFixed(1)} m`) : '⚓ Hafen (frei)';
+  ctx.font = font(12); ctx.textAlign = 'center';
+  const tw = ctx.measureText(label).width + 10, ty = bay.side < 0 ? y - 4 : y + h + fs(12) + 4;
+  ctx.fillStyle = '#000b'; ctx.fillRect(cx - tw / 2, ty - fs(12) - 1, tw, fs(12) + 5); ctx.fillStyle = ready ? '#b9f5c9' : '#ffe08a'; ctx.fillText(label, cx, ty + 1);
+  ctx.textAlign = 'start';
 }
 
 function drawZones(ctx, game, ui) {

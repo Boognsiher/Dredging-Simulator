@@ -1,5 +1,6 @@
-import { CONFIG } from '../config.js';
-import { PORT, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } from '../sim/port.js';
+import { CONFIG, shipById } from '../config.js';
+import { needDepth, minNeedDepth } from '../sim/fairway.js';
+import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } from '../sim/port.js';
 import { priceOf, ratioOf } from '../sim/market.js';
 
 // Hafen-Seite: Vollbild-Overlay mit Bauplätzen, Lagern, Handel und Automatik. Die Simulation läuft im Hintergrund weiter.
@@ -70,6 +71,8 @@ export function setupPort(root, getGame, onChange) {
           ${up ? `<button data-act="up" data-slot="${i}" ${upgradeBlock(g, i) ? 'disabled' : ''}>Ausbauen · ${chf(B.up[sl.level - 1])}</button>` : ''}<button class="ghost" data-act="demo" data-slot="${i}">Abreissen</button></div>`;
       });
       h += `</div>`;
+      { const d = bayDepth(g), T = PORT.bay.target, ok = d >= T - 0.05;
+        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>${ok ? `tief genug (${d.toFixed(1)} m): alle Schiffe können anlegen` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: Schiffe legen nur an, wenn das Becken tief genug für sie ist (Lastkahn ab ${minNeedDepth(shipById('kahn')).toFixed(1)} m, Motorschiff ${minNeedDepth(shipById('motor')).toFixed(1)}–${needDepth(shipById('motor')).toFixed(1)} m). Die Bucht ist auf der Karte markiert: dort mit dem Ponton ankern und ausbaggern.`}</small></div>`; }
       if (!hasKai(g)) h += `<div class="port-card"><b>Ohne Kai kein Handel.</b> Baue zuerst einen Kai mit Verladestation.</div>`;
       else {
         const jobs = p.jobs ?? [], M = PORT.machines[machineOf(g)];

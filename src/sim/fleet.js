@@ -7,7 +7,7 @@ import { zoneSupports } from './traffic.js';
 // Sie nutzen dieselbe Physik wie dein eigener Ponton (DredgeSim/SliceSim), nur ohne Anzeige. Das Ausbauziel ist eine Schiffsklasse
 // (Standard: die kleinste Klasse, die noch nicht fährt). Pontons ohne Arbeit warten und melden, was fehlt.
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
-export const createFleet = () => ({ units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows });
+export const createFleet = () => ({ units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0 });
 
 export const nextHireCost = (g) => CONFIG.fleet.costs[g.fleet.units.length] ?? null;
 
@@ -74,7 +74,7 @@ export function openColumns(g, cls) {
 
 const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
 const overlaps = (res, c0) => res.some((s) => c0 < s.c0 + CONFIG.box.cols && s.c0 < c0 + CONFIG.box.cols);
-const skipKey = (s) => (s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
+const skipKey = (s) => (s.aid ? `A${s.aid}:${s.col}` : s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
 
 // Land-Automatik: Spalten, in denen im Ausbaustreifen neben dem ursprünglichen Korridor noch Land über der Tiefe der Ausbauklasse liegt.
 // Pro Spalte und Ufer die ersten `widenW` Zeilen des Streifens (ext > 0); ursprünglicher Korridor = zone && !ext (umgewandeltes Land zählt nicht dazu).
@@ -113,6 +113,65 @@ function pickLane(g, u) {
     return { c0, col: c.x, y: c.y, cls: cls.id, depth: Math.min(CONFIG.echolot.maxDepth, f.need + CONFIG.fleet.margin), tool: (c.rock || c.armor) && g.stats.loeffel > 0 ? 'loeffel' : 'pump', rock: c.rock || c.armor };
   }
   return { none: armorSkipped ? 'Beton im Weg: braucht den Löffelbagger' : rockSkipped ? 'Fels im Weg: braucht Felsfräse oder Löffelbagger' : 'Alle offenen Stellen sind vergeben' };
+}
+
+// ---------- Arbeitsgebiete: auf der Karte vorgegebene Rechtecke, die ein (oder jedes) Ponton auf die gewählte Tiefe baggert ----------
+export const MAX_AREAS = 4;
+export function addArea(g, xa, ya, xb, yb, depth) {
+  const r = g.river, F = g.fleet; F.areas ??= [];
+  if (F.areas.length >= MAX_AREAS) return null;
+  const x0 = Math.max(0, Math.min(Math.floor(xa), Math.floor(xb))), x1 = Math.min(r.cols - 1, Math.max(Math.floor(xa), Math.floor(xb)));
+  const y0 = Math.max(0, Math.min(Math.floor(ya), Math.floor(yb))), y1 = Math.min(r.rows - 1, Math.max(Math.floor(ya), Math.floor(yb)));
+  let any = false; for (let y = y0; y <= y1 && !any; y++) for (let x = x0; x <= x1; x++) { const i = y * r.cols + x; if (r.zone[i] || r.ext[i]) { any = true; break; } }
+  if (!any) return null; // nur Wasser im Baggerkorridor oder Ausbaustreifen lässt sich bearbeiten
+  const cls = targetClass(g), d = depth ?? Math.min(CONFIG.echolot.maxDepth, (cls ? cls.draught + CONFIG.clearance : CONFIG.echolot.defaultDepth) + 0.2);
+  const a = { id: ++F.areaSeq, x0, x1, y0, y1, depth: Math.round(d * 10) / 10, unit: null };
+  F.areas.push(a);
+  return a;
+}
+export function removeArea(g, id) { const F = g.fleet, i = (F.areas ?? []).findIndex((a) => a.id === id); if (i < 0) return false; F.areas.splice(i, 1); return true; }
+export function setAreaDepth(g, id, d) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.depth = Math.round(Math.min(CONFIG.echolot.maxDepth, Math.max(CONFIG.echolot.minDepth, d)) * 10) / 10; return true; }
+export function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; return true; }
+
+// Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt (Korridor; Ausbaustreifen nur mit Löffelbagger)
+export function openAreaColumns(g, a) {
+  const r = g.river, needTop = g.wl - a.depth + 0.06, loeff = g.stats.loeffel > 0, out = [];
+  for (let x = a.x0; x <= a.x1; x++) {
+    let open = false, rock = false, armor = false, land = false, y0 = Infinity, y1 = -Infinity;
+    for (let y = a.y0; y <= a.y1; y++) {
+      const i = y * r.cols + x;
+      if (!(r.zone[i] || (loeff && r.ext[i])) || r.top[i] <= needTop) continue;
+      open = true; y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      if (!r.zone[i]) land = true;
+      if (r.rock[i] > needTop) rock = true;
+      if (r.armor[i] > 0) armor = true;
+    }
+    if (open) out.push({ x, rows: [y0, y1], rock, armor, land });
+  }
+  return out;
+}
+export const areaWork = (g, a) => openAreaColumns(g, a).length;
+
+function pickArea(g, u) {
+  const areas = (g.fleet.areas ?? []).filter((a) => a.unit === null || a.unit === u.id);
+  if (!areas.length) return { none: 'Kein Arbeitsgebiet vorgegeben' };
+  const res = reservedBy(g, u), B = CONFIG.box.cols, r = g.river;
+  let note = 'Arbeitsgebiete sind fertig';
+  for (const a of areas) {
+    for (const c of openAreaColumns(g, a)) {
+      const key = `A${a.id}:${c.x}`;
+      if (u.skip[key] && g.time < u.skip[key]) continue;
+      if ((c.armor || c.land) && g.stats.loeffel <= 0) { note = 'Beton im Weg: braucht den Löffelbagger'; continue; }
+      if (c.rock && !canRock(g)) { note = 'Fels im Weg: braucht Felsfräse oder Löffelbagger'; continue; }
+      const c0 = Math.min(Math.max(0, c.x), r.cols - B);
+      if (overlaps(res, c0)) { note = 'Gebiet: Stelle ist vergeben'; continue; }
+      const px = c0 + Math.floor(B / 2), mid = (a.y0 + a.y1) / 2;
+      const cands = [mid + 0.5]; for (let d = 1; d <= a.y1 - a.y0 + 3; d++) cands.push(mid + 0.5 + d, mid + 0.5 - d);
+      const y = cands.find((yy) => yy > 0 && yy < r.rows && r.depthAt(r.idx(px, Math.floor(yy))) >= 0.8) ?? r.centerY(px);
+      return { area: true, aid: a.id, land: c.land, c0, col: c.x, y, rows: [a.y0, a.y1], cls: g.level.classes[0], depth: a.depth, tool: c.land || c.rock || c.armor ? 'loeffel' : 'pump', rock: c.rock || c.armor };
+    }
+  }
+  return { none: note };
 }
 
 function pickLand(g, u) {
@@ -221,10 +280,10 @@ function pickMine(g, u) {
 
 function pickSite(g, u) {
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
-  const order = [...(landRole ? [pickZone, pickLand, pickLane] : [pickLane, pickZone, pickLand]), pickMine, pickPour];
+  const order = [pickArea, ...(landRole ? [pickZone, pickLand, pickLane] : [pickLane, pickZone, pickLand]), pickMine, pickPour];
   const msgs = [];
   for (const f of order) { const s = f(g, u); if (!s.none) return s; msgs.push(s); }
-  const neutral = /ist aus$|^Keine geplante|^Kein Vorkommen|^Alle Vorkommen|Rinne ist frei$|alle Klassen fahren|ist betoniert|Ufer ist verbreitert|vergeben$/;
+  const neutral = /ist aus$|^Keine geplante|^Kein Arbeitsgebiet|^Arbeitsgebiete sind fertig|^Kein Vorkommen|^Alle Vorkommen|Rinne ist frei$|alle Klassen fahren|ist betoniert|Ufer ist verbreitert|vergeben$/;
   return msgs.filter((m) => !neutral.test(m.none)).pop() ?? msgs.find((m) => !/ist aus$|^Keine geplante/.test(m.none)) ?? msgs[0]; // die aussagekräftigste Meldung (zeigt, woran es hängt)
 }
 
@@ -272,6 +331,7 @@ function stepUnit(g, u, dt) {
             sl.soundNoise = CONFIG.fleet.soundNoise; sl.sound();
             if (s.pour) { sl.autoPour = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; }
             else if (s.mine) { sl.autoRange = [s.rows[0] - 1, s.rows[1] + 1]; }
+            else if (s.area) { if (s.land) sl.autoLand = true; sl.autoRange = [s.rows[0], s.rows[1]]; } // Arbeitsgebiet: genau das Rechteck
             else if (s.land || s.zid) { if (s.land) sl.autoLand = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; } // Uferstreifen bzw. Kreuzungsstelle
             else {
               const lane = g.fair[s.cls], cls = shipById(s.cls), lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo;
@@ -281,7 +341,7 @@ function stepUnit(g, u, dt) {
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();
-            u.state = 'work'; u.workT = 0; u.note = s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
+            u.state = 'work'; u.workT = 0; u.note = s.area ? `baggert Gebiet ${s.aid} bei Spalte ${s.col + 1}` : s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
           } else { u.skip[skipKey(s)] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         }
       } else if (dist > 1e-6) {
@@ -291,7 +351,7 @@ function stepUnit(g, u, dt) {
   } else if (u.state === 'work') {
     u.workT += dt;
     if (sim.mode === 'slice' && !sim.pumpOn && sim.slice.auto.on) { sim.pumpOn = true; sim.autoStartedPump = true; }
-    const limit = u.site?.did ? 300 : u.site?.land ? 420 : u.site?.zid ? 300 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
+    const limit = u.site?.area ? 300 : u.site?.did ? 300 : u.site?.land ? 420 : u.site?.zid ? 300 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
     const noConcrete = u.site?.pour && g.concrete <= 0.05;
     if (noConcrete) u.note = 'Kein Beton mehr im Lager';
     if (sim.mode !== 'slice' || !sim.slice.auto.on || u.workT > limit || noConcrete) {

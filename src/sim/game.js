@@ -7,7 +7,7 @@ import { EVENTS } from './events.js';
 import { computeStats, upgradeCost } from './stats.js';
 import { createRng } from './rng.js';
 import { createMarket, stepMarket } from './market.js';
-import { createPort, portDay, refundFrac, updatePort } from './port.js';
+import { createPort, portDay, refundFrac, updatePort, carveBay } from './port.js';
 import { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } from './traffic.js';
 import { processPlant, stockTotal, materialPrice } from './plant.js';
 import { updateContracts } from './contracts.js';
@@ -64,6 +64,7 @@ export class Game {
     this.site = null; // Position des verankerten Pontons (setzt die Oberfläche)
     this.fairClock = 0;
     this.sedClock = 0;
+    this.port.bay = carveBay(this.river, this.wl); // Hafenbecken (Bucht) am Ufer, flach: muss für den Hafenbetrieb vertieft werden
     this.analyze();
     carveFairway(this.river, this.wl, SHIPS.find((s) => s.id === L.classes[0])); // die kleinste Klasse kann von Anfang an fahren
     this.analyze(true);

@@ -287,6 +287,7 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
 });
 
 const fullLane = (g, id) => { carveFairway(g.river, g.wl, shipById(id), CONFIG.partialDepth + 0.1); g.analyze(true); }; // Rinne gleich auf volle Ladetiefe
+import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
 import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
@@ -1364,4 +1365,22 @@ test('Kreuzungsstelle: nur wenn beide Spuren nebeneinander wirklich Platz haben'
   assert.ok(pairFits(g, z, 'tank', 'kahn') && pairFits(g, z, 'kahn', 'tank'));
   rows(kb * 2); // einen Zeile zu wenig (kein Abstand)
   assert.ok(!pairFits(g, z, 'kahn', 'kahn'));
+});
+
+test('Flotte: Arbeitsgebiet auf der Karte vorgeben, nur dieses Rechteck wird gebaggert', () => {
+  const g = new Game(3, 'hochrhein'); g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('plant'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.mine = false; fullLane(g, 'kahn');
+  const r = g.river, cy = Math.round(r.centerY(30));
+  let dead = -1; for (let i = 0; i < r.top.length; i++) if (!r.zone[i] && !r.ext[i]) { dead = i; break; }
+  assert.ok(dead >= 0); assert.equal(addArea(g, dead % r.cols, (dead / r.cols) | 0, dead % r.cols, (dead / r.cols) | 0, 3), null, 'Land ausserhalb von Korridor und Ausbaustreifen geht nicht');
+  const a = addArea(g, 29, cy - 1, 32, cy + 1, 4.2);
+  assert.ok(a && a.depth === 4.2 && areaWork(g, a) > 0);
+  const outside = [...r.top], before = areaWork(g, a);
+  hireUnit(g);
+  for (let i = 0; i < 14 * 60 * 20 && areaWork(g, a) > 0; i++) g.update(0.05);
+  assert.ok(areaWork(g, a) < before, 'Gebiet wird tiefer');
+  assert.ok(g.fleet.units[0].removed > 0);
+  let changedFar = 0; for (let x = 0; x < r.cols; x++) for (let y = 0; y < r.rows; y++) if ((x < 26 || x > 36) && outside[y * r.cols + x] - r.top[y * r.cols + x] > 0.3) changedFar++; // nur Abtrag zählt (Verlandung hebt)
+  assert.equal(changedFar, 0, 'weit ausserhalb bleibt unberührt');
+  assert.ok(setAreaDepth(g, a.id, 9) && g.fleet.areas[0].depth === CONFIG.echolot.maxDepth);
+  assert.ok(setAreaUnit(g, a.id, 99) && removeArea(g, a.id) && g.fleet.areas.length === 0);
 });

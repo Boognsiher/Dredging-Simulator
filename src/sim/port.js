@@ -1,4 +1,5 @@
-import { CONFIG } from '../config.js';
+import { CONFIG, shipById } from '../config.js';
+import { minNeedDepth } from './fairway.js';
 import { priceOf, ratioOf } from './market.js';
 
 // Hafen an Land: Kai mit Verladestation plus Lager (Kies, Tanklager) und Sanierungsanlage (Altlasten). Reine Daten und Logik, speicherbar.
@@ -20,6 +21,39 @@ export const PORT = {
   },
   commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' } },
 };
+
+// Hafenbecken: Bucht am Ufer (Karte), flach angelegt. Sie muss ausgebaggert werden, damit Schiffe anlegen können.
+PORT.bay = { w: 4, h: 3, depth0: 1.0, target: 2.3 };
+export function carveBay(river, wl) {
+  const B = PORT.bay, bx = Math.round(river.cols * 0.62) - 1, rimArmor = CONFIG.concrete.thickness;
+  const edge = (x) => { let a = -1, b = -1; for (let y = 0; y < river.rows; y++) if (river.zone[y * river.cols + x]) { if (a < 0) a = y; b = y; } return [a, b]; };
+  const cols = []; for (let x = bx; x < bx + B.w; x++) cols.push(x);
+  const mid = edge(bx + 1), north = mid[0] - 1 - B.h >= 0, south = mid[1] + 1 + B.h < river.rows;
+  const side = north && (!south || mid[0] >= river.rows - 1 - mid[1]) ? -1 : 1;
+  const cells = [];
+  for (const x of cols) {
+    const [a, b] = edge(x);
+    for (let k = 1; k <= B.h; k++) {
+      const y = side < 0 ? a - k : b + k; if (y < 0 || y >= river.rows) continue;
+      const i = y * river.cols + x;
+      river.top[i] = wl - B.depth0; river.rock[i] = Math.min(river.rock[i], wl - 8); river.zone[i] = 1; river.bay[i] = 1; river.ext[i] = 0; river.flow[i] = 0.15;
+      river.cap[i] = river.top[i] + 0.6; river.kind[i] = 1; river.hard[i] = 0; river.debris[i] = 0; river.dep[i] = 0; river.armor[i] = 0; cells.push(i);
+    }
+  }
+  for (const i of cells) { // Kaimauer: Rand ausser zur Wasserseite betoniert, damit die Bucht nicht zurutscht
+    const x = i % river.cols, y = (i / river.cols) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, side]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= river.cols || ny >= river.rows) continue; const j = ny * river.cols + nx; if (!river.bay[j] && !river.zone[j]) river.armor[j] = rimArmor; }
+  }
+  const xs = cells.map((i) => i % river.cols), ys = cells.map((i) => (i / river.cols) | 0);
+  return { cells, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), side };
+}
+// Tiefe, die 80 % des Hafenbeckens mindestens haben (m unter Wasser)
+export function bayDepth(g) {
+  const bay = g.port.bay; if (!bay?.cells?.length) return PORT.bay.target; // alte Spielstände: kein Becken, kein Hindernis
+  const d = bay.cells.map((i) => g.wl - g.river.top[i]).sort((a, b) => a - b);
+  return d[Math.floor(d.length * 0.2)];
+}
+export const bayReady = (g) => bayDepth(g) >= PORT.bay.target - 0.05;
 
 export function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
