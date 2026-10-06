@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CONFIG, SHIPS, KIND, UPGRADES, LEVELS, shipById } from '../src/config.js';
+import { CONFIG, SHIPS, KIND, UPGRADES, LEVELS, DEBRIS, shipById } from '../src/config.js';
 import { createRng } from '../src/sim/rng.js';
 import { River } from '../src/sim/river.js';
 import { analyzeFairway, analyzeClass, carveFairway, minDepthAt, pointOnPath } from '../src/sim/fairway.js';
@@ -470,7 +470,7 @@ test('Berater: meldet wartende Schiffe der Klasse, die noch nicht fahren kann', 
   const g = new Game(31); g.traffic.spawnIn = 1e9;
   for (let i = 0; i < 3; i++) g.traffic.ships.push({ id: i + 1, cls: 'motor', dir: 1, cargo: 'getreide', tons: 600, price: 120, state: 'queue', wait: 1, s: 0, ground: 0, lane: 'one' });
   const sim = g.createSession(), adv = new Advisor();
-  adv.runTime = 1000; adv.shownAt.start = 0;
+  adv.runTime = 1000; adv.shownAt.start = 0; adv.shownAt.deposit = 1000;
   const tip = adv.pick(g, sim);
   assert.equal(tip?.id, 'queue');
   assert.match(tip.text, /Motorgüterschiff/);
@@ -557,7 +557,7 @@ test('Löffel: verstopft nicht an Fremdstoffen, Bomben zählen trotzdem', () => 
   sim.pumpOn = true;
   sim.update(0.05, { dx: 0, dy: 0, suction: true });
   assert.equal(sl.clog, 0);
-  r.debris[r.idx(sl.cols[1], mx)] = 7; // Fliegerbombe
+  r.debris[r.idx(sl.cols[1], mx)] = DEBRIS.length; // Fliegerbombe (letzter Eintrag)
   const d = sim.update(0.05, { dx: 0, dy: 0, suction: true });
   assert.ok(sl.clog > 0 && d.bombs === 1);
 });
@@ -596,7 +596,7 @@ test('Flotte: Ponton fährt zur Engstelle, baggert selbstständig und die Rinne 
   g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('auto'); g.buyUpgrade('plant'); g.buyUpgrade('plant');
   g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'motor';
   assert.ok(!g.fair.motor.passable);
-  hireUnit(g); hireUnit(g); hireUnit(g);
+  g.fleet.mine = false; g.fleet.mine = false; hireUnit(g); g.fleet.mine = false; hireUnit(g); g.fleet.mine = false; hireUnit(g);
   let worked = false;
   for (let i = 0; i < 14 * 60 * 20 && !g.fair.motor.passable; i++) { g.update(0.05); if (g.fleet.units.some((u) => u.state === 'work')) worked = true; }
   assert.ok(worked && g.fair.motor.passable, 'Motorschiffe können fahren');
@@ -608,7 +608,7 @@ test('Flotte: zwei Pontons teilen sich die Arbeit (keine doppelte Stelle)', () =
   const g = new Game(3, 'hochrhein');
   g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('plant');
   g.traffic.spawnIn = 1e9; g.fleet.goal = 'tank';
-  hireUnit(g); hireUnit(g);
+  g.fleet.mine = false; g.fleet.mine = false; hireUnit(g); g.fleet.mine = false; hireUnit(g);
   let overlap = 0;
   for (let i = 0; i < 14 * 25 * 20; i++) {
     g.update(0.05);
@@ -628,7 +628,7 @@ test('Flotte: ohne Felsfräse bleibt sie vor Fels stehen und meldet es, mit Löf
   for (let k = 0; k < 60; k++) r.settle(Infinity); // Böschungen setzen lassen, sonst rutscht die Rinne unter den Pontons nach
   g.analyze(true); g.fleet.goal = 'container';
   assert.ok(openColumns(g, targetClass(g)).some((c) => c.rock), 'Felsriegel liegt in der Rinne');
-  hireUnit(g); hireUnit(g); hireUnit(g);
+  g.fleet.mine = false; g.fleet.mine = false; hireUnit(g); g.fleet.mine = false; hireUnit(g); g.fleet.mine = false; hireUnit(g);
   let msg = '';
   for (let i = 0; i < 14 * 100 * 20 && !/Fels/.test(msg); i++) { g.update(0.05); msg = g.fleet.units.map((u) => u.note).join('|'); }
   assert.match(msg, /Fels/, 'meldet Fels im Weg');
@@ -640,7 +640,7 @@ test('Flotte: ohne Felsfräse bleibt sie vor Fels stehen und meldet es, mit Löf
 
 test('Flotte: Spielstand speichert Pontons und sie arbeiten danach weiter; Löhne werden bezahlt', () => {
   const g = new Game(8, 'hochrhein');
-  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; hireUnit(g);
+  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.fleet.mine = false; hireUnit(g);
   for (let i = 0; i < 14 * 5 * 20; i++) g.update(0.05);
   const g2 = restoreGame(serializeGame(g));
   assert.ok(g2 && g2.fleet.units.length === 1);
@@ -829,7 +829,7 @@ test('Land-Automatik: Flotte trägt Ufer im Ausbaustreifen ab und macht es zum K
   setWiden(g, true, 2);
   const open0 = openWidenColumns(g).length, zone0 = r.zone.reduce((a, b) => a + b, 0);
   assert.ok(open0 > 10);
-  hireUnit(g);
+  g.fleet.mine = false; g.fleet.mine = false; hireUnit(g);
   for (let i = 0; i < 14 * 40 * 20; i++) g.update(0.05);
   assert.ok(g.totals.landRemoved > 20 && g.totals.landFees > 0);
   assert.ok(r.zone.reduce((a, b) => a + b, 0) > zone0, 'neue Korridorzellen');
@@ -839,7 +839,7 @@ test('Land-Automatik: Flotte trägt Ufer im Ausbaustreifen ab und macht es zum K
 test('Land-Automatik: ohne Löffelbagger oder wenn ausgeschaltet bleibt das Ufer stehen', () => {
   const g = new Game(3, 'hochrhein');
   g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn';
-  setWiden(g, true, 2); hireUnit(g);
+  setWiden(g, true, 2); g.fleet.mine = false; hireUnit(g);
   for (let i = 0; i < 14 * 15 * 20; i++) g.update(0.05);
   assert.equal(g.totals.landRemoved, 0);
   assert.match(g.fleet.units[0].note, /Löffel|Rinne|Engstelle/);
@@ -850,7 +850,7 @@ test('Flotte: Beton im Weg verlangt den Löffelbagger', () => {
   g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'motor';
   const f = g.fair.motor;
   for (const n of f.nodes) for (let y = n.y; y <= n.y + 1; y++) r.armor[y * r.cols + n.x] = 0.25;
-  hireUnit(g);
+  g.fleet.mine = false; g.fleet.mine = false; hireUnit(g);
   let msg = '';
   for (let i = 0; i < 14 * 12 * 20 && !/Beton/.test(msg); i++) { g.update(0.05); msg = g.fleet.units[0].note; }
   assert.match(msg, /Beton/);
@@ -900,7 +900,7 @@ function crossingGame(withZone, seed = 5) {
   const g = new Game(seed, 'hochrhein'); g.eventsOn = false;
   const r = g.river; r.setFlat(3, 9);
   for (let x = 0; x < r.cols; x++) for (let y = 0; y < r.rows; y++) r.zone[r.idx(x, y)] = (x >= 18 && x <= 24 ? y >= 6 && y <= 17 : y >= 10 && y <= 13) ? 1 : 0; // einspurig, in der Mitte breit
-  g.fair = null; g.analyze(true);
+  r.ext.fill(0); g.fair = null; g.analyze(true);
   if (withZone) { g.money = 1e6; g.buyUpgrade('signals'); g.zones = [{ id: 1, x: 21, w: 3 }]; }
   return g;
 }
@@ -908,7 +908,7 @@ function crossingGame(withZone, seed = 5) {
 test('Kreuzungsstelle: nur wo zwei Rinnen Platz haben, Kosten, Abstand und Höchstzahl', () => {
   const g = crossingGame(false);
   assert.ok(g.fair.kahn.cross[21] && !g.fair.kahn.cross[5]);
-  assert.match(g.zoneBlock(5), /Platz/);
+  assert.match(g.zoneBlock(5), /schmal/);
   assert.equal(g.zoneBlock(21), null);
   const m0 = g.money;
   assert.ok(g.placeZone(21));
@@ -994,7 +994,7 @@ test('Flotte betoniert die Rinne, verbraucht Beton und hört ohne Beton auf', ()
   g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn'; g.concrete = 400;
   const n0 = openPourColumns(g).length;
   assert.ok(n0 > 20);
-  setPour(g, true); hireUnit(g);
+  setPour(g, true); g.fleet.mine = false; hireUnit(g);
   for (let i = 0; i < 14 * 40 * 20; i++) g.update(0.05);
   let armored = 0; for (let i = 0; i < r.armor.length; i++) if (r.armor[i] > 0) armored++;
   assert.ok(armored > 20 && g.totals.concreteUsed > 20 && g.concrete < 400);
@@ -1002,7 +1002,7 @@ test('Flotte betoniert die Rinne, verbraucht Beton und hört ohne Beton auf', ()
   // ohne Beton: Pause mit Meldung
   const h = new Game(3, 'hochrhein');
   h.money = 1e6; for (const id of ['auto', 'betonrohr']) h.buyUpgrade(id);
-  h.traffic.spawnIn = 1e9; h.eventsOn = false; h.fleet.goal = 'kahn'; h.concrete = 0; setPour(h, true); hireUnit(h);
+  h.traffic.spawnIn = 1e9; h.eventsOn = false; h.fleet.goal = 'kahn'; h.concrete = 0; setPour(h, true); h.fleet.mine = false; hireUnit(h);
   for (let i = 0; i < 14 * 10 * 20; i++) h.update(0.05);
   assert.match(h.fleet.units[0].note, /Beton/);
   assert.equal(h.totals.concreteUsed, 0);
@@ -1011,7 +1011,7 @@ test('Flotte betoniert die Rinne, verbraucht Beton und hört ohne Beton auf', ()
 test('Flotte betoniert nur mit Betoniergerät und wenn eingeschaltet', () => {
   const g = new Game(3, 'hochrhein');
   g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn'; g.concrete = 100;
-  hireUnit(g);
+  g.fleet.mine = false; g.fleet.mine = false; hireUnit(g);
   for (let i = 0; i < 14 * 8 * 20; i++) g.update(0.05);
   assert.equal(g.totals.concreteUsed, 0);
   setPour(g, true);
@@ -1035,4 +1035,186 @@ test('Wartende Schiffe ohne befahrbare Rinne geben schnell auf und blockieren de
   g.traffic.ships.push({ id: 1, cls: 'schub', dir: 1, cargo: 'kohle', tons: 4000, price: 60, state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one', meets: [] });
   for (let i = 0; i < 20 * 20; i++) g.update(0.05);
   assert.equal(g.traffic.ships.length, 0);
+});
+
+// ---------- Kreuzungsstellen planen ----------
+import { zonePlan } from '../src/sim/fairway.js';
+
+test('Kreuzungsstelle planen: fehlendes Volumen wird berechnet und sinkt beim Ausbaggern auf null', () => {
+  const g = crossingGame(false); g.traffic.spawnIn = 1e9;
+  const r = g.river;
+  r.ext.fill(0);
+  for (let x = 28; x <= 34; x++) for (let y = 0; y < r.rows; y++) { const i = r.idx(x, y); if (y >= 6 && y <= 17) { r.zone[i] = 0; r.ext[i] = 2; r.top[i] = r.wl - 1.0; } } // Flachwasser-Streifen links und rechts der Rinne
+  g.analyze(true);
+  const p = g.zonePlanFor(31, 'kahn');
+  assert.ok(p.volume > 0 && Number.isFinite(p.volume) && !p.ready, `Volumen ${p.volume}`);
+  assert.equal(g.zoneBlock(31, 'kahn'), null, 'Planen ist auch ohne Platz erlaubt');
+  assert.ok(g.placeZone(31, 'kahn'));
+  assert.equal(g.zones[0].cls, 'kahn');
+  // Zone ist noch nicht nutzbar
+  assert.ok(!zoneClasses(g, g.zones[0]).length);
+  // ausbaggern: Streifenzellen in der Planung auf Tiefe legen
+  for (const w of g.zonePlanFor(31, 'kahn').wins) for (const a of [w.a, w.b]) for (let k = a; k < a + 2; k++) { const i = r.idx(w.x, k); r.zone[i] = 1; r.top[i] = Math.min(r.top[i], r.wl - 3); }
+  g.analyze(true);
+  assert.ok(g.zonePlanFor(31, 'kahn').ready && g.zonePlanFor(31, 'kahn').volume === 0);
+  assert.ok(zoneClasses(g, g.zones[0]).length > 0);
+});
+
+test('Kreuzungsstelle planen: zu schmaler Fluss ohne Uferstreifen lässt sich nicht planen, grössere Klassen brauchen mehr', () => {
+  const g = crossingGame(false);
+  g.river.ext.fill(0); g.analyze(true);
+  assert.equal(zonePlan(g.river, g.wl, shipById('kahn'), 5).volume, Infinity);
+  const kahn = zonePlan(g.river, g.wl, shipById('kahn'), 21), tank = zonePlan(g.river, g.wl, shipById('container'), 21);
+  assert.ok(kahn.volume === 0 && tank.volume > kahn.volume);
+  g.setZoneClass(1, 'kahn');
+});
+
+test('Flotte baut geplante Kreuzungsstellen aus', () => {
+  const g = new Game(3, 'hochrhein'), r = g.river;
+  g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('auto'); g.buyUpgrade('plant'); g.buyUpgrade('signals');
+  g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn';
+  const x = 20;
+  g.zones.push({ id: 1, x, w: 3, cls: 'kahn' });
+  const before = g.zonePlanFor(x, 'kahn');
+  assert.ok(!before.ready && before.volume > 0 && Number.isFinite(before.volume), `${before.volume}`);
+  g.fleet.mine = false; g.fleet.mine = false; hireUnit(g);
+  let ready = false;
+  for (let i = 0; i < 14 * 90 * 20 && !ready; i++) { g.update(0.05); ready = g.zonePlanFor(x, 'kahn').ready; }
+  assert.ok(ready, 'Kreuzungsstelle wurde ausgebaut');
+  void r;
+});
+
+// ---------- Altlasten-Kataster, Schiffsuntergang ----------
+test('Altlasten-Kataster: Summe aus Zellen und Volumen, Korridoranteil', () => {
+  const r = flat(3);
+  const none = r.altlastSummary();
+  assert.equal(none.cells, 0);
+  for (let x = 10; x < 14; x++) r.kind[r.idx(x, 12)] = KIND.altlast;
+  r.zone[r.idx(13, 12)] = 0;
+  const s = r.altlastSummary();
+  assert.equal(s.cells, 4);
+  assert.ok(Math.abs(s.volume - 4 * r.sedAt(r.idx(10, 12)) * r.area) < 1e-6);
+  assert.ok(s.corridor < s.volume && s.corridor > 0);
+});
+
+test('Altlasten aus dem Level: gesetzt beim Erzeugen, nur auf Sediment, Anzahl nach Level', () => {
+  for (const L of LEVELS) {
+    const r = River.generate(createRng(11), L.river), sum = r.altlastSummary();
+    assert.ok(sum.cells > 0 && sum.volume > 0, `${L.id}`);
+    for (let i = 0; i < r.kind.length; i++) if (r.kind[i] === KIND.altlast) assert.ok(r.top[i] - r.rock[i] > 0.19, 'nur auf Sediment');
+  }
+  const a = River.generate(createRng(5), LEVELS[0].river).altlastSummary(), b = River.generate(createRng(5), LEVELS[2].river).altlastSummary();
+  assert.ok(b.cells > a.cells, 'Eisernes Tor hat mehr Altlasten');
+});
+
+test('Fahrrinne: Altlast in der Rinne wird ausgewiesen', () => {
+  const r = flat(2.0);
+  for (let x = 10; x < 16; x++) for (let y = 0; y < r.rows; y++) r.kind[r.idx(x, y)] = KIND.altlast;
+  const f = analyzeClass(r, r.wl, shipById('tank'));
+  assert.ok(f.altlast > 0 && f.altlast <= f.volume + 1e-6, `${f.altlast} von ${f.volume}`);
+  const clean = analyzeClass(flat(2.0), 8, shipById('tank'));
+  assert.equal(clean.altlast, 0);
+});
+
+test('Verschmutzung: contaminate macht Sediment zur Altlast, im Kern entsteht ein hartes Wrack', () => {
+  const r = flat(3);
+  const top0 = r.top[r.idx(20, 12)];
+  const n = r.contaminate(20.5, 12.5, 3, 1);
+  assert.ok(n > 10);
+  assert.equal(r.kind[r.idx(20, 12)], KIND.altlast);
+  assert.ok(r.top[r.idx(20, 12)] > top0 + 0.9 && r.hard[r.idx(20, 12)] === 2);
+  assert.equal(r.kind[r.idx(30, 20)], KIND.sand, 'weit weg bleibt es sauber');
+});
+
+test('Schiffsuntergang: ein nicht freikommendes Schiff sinkt mit Fracht-Risiko, Wrack und Altlast bleiben', () => {
+  let sunk = 0, towed = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const g = new Game(seed, 'hochrhein'); g.eventsOn = false; g.traffic.spawnIn = 1e9;
+    const path = g.fair.kahn.path;
+    g.river.setFlat(0.6, 9); g.analyze(true);
+    g.traffic.ships.push({ id: 1, cls: 'kahn', dir: 1, cargo: 'oel', tons: 300, price: 180, state: 'grounded', wait: 0, s: 20, ground: 0.01, lane: 'one', path, meets: [], salvage: 1000 });
+    const m0 = g.money;
+    g.update(0.1);
+    if (g.totals.sunk) { sunk++; assert.ok(g.money < m0); assert.ok(g.river.altlastSummary().cells > 5 && g.river.debris.some((d) => d === DEBRIS.length - 1)); }
+    else if (g.totals.towed) towed++;
+  }
+  assert.ok(sunk > 15 && towed >= 1, `gesunken ${sunk}, abgeschleppt ${towed}`);
+});
+
+// ---------- Rohstoffvorkommen ----------
+import { setMine } from '../src/sim/fleet.js';
+import { DEPOSITS } from '../src/config.js';
+
+test('Rohstoffvorkommen: das erste ist bekannt und freigegeben, die übrigen nicht; Zellen liegen im Korridor', () => {
+  for (const L of LEVELS) {
+    const r = River.generate(createRng(7), L.river);
+    assert.equal(r.deposits.length, L.river.deposits.length);
+    assert.ok(r.deposits[0].known && r.deposits[0].owned);
+    assert.ok(r.deposits.slice(1).every((d) => !d.known && !d.owned));
+    for (const d of r.deposits) assert.ok(r.depositRemaining(d.id) > 50, `${L.id}/${d.type}: ${r.depositRemaining(d.id)}`);
+    for (let i = 0; i < r.dep.length; i++) if (r.dep[i]) assert.ok(r.zone[i] && r.kind[i] === r.deposits[r.dep[i] - 1].kind);
+  }
+});
+
+test('Rohstoffvorkommen: Aufschlag nur mit Konzession, sofort bar, proportional zum Abbau', () => {
+  const g = new Game(3, 'hochrhein'), r = g.river; g.money = 1e6; g.eventsOn = false;
+  const [d0, d1] = r.deposits;
+  const vol = 40;
+  const m0 = g.money;
+  g.collect({ removed: vol, by: [0, 0, vol, 0, 0], zone: vol, out: 0, hard: 0, fines: 0, repairs: 0, bombs: 0, dep: { 1: vol } });
+  const gain = g.money - m0 - vol * CONFIG.pay.perM3;
+  assert.ok(Math.abs(gain - vol * 26 * (d0.mult - 1)) < 1e-6, `Aufschlag ${gain}`);
+  const m1 = g.money;
+  g.collect({ removed: vol, by: [0, vol, 0, 0, 0], zone: vol, out: 0, hard: 0, fines: 0, repairs: 0, bombs: 0, dep: { 2: vol } });
+  assert.ok(Math.abs(g.money - m1 - vol * CONFIG.pay.perM3) < 1e-6, 'ohne Konzession kein Aufschlag');
+  assert.equal(g.depositNoConcession, 2);
+  void d1;
+});
+
+test('Rohstoffvorkommen: der Abbau im Querschnitt meldet die Menge aus dem Vorkommen und zehrt es auf', () => {
+  const g = new Game(3, 'hochrhein'), r = g.river; g.money = 1e6; g.eventsOn = false;
+  const d = r.deposits[0], rest0 = r.depositRemaining(1);
+  const sim = g.createSession();
+  sim.x = d.cx; sim.y = d.cy; assert.ok(sim.anchor());
+  const sl = sim.slice; sl.x = Math.min(sl.x0 + 14, Math.max(sl.x0 + 1, d.cy - 0.5)); sl.h = sl.surfaceAt(sl.x) + 0.1;
+  sim.pumpOn = true;
+  let dep = 0;
+  for (let i = 0; i < 400; i++) { const dd = sim.update(0.05, { dx: 0, dy: 0, suction: true }); dep += dd.dep[1] ?? 0; g.collect(dd); }
+  assert.ok(dep > 5 && g.totals.premium > 0);
+  assert.ok(r.depositRemaining(1) < rest0);
+});
+
+test('Rohstoffvorkommen: erkunden und Konzession kosten Geld, Reihenfolge und Sperren', () => {
+  const g = new Game(3, 'hochrhein'); g.money = 20000;
+  assert.match(g.concessionBlock(2), /erkunden/);
+  const m0 = g.money, d = g.explore();
+  assert.equal(d.id, 2); assert.ok(d.known); assert.equal(g.money, m0 - CONFIG.deposits.exploreCost);
+  assert.equal(g.concessionBlock(2), null);
+  assert.ok(g.buyConcession(2) && d.owned && g.money === m0 - CONFIG.deposits.exploreCost - d.cost);
+  assert.match(g.concessionBlock(2), /Schon/);
+  g.explore(); assert.ok(g.exploreBlock() !== null || g.river.deposits.every((q) => q.known));
+  g.money = 0; assert.match(g.exploreBlock() ?? 'Braucht', /Braucht|bekannt/);
+});
+
+test('Rohstoffvorkommen: Spielstand behält Konzessionen und Vorkommen', () => {
+  const g = new Game(4, 'loreley'); g.money = 1e6; g.explore(); g.buyConcession(2);
+  const g2 = restoreGame(serializeGame(g));
+  assert.ok(g2.river.deposits[1].owned && g2.river.deposits[1].known && !g2.river.deposits[2].known);
+  assert.equal(g2.river.dep.reduce((a, b) => a + (b ? 1 : 0), 0), g.river.dep.reduce((a, b) => a + (b ? 1 : 0), 0));
+});
+
+test('Flotte baut Rohstoffe mit Konzession ab, ohne Konzession nicht', () => {
+  const g = new Game(3, 'hochrhein'); g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('plant');
+  g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn';
+  hireUnit(g);
+  for (let i = 0; i < 14 * 40 * 20; i++) g.update(0.05);
+  assert.ok(g.totals.premium > 100, `Aufschlag ${g.totals.premium}`);
+  const h = new Game(3, 'hochrhein'); h.money = 1e6; h.buyUpgrade('auto'); h.traffic.spawnIn = 1e9; h.eventsOn = false; h.fleet.goal = 'kahn';
+  h.river.deposits[0].owned = false; hireUnit(h);
+  for (let i = 0; i < 14 * 30 * 20; i++) h.update(0.05);
+  assert.equal(h.totals.premium, 0);
+  const k = new Game(3, 'hochrhein'); k.money = 1e6; k.buyUpgrade('auto'); k.traffic.spawnIn = 1e9; k.eventsOn = false; k.fleet.goal = 'kahn'; setMine(k, false); hireUnit(k);
+  for (let i = 0; i < 14 * 20 * 20; i++) k.update(0.05);
+  assert.equal(k.totals.premium, 0);
+  assert.ok(DEPOSITS.length === 3);
 });

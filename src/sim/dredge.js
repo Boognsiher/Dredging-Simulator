@@ -97,7 +97,7 @@ export class DredgeSim {
   // input: { dx, dy in -1..1, suction: bool }
   update(dt, input) {
     const s = this.stats;
-    const d = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0, fines: 0, repairs: 0, tips: 0, clogs: 0, clogItems: [], bombs: 0 };
+    const d = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0, dep: {}, fines: 0, repairs: 0, tips: 0, clogs: 0, clogItems: [], bombs: 0 };
 
     if (this.mode === 'map') {
       let dx = input.dx || 0, dy = input.dy || 0;
@@ -116,7 +116,7 @@ export class DredgeSim {
         if (n.kind === 'clog') { d.clogs++; d.clogItems.push(n.item); if (n.bomb) d.bombs++; }
         if (n.kind === 'tip') { d.tips++; d.repairs += CONFIG.pump.repairCost; this.pumpOn = false; }
       }
-      d.removed = r.removed; d.by = r.by; d.zone = r.zone; d.out = r.out; d.land = r.land; d.hard = r.hard; d.concrete = r.concrete ?? 0;
+      d.removed = r.removed; d.by = r.by; d.zone = r.zone; d.out = r.out; d.land = r.land; d.hard = r.hard; d.concrete = r.concrete ?? 0; d.dep = r.dep ?? {};
       // Trübung entsteht nur, wenn die Pumpe am Boden wirklich Material saugt; Mehr Leistung, Bewegung und Altlasten = mehr Trübung.
       const T = this.slice.toolParams(), use = T.power * dt > 0 ? Math.min(1, Math.max(0, r.removed / (T.power * dt))) : 0;
       if (this.slice.suctioning && use > 0) {

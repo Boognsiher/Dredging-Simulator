@@ -1,4 +1,4 @@
-import { CONFIG, KIND, DEBRIS } from '../config.js';
+import { CONFIG, KIND, DEBRIS, DEPOSITS } from '../config.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -23,6 +23,9 @@ export class River {
     this.hard = new Uint8Array(n); // 0 weich, 1 verdichtet, 2 hart (mehrere Überfahrten)
     this.debris = new Uint8Array(n); // 0 nichts, sonst Index in DEBRIS + 1
     this.zone = new Uint8Array(n);
+    this.dep = new Uint8Array(n); // Rohstoffvorkommen: 0 = keins, sonst Nummer in this.deposits
+    this.depLeft = new Float32Array(n); // wie viele Meter des Vorkommens (von oben) in dieser Zelle noch Aufschlag bringen
+    this.deposits = []; // { id, type, name, kind, mult, cx, cy, rx, ry, owned, known, cost }
     this.armor = new Float32Array(n); // Dicke der Betonschicht (m), die die Oberfläche der Zelle verhärtet; 0 = unbehandelt
     this.ext = new Uint8Array(n); // Ausbaustreifen am Ufer: 1 = Land, 2 = Flachwasser. Mit dem Löffelbagger abtragbar (wird dann zum Korridor), sonst Schutzgebiet
     this.pending = new Set(); // Zellen, deren Böschung noch nachrutscht (abgeleitet, wird nicht gespeichert)
@@ -107,6 +110,14 @@ export class River {
       const x = rng.range(3, r.cols - 3);
       each(x, yc(x) + rng.range(-0.6, 0.6) * hw(x), rng.range(1.8, 3), rng.range(1.5, 2.6), (k) => { if (water[k] && r.top[k] - r.rock[k] > 0.2) r.kind[k] = KIND.altlast; });
     }
+    // Rohstoffvorkommen: das erste (Kiesbank) liegt früh am Fluss, ist bekannt und freigegeben; die weiteren müssen erkundet und erworben werden
+    (cfg.deposits ?? []).forEach((typeId, k) => {
+      const T = DEPOSITS.find((d) => d.id === typeId) ?? DEPOSITS[0];
+      const x = k === 0 ? rng.range(7, 12) : rng.range(8 + k * 7, 14 + k * 7), y = yc(x) + rng.range(-0.35, 0.35) * hw(x);
+      const rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2);
+      each(Math.min(r.cols - 4, x), y, rx, ry, (i) => { if (water[i] && r.zone[i] && r.top[i] - r.rock[i] > 0.6) { r.dep[i] = k + 1; r.kind[i] = T.kind; r.depLeft[i] = Math.min(r.top[i] - r.rock[i], rng.range(0.9, 1.5)); } });
+      r.deposits.push({ id: k + 1, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: Math.min(r.cols - 4, x), cy: y, rx, ry, owned: k === 0, known: k === 0, cost: T.cost });
+    });
     for (let i = 0; i < cfg.hardBlobs; i++) {
       const x = rng.range(2, r.cols - 2);
       each(x, yc(x) + rng.range(-0.7, 0.7) * hw(x), rng.range(2, 4), rng.range(1.5, 3), (k, d) => { if (water[k]) r.hard[k] = Math.max(r.hard[k], d < 0.5 ? 2 : 1); });
@@ -187,6 +198,41 @@ export class River {
     }
   }
 
+  // Restmenge (m³) eines Vorkommens
+  depositRemaining(id) {
+    let v = 0;
+    for (let i = 0; i < this.dep.length; i++) if (this.dep[i] === id) v += Math.min(this.sedAt(i), this.depLeft[i]);
+    return v * this.area;
+  }
+
+  // Altlasten-Kataster: Zellen und Volumen (m³) belasteten Sediments, gesamt und im Baggerkorridor
+  altlastSummary() {
+    let cells = 0, all = 0, corridor = 0;
+    for (let i = 0; i < this.top.length; i++) {
+      if (this.kind[i] !== KIND.altlast) continue;
+      const sed = this.sedAt(i);
+      if (sed <= 0.05) continue;
+      cells++; all += sed; if (this.zone[i]) corridor += sed;
+    }
+    return { cells, volume: all * this.area, corridor: corridor * this.area };
+  }
+
+  // Verschmutzung rund um (cx, cy) (Zellkoordinaten, Radius in Zellen): Sediment wird zur Altlast. raise > 0: im Kern (Wrack) wächst die Sohle um raise Meter, hart.
+  contaminate(cx, cy, radius, raise = 0) {
+    let n = 0;
+    for (let y = Math.max(0, Math.floor(cy - radius)); y <= Math.min(this.rows - 1, Math.ceil(cy + radius)); y++) {
+      for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(this.cols - 1, Math.ceil(cx + radius)); x++) {
+        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / radius, i = this.idx(x, y);
+        if (d >= 1 || !this.isWater(i)) continue;
+        if (this.sedAt(i) < 0.3) this.top[i] = this.rock[i] + 0.3;
+        this.kind[i] = KIND.altlast; this.hard[i] = Math.max(this.hard[i], 1); this.armor[i] = 0;
+        if (raise > 0 && d < 0.55) { this.top[i] += raise; this.hard[i] = 2; }
+        this.pending.add(i); n++;
+      }
+    }
+    return n;
+  }
+
   // Gesamtes Sedimentvolumen im Baggerkorridor in m³ (Anzeige, Tests)
   corridorSediment() {
     let s = 0;
@@ -213,7 +259,7 @@ export class River {
   // Gewichtetes Abtragen: verteilt `amount` (Höhe in m) auf die Zellen. Liefert Höhen je Material (by) und Summen.
   _drain(cells, amount, firmness, adjusted = false, hardFactor = CONFIG.hard.factor, allowLand = false, armorEff = CONFIG.concrete.pumpBreak) {
     if (!adjusted) cells = this._adj(cells, firmness);
-    const res = { by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, removed: 0, touched: [] };
+    const res = { by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, removed: 0, touched: [], dep: {} };
     let wSum = 0;
     for (const c of cells) wSum += c[1];
     if (wSum === 0) return res;
@@ -237,6 +283,11 @@ export class River {
       if (armor > 1e-6) { this.armor[i] = Math.max(0, armor - take); if (this.armor[i] < 0.01) this.armor[i] = 0; res.by[KIND.fels] += fromSed; } // Betonbruch zählt wie Fels (Schotter)
       else res.by[this.kind[i]] += fromSed + snap;
       res.by[KIND.fels] += fromRock;
+      if (this.dep[i] && fromSed > 0 && armor <= 1e-6) { // Vorkommen: nur die obersten Meter bringen Aufschlag, danach ausgebeutet
+        const v = Math.min(fromSed + snap, this.depLeft[i]);
+        res.dep[this.dep[i]] = (res.dep[this.dep[i]] ?? 0) + v; this.depLeft[i] -= v;
+        if (this.depLeft[i] < 0.02 || this.top[i] - this.rock[i] < 0.05) this.dep[i] = 0;
+      }
       take += snap;
       res.removed += take;
       const strip = this.ext[i] === 1 || (this.ext[i] === 2 && allowLand);
@@ -252,7 +303,7 @@ export class River {
 
   _vol(r) {
     const a = this.area;
-    return { removed: r.removed * a, by: r.by.map((v) => v * a), zone: r.zone * a, out: r.out * a, land: r.land * a, hard: r.hard * a };
+    return { removed: r.removed * a, by: r.by.map((v) => v * a), zone: r.zone * a, out: r.out * a, land: r.land * a, hard: r.hard * a, dep: Object.fromEntries(Object.entries(r.dep ?? {}).map(([k, v]) => [k, v * a])) };
   }
 
   // Querschnitt: Der Kasten umfasst die Spalten `cols` (Flussrichtung); die Pumpenleistung verteilt sich nach Bedarf auf alle
@@ -263,10 +314,11 @@ export class River {
     const my = clamp(Math.floor(headY), 0, this.rows - 1), base = this.top[this.idx(centerCol, my)];
     const work = cols.map((c) => this._adj(this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius, allowLand), firmness)).filter((cells) => cells.length);
     const rowW = work.map((cells) => cells.reduce((a, c) => a + c[1], 0)), total = rowW.reduce((a, b) => a + b, 0);
-    const sum = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0 };
+    const sum = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, dep: {} };
     for (let k = 0; k < work.length; k++) {
       const res = this._vol(this._drain(work[k], (amount * rowW[k]) / total / this.area, firmness, true, hardFactor, allowLand, armorEff));
       sum.removed += res.removed; sum.zone += res.zone; sum.out += res.out; sum.land += res.land; sum.hard += res.hard;
+      for (const [k, v] of Object.entries(res.dep)) sum.dep[k] = (sum.dep[k] ?? 0) + v;
       for (let m = 0; m < 5; m++) sum.by[m] += res.by[m];
     }
     return sum;

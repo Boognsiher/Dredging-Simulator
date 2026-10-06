@@ -1,14 +1,14 @@
 import { CONFIG, UPGRADES, SHIPS, KIND, levelById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { River } from './river.js';
-import { carveFairway, analyzeFairway } from './fairway.js';
+import { carveFairway, analyzeFairway, zonePlan } from './fairway.js';
 import { DredgeSim } from './dredge.js';
 import { EVENTS } from './events.js';
 import { computeStats, upgradeCost } from './stats.js';
 import { createRng } from './rng.js';
 import { createMarket, stepMarket } from './market.js';
-import { createTraffic, updateTraffic, maxZones, zoneClasses } from './traffic.js';
-import { processPlant, stockTotal } from './plant.js';
+import { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } from './traffic.js';
+import { processPlant, stockTotal, materialPrice } from './plant.js';
 import { updateContracts } from './contracts.js';
 import { createFleet, updateFleet } from './fleet.js';
 
@@ -48,7 +48,7 @@ export class Game {
     this.contractSeq = 0;
     this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
     this.rejectedBy = {};
-    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
+    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, premium: 0, sunk: 0, sunkFines: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
     this.today = freshDay();
     this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
@@ -128,28 +128,75 @@ export class Game {
     }
   }
 
-  // Kreuzungsstelle ausweisen (Mitte in Spalte x): nur wo zwei Rinnen nebeneinander Platz haben; Anzahl begrenzt (Rotlichter erhöhen sie)
-  zoneBlock(x) {
+  // Klasse, für die neue Kreuzungsstellen geplant werden (gewählt, sonst die grösste Klasse, die schon fährt)
+  get zoneClassId() {
+    const ids = this.level.classes;
+    if (this.zoneClass && ids.includes(this.zoneClass)) return this.zoneClass;
+    const act = activeClasses(this);
+    return (act[act.length - 1] ?? SHIPS.find((s) => s.id === ids[0])).id;
+  }
+
+  // Plan einer Kreuzungsstelle für eine Klasse: fehlendes Volumen (m³) und Fenster; bereit = zwei Rinnen sind schon da
+  zonePlanFor(x, clsId = this.zoneClassId) {
+    const cls = SHIPS.find((s) => s.id === clsId), z = { x, w: CONFIG.zones.width };
+    return { ...zonePlan(this.river, Math.min(this.wl, CONFIG.water.base), cls, x, z.w), ready: zoneSupports(this, z, clsId), cls: clsId };
+  }
+
+  // Kreuzungsstelle planen (Mitte in Spalte x). Geplant werden darf überall, wo auch mit Uferstreifen genug Breite entstehen kann;
+  // benutzt wird sie erst, wenn die zwei Rinnen ausgebaggert sind. Anzahl begrenzt (Rotlichter erhöhen sie).
+  zoneBlock(x, clsId = this.zoneClassId) {
     const Z = CONFIG.zones;
     if (this.status !== 'playing') return 'Spiel beendet';
     if (x < 2 || x > this.river.cols - 3) return 'Zu nah am Rand';
     if (this.zones.some((z) => Math.abs(z.x - x) < Z.width + 1)) return 'Zu nah an einer anderen Kreuzungsstelle';
     if (this.zones.length >= maxZones(this)) return 'Mehr Kreuzungsstellen brauchen Rotlichter (Wasserstrasse ausbauen)';
-    if (!zoneClasses(this, { x, w: Z.width }).length) return 'Zu wenig Platz: hier passen keine zwei Rinnen nebeneinander (breiter oder tiefer baggern)';
+    if (this.zonePlanFor(x, clsId).volume === Infinity) return 'Hier ist die Rinne auch mit dem Uferstreifen zu schmal für zwei Schiffe';
     if (this.money < Z.cost) return `Braucht ${Z.cost.toLocaleString('de-CH')} CHF`;
     return null;
   }
-  placeZone(x) {
-    if (this.zoneBlock(x)) return false;
+  placeZone(x, clsId = this.zoneClassId) {
+    if (this.zoneBlock(x, clsId)) return false;
     this.money -= CONFIG.zones.cost;
-    this.zones.push({ id: ++this.zoneSeq, x, w: CONFIG.zones.width });
-    this.say(`Kreuzungsstelle bei Spalte ${x + 1} ausgewiesen (−${CONFIG.zones.cost} CHF)`, 'upgrade');
+    this.zones.push({ id: ++this.zoneSeq, x, w: CONFIG.zones.width, cls: clsId });
+    const p = this.zonePlanFor(x, clsId);
+    this.say(`Kreuzungsstelle bei Spalte ${x + 1} geplant (−${CONFIG.zones.cost} CHF): ${p.ready ? 'sofort nutzbar' : `noch ${Math.round(p.volume)} m³ auszutragen`}`, 'upgrade');
     return true;
   }
+  setZoneClass(id, clsId) { const z = this.zones.find((q) => q.id === id); if (z && SHIPS.some((s) => s.id === clsId)) z.cls = clsId; return !!z; }
   removeZone(id) {
     const i = this.zones.findIndex((z) => z.id === id);
     if (i < 0) return false;
     this.zones.splice(i, 1);
+    return true;
+  }
+
+  // Rohstoffvorkommen erkunden (das nächste unbekannte) und Konzession erwerben
+  exploreBlock() {
+    if (this.status !== 'playing') return 'Spiel beendet';
+    if (!this.river.deposits.some((d) => !d.known)) return 'Alle Vorkommen sind bekannt';
+    if (this.money < CONFIG.deposits.exploreCost) return `Braucht ${CONFIG.deposits.exploreCost.toLocaleString('de-CH')} CHF`;
+    return null;
+  }
+  explore() {
+    if (this.exploreBlock()) return null;
+    const d = this.river.deposits.find((q) => !q.known);
+    this.money -= CONFIG.deposits.exploreCost; d.known = true; this.totals.explored = (this.totals.explored ?? 0) + 1;
+    this.say(`Erkundet: ${d.name} bei Spalte ${Math.round(d.cx) + 1} (Aufschlag ×${d.mult}). Mit Konzession lohnt sich der Abbau.`, 'good');
+    this.notify(`Vorkommen gefunden: ${d.name}`, 'good');
+    return d;
+  }
+  concessionBlock(id) {
+    const d = this.river.deposits[id - 1];
+    if (!d || !d.known) return 'Erst erkunden';
+    if (d.owned) return 'Schon erworben';
+    if (this.money < d.cost) return `Braucht ${d.cost.toLocaleString('de-CH')} CHF`;
+    return this.status === 'playing' ? null : 'Spiel beendet';
+  }
+  buyConcession(id) {
+    if (this.concessionBlock(id)) return false;
+    const d = this.river.deposits[id - 1];
+    this.money -= d.cost; d.owned = true;
+    this.say(`Konzession für ${d.name} erworben (−${d.cost} CHF): Aufschlag ×${d.mult} auf den Abbau.`, 'upgrade');
     return true;
   }
 
@@ -191,6 +238,15 @@ export class Game {
     let bomb = 0;
     if (d.bombs) { bomb = 4500 * d.bombs; this.totals.bombs += d.bombs; this.say(`Blindgänger! Der Kampfmittelräumdienst rückt aus (−${bomb} CHF).`, 'bad'); this.notify('Fliegerbombe! Kampfmittelräumdienst −4500 CHF', 'bad'); }
     this.money += pay - protect - land - d.fines - d.repairs - bomb;
+    // Rohstoffvorkommen mit Konzession: der Preisaufschlag wird sofort bar bezahlt
+    let premium = 0;
+    for (const [id, vol] of Object.entries(d.dep ?? {})) {
+      const dep = this.river.deposits[id - 1];
+      if (!dep) continue;
+      if (dep.owned) premium += vol * materialPrice(dep.kind, this.stats, this.market) * (dep.mult - 1);
+      else if (vol > 0.5) this.depositNoConcession = dep.id;
+    }
+    if (premium) { this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
     const t = this.totals, y = this.today;
     t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
     y.pay += pay; y.costs += protect + land + d.fines + d.repairs + bomb;

@@ -1,12 +1,13 @@
 import { CONFIG, SHIPS, shipById } from '../config.js';
 import { toolAvailable } from './slice.js';
+import { zoneSupports } from './traffic.js';
 
 // Flotte: gemietete Pontons arbeiten selbstständig. Jeder fährt zur nächsten Engstelle der Ausbauklasse, ankert, lässt die Automatik
 // mit dem passenden Gerät (Saugkopf, bei Fels der Löffel) auf die Solltiefe baggern und sucht danach die nächste offene Stelle.
 // Sie nutzen dieselbe Physik wie dein eigener Ponton (DredgeSim/SliceSim), nur ohne Anzeige. Das Ausbauziel ist eine Schiffsklasse
 // (Standard: die kleinste Klasse, die noch nicht fährt). Pontons ohne Arbeit warten und melden, was fehlt.
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
-export const createFleet = () => ({ units: [], seq: 0, goal: null, pour: false, widen: false, widenW: CONFIG.fleet.widenRows });
+export const createFleet = () => ({ units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows });
 
 export const nextHireCost = (g) => CONFIG.fleet.costs[g.fleet.units.length] ?? null;
 
@@ -38,6 +39,7 @@ export function dismissUnit(g, id) {
   return true;
 }
 
+export function setMine(g, on) { g.fleet.mine = !!on; }
 export function setPour(g, on) { g.fleet.pour = !!on; }
 export function setWiden(g, on, w) { g.fleet.widen = !!on; if (w) g.fleet.widenW = Math.max(1, Math.min(5, Math.round(w))); }
 export function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === clsId) ? clsId : null; }
@@ -70,7 +72,7 @@ export function openColumns(g, cls) {
 
 const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
 const overlaps = (res, c0) => res.some((s) => c0 < s.c0 + CONFIG.box.cols && s.c0 < c0 + CONFIG.box.cols);
-const skipKey = (s) => (s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
+const skipKey = (s) => (s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
 
 // Land-Automatik: Spalten, in denen im Ausbaustreifen neben dem ursprünglichen Korridor noch Land über der Tiefe der Ausbauklasse liegt.
 // Pro Spalte und Ufer die ersten `widenW` Zeilen des Streifens (ext > 0); ursprünglicher Korridor = zone && !ext (umgewandeltes Land zählt nicht dazu).
@@ -163,12 +165,65 @@ function pickPour(g, u) {
   return { none: 'Alle Betonierstellen sind vergeben' };
 }
 
+// Geplante Kreuzungsstellen ausbauen: die zwei Rinnen in den drei Spalten der Zone auf die Tiefe der geplanten Klasse bringen (Ufer abtragen, wo nötig)
+function pickZone(g, u) {
+  const open = g.zones.filter((z) => !zoneSupports(g, z, z.cls ?? g.zoneClassId));
+  if (!open.length) return { none: 'Keine geplante Kreuzungsstelle offen' };
+  const res = reservedBy(g, u), B = CONFIG.box.cols, r = g.river;
+  let note = 'Alle geplanten Kreuzungsstellen sind vergeben';
+  for (const z of open) {
+    if (u.skip[`Z${z.id}`] && g.time < u.skip[`Z${z.id}`]) continue;
+    const cid = z.cls ?? g.zoneClassId, plan = g.zonePlanFor(z.x, cid);
+    if (!plan.wins || plan.volume === Infinity) { note = 'Kreuzungsstelle: kein Platz'; continue; }
+    const loeff = g.stats.loeffel > 0;
+    if ((plan.land || plan.armor) && !loeff) { note = plan.armor ? 'Beton im Weg: braucht den Löffelbagger' : 'Kreuzungsstelle braucht den Löffelbagger (Uferabtrag)'; continue; }
+    if (plan.rock && !canRock(g)) { note = 'Fels im Weg: braucht Felsfräse oder Löffelbagger'; continue; }
+    const c0 = Math.min(Math.max(0, z.x - 1), r.cols - B);
+    if (overlaps(res, c0)) continue;
+    let r0 = Infinity, r1 = -Infinity;
+    for (const w of plan.wins) { r0 = Math.min(r0, w.a); r1 = Math.max(r1, w.b + plan.beam - 1); }
+    const px = c0 + Math.floor(B / 2), mid = (r0 + r1) / 2;
+    const cands = [mid + 0.5]; for (let d = 1; d <= r1 - r0; d++) cands.push(mid + 0.5 + d, mid + 0.5 - d);
+    const y = cands.find((yy) => yy > 0 && yy < r.rows && r.depthAt(r.idx(px, Math.floor(yy))) >= 0.8) ?? r.centerY(px);
+    const ship = shipById(cid), need = ship.draught + CONFIG.clearance;
+    return { zone: true, zid: z.id, land: plan.land, c0, col: z.x, y, rows: [r0, r1], cls: cid, depth: Math.min(CONFIG.echolot.maxDepth, need + CONFIG.fleet.margin), tool: plan.land || plan.rock || plan.armor ? 'loeffel' : 'pump', rock: plan.rock || plan.armor };
+  }
+  return { none: note };
+}
+
+// Rohstoffvorkommen mit Konzession abbauen (bringt den Preisaufschlag): freie Pontons fahren zur Stelle mit dem meisten Rest
+function pickMine(g, u) {
+  if (!g.fleet.mine) return { none: 'Rohstoffabbau ist aus' };
+  const r = g.river, res = reservedBy(g, u), B = CONFIG.box.cols;
+  const list = r.deposits.filter((d) => d.owned).map((d) => ({ d, rest: r.depositRemaining(d.id) })).filter((x) => x.rest > 25).sort((a, b) => b.rest - a.rest);
+  if (!list.length) return { none: 'Kein Vorkommen mit Konzession übrig' };
+  for (const { d } of list) {
+    if (u.skip[`M${d.id}`] && g.time < u.skip[`M${d.id}`]) continue;
+    // Spalte mit dem meisten Rest im Vorkommen
+    let bestX = -1, bestV = 0, r0 = Infinity, r1 = -Infinity;
+    const perCol = new Map();
+    for (let i = 0; i < r.dep.length; i++) if (r.dep[i] === d.id) { const x = i % r.cols, y = (i / r.cols) | 0; perCol.set(x, (perCol.get(x) ?? 0) + r.sedAt(i)); }
+    for (const [x, v] of [...perCol].sort((a, b) => a[0] - b[0])) {
+      const c0 = Math.min(Math.max(0, x - 1), r.cols - B);
+      if (v > bestV && !overlaps(res, c0)) { bestV = v; bestX = x; }
+    }
+    if (bestX < 0 || bestV < 0.3) continue;
+    for (let i = 0; i < r.dep.length; i++) if (r.dep[i] === d.id && Math.abs(i % r.cols - bestX) <= 2) { const y = (i / r.cols) | 0; r0 = Math.min(r0, y); r1 = Math.max(r1, y); }
+    const c0 = Math.min(Math.max(0, bestX - 1), r.cols - B), px = c0 + Math.floor(B / 2), mid = (r0 + r1) / 2;
+    const cands = [mid + 0.5]; for (let k = 1; k <= r1 - r0 + 2; k++) cands.push(mid + 0.5 + k, mid + 0.5 - k);
+    const y = cands.find((yy) => yy > 0 && yy < r.rows && r.depthAt(r.idx(px, Math.floor(yy))) >= 0.8) ?? r.centerY(px);
+    return { mine: true, did: d.id, c0, col: bestX, y, rows: [r0, r1], cls: g.level.classes[0], depth: CONFIG.echolot.maxDepth, tool: 'pump', rock: false };
+  }
+  return { none: 'Alle Vorkommen sind vergeben' };
+}
+
 function pickSite(g, u) {
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
-  const order = [...(landRole ? [pickLand, pickLane] : [pickLane, pickLand]), pickPour];
+  const order = [...(landRole ? [pickZone, pickLand, pickLane] : [pickLane, pickZone, pickLand]), pickMine, pickPour];
   const msgs = [];
   for (const f of order) { const s = f(g, u); if (!s.none) return s; msgs.push(s); }
-  return msgs.filter((m) => !/ist aus$/.test(m.none)).pop() ?? msgs[0]; // zuletzt aktive Meldung (zeigt, woran es hängt)
+  const neutral = /ist aus$|^Keine geplante|^Kein Vorkommen|^Alle Vorkommen|Rinne ist frei$|alle Klassen fahren|ist betoniert|Ufer ist verbreitert|vergeben$/;
+  return msgs.filter((m) => !neutral.test(m.none)).pop() ?? msgs.find((m) => !/ist aus$|^Keine geplante/.test(m.none)) ?? msgs[0]; // die aussagekräftigste Meldung (zeigt, woran es hängt)
 }
 
 function makeSim(g, u) {
@@ -214,7 +269,8 @@ function stepUnit(g, u, dt) {
             const sl = sim.slice;
             sl.soundNoise = CONFIG.fleet.soundNoise; sl.sound();
             if (s.pour) { sl.autoPour = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; }
-            else if (s.land) { sl.autoLand = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; } // nur der Uferstreifen
+            else if (s.mine) { sl.autoRange = [s.rows[0] - 1, s.rows[1] + 1]; }
+            else if (s.land || s.zid) { if (s.land) sl.autoLand = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; } // Uferstreifen bzw. Kreuzungsstelle
             else {
               const lane = g.fair[s.cls], cls = shipById(s.cls), lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo;
               let r0 = Infinity, r1 = -Infinity;
@@ -223,7 +279,7 @@ function stepUnit(g, u, dt) {
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();
-            u.state = 'work'; u.workT = 0; u.note = s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
+            u.state = 'work'; u.workT = 0; u.note = s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
           } else { u.skip[skipKey(s)] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         }
       } else if (dist > 1e-6) {
@@ -233,7 +289,7 @@ function stepUnit(g, u, dt) {
   } else if (u.state === 'work') {
     u.workT += dt;
     if (sim.mode === 'slice' && !sim.pumpOn && sim.slice.auto.on && sim.slice.tipped <= 0) { sim.pumpOn = true; sim.autoStartedPump = true; } // nach dem Kippen schaltet die Mannschaft die Pumpe wieder ein
-    const limit = u.site?.land ? 420 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
+    const limit = u.site?.did ? 300 : u.site?.land ? 420 : u.site?.zid ? 300 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
     const noConcrete = u.site?.pour && g.concrete <= 0.05;
     if (noConcrete) u.note = 'Kein Beton mehr im Lager';
     if (sim.mode !== 'slice' || !sim.slice.auto.on || u.workT > limit || noConcrete) {

@@ -28,11 +28,12 @@
       <div id="legend" aria-label="Legende">
         <span><i style="background:linear-gradient(90deg,#96cdd7,#2c5f70)"></i>flach → tief</span>
         <span><i style="background:rgba(120,200,120,.5)"></i>Naturschutz</span>
-        <span><i style="background:rgba(255,120,40,.7)"></i>Altlast</span>
+        <span><i style="background:rgba(255,120,40,.7)"></i>☢ Altlast</span>
         <span><i style="background:rgba(90,95,105,.8)"></i>Fels</span>
         <span><i style="background:repeating-linear-gradient(45deg,#2a3a4a,#2a3a4a 2px,#8fa6ba 2px,#8fa6ba 3px)"></i>harte Schicht</span>
         <span><i style="background:#fff;border:1px solid #222"></i>Fremdstoff</span>
         <span><i style="background:rgba(235,200,70,.6)"></i>Ausbaustreifen (Löffel)</span>
+        <span><i style="background:rgba(255,215,80,.7)"></i>Rohstoffgebiet</span>
         <span><i style="background:rgba(205,208,214,.85)"></i>Beton</span>
         <span><i style="background:rgba(160,230,90,.6)"></i>Kreuzungsstelle</span>
         <span><i style="background:rgba(255,70,60,.7)"></i>zu flach (Klasse)</span>
@@ -49,7 +50,7 @@
         <button id="btn-leave">↩ Zurück zur Karte (Q)</button>
         <button id="btn-auto">🤖 Automatik an (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
-        <button id="btn-zone">↔ Kreuzungsstelle setzen (K)</button>
+        <button id="btn-zone">↔ Kreuzungsstelle planen (K)</button>
         <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
         <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
         <button id="btn-pump">🌀 Pumpe: AUS (Leertaste)</button>
@@ -78,6 +79,10 @@
       <div id="goal"></div>
       <h2>Wasserstrasse</h2>
       <div id="fairway"></div>
+      <h2>Rohstoffgebiete</h2>
+      <div id="deposits"></div>
+      <h2>Altlasten</h2>
+      <div id="hazard"></div>
       <h2>Verkehr</h2>
       <div id="trafficpanel"></div>
       <h2>Flotte</h2>

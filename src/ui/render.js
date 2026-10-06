@@ -1,7 +1,7 @@
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 import { SLICE } from '../sim/slice.js';
-import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById } from '../config.js';
-import { shipPos, queuePos, bayCapacity, zoneClasses } from '../sim/traffic.js';
+import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
+import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth } from '../sim/fairway.js';
 import { Chain, drawChain } from './chain.js';
 import { groundedNear } from '../sim/tow.js';
@@ -67,7 +67,10 @@ export function drawMap(ctx, game, sim, ui = {}) {
       const i = y * cols + x;
       if (!r.isWater(i) && !r.armor[i]) continue;
       const px = OX + x * CELL, py = y * CELL;
-      if (r.kind[i] === KIND.altlast && r.top[i] - r.rock[i] > 0.05) { ctx.fillStyle = 'rgba(255,120,40,.5)'; ctx.fillRect(px + 1, py + 1, CELL - 2, CELL - 2); }
+      if (r.kind[i] === KIND.altlast && r.top[i] - r.rock[i] > 0.05) {
+        ctx.fillStyle = 'rgba(255,120,40,.5)'; ctx.fillRect(px + 1, py + 1, CELL - 2, CELL - 2);
+        if ((x + y) % 2 === 0) { ctx.fillStyle = 'rgba(60,20,0,.85)'; ctx.font = `bold ${CELL - 4}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillText('☢', px + CELL / 2, py + CELL - 3); ctx.textAlign = 'start'; } // Altlast-Kennzeichnung
+      }
       if (r.top[i] - r.rock[i] < 0.05) { ctx.fillStyle = 'rgba(90,95,105,.55)'; ctx.fillRect(px, py, CELL, CELL); }
       if (r.hard[i] && r.top[i] - r.rock[i] > 0.05) {
         ctx.strokeStyle = 'rgba(10,20,30,.45)'; ctx.lineWidth = 1; ctx.beginPath();
@@ -82,6 +85,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
       if (r.debris[i]) { ctx.fillStyle = '#f2f2f2'; ctx.fillRect(px + 5, py + 5, 6, 6); ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(px + 5.5, py + 5.5, 5, 5); }
     }
   }
+  drawDeposits(ctx, game, ui);
   // Auswahl einer Schiffsklasse: wo fehlt Tiefe, wo läuft die günstigste Rinne
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
   if (sel) drawClassOverlay(ctx, game, sel);
@@ -208,24 +212,69 @@ function drawPontoon(ctx, game, sim, ui) {
   }
 }
 
-// Kreuzungsstellen (gelbgrün gestrichelt, rot wenn der Platz fehlt) und im Setz-Modus die Spalten, in denen eine möglich ist
+// Rohstoffgebiete: bekannte Vorkommen goldgelb getönt, mit Konzession durchgezogener Rand; Name und Aufschlag darüber
+function drawDeposits(ctx, game, ui) {
+  const r = game.river;
+  for (const d of r.deposits ?? []) {
+    if (!d.known) continue;
+    const T = depositType(d.type);
+    for (let i = 0; i < r.dep.length; i++) {
+      if (r.dep[i] !== d.id) continue;
+      const x = i % r.cols, y = (i / r.cols) | 0;
+      ctx.fillStyle = d.owned ? 'rgba(255,215,80,.38)' : 'rgba(255,215,80,.18)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL);
+      if ((x + y) % 3 === 0) { ctx.fillStyle = d.owned ? '#fff4b8' : '#e8d27a'; ctx.beginPath(); ctx.arc(OX + x * CELL + CELL / 2, y * CELL + CELL / 2, 2.2, 0, Math.PI * 2); ctx.fill(); }
+    }
+    const px = OX + d.cx * CELL, py = d.cy * CELL;
+    ctx.strokeStyle = T.color; ctx.lineWidth = 2; ctx.setLineDash(d.owned ? [] : [6, 5]);
+    ctx.beginPath(); ctx.ellipse(px, py, d.rx * CELL, d.ry * CELL, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    const label = `${d.name.split(' (')[0]} ×${d.mult}${d.owned ? ' ✓' : ' (Konzession fehlt)'}`;
+    ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(label).width + 10;
+    ctx.fillStyle = '#000b'; ctx.fillRect(px - tw / 2, py - d.ry * CELL - fs(12) - 8, tw, fs(12) + 6); ctx.fillStyle = d.owned ? '#ffe9a0' : '#e8d9a0'; ctx.fillText(label, px, py - d.ry * CELL - 7); ctx.textAlign = 'start';
+  }
+}
+
+// Kreuzungsstellen: bereit = grün gestrichelt, geplant = gelb mit rot markierten Zellen, die noch ausgetragen werden müssen.
+// Im Setz-Modus zeigt jede Spalte, ob (grün) und wie viel (gelb bis orange) fehlt; unter der Maus steht die Zahl.
+function drawZoneWindows(ctx, game, plan, alpha = 0.45) {
+  const r = game.river;
+  for (const w of plan.wins ?? []) for (const a of [w.a, w.b]) for (let k = a; k < a + plan.beam; k++) {
+    const i = k * r.cols + w.x;
+    if (r.top[i] > plan.needTop || !r.zone[i]) { ctx.fillStyle = `rgba(255,70,60,${alpha})`; ctx.fillRect(OX + w.x * CELL, k * CELL, CELL, CELL); }
+  }
+  ctx.strokeStyle = 'rgba(255,230,120,.9)'; ctx.lineWidth = 1.5;
+  for (const w of plan.wins ?? []) for (const a of [w.a, w.b]) ctx.strokeRect(OX + w.x * CELL + 1, a * CELL + 1, CELL - 2, plan.beam * CELL - 2);
+}
+
 function drawZones(ctx, game, ui) {
-  const r = game.river, B = CONFIG.zones.width;
+  const r = game.river, B = CONFIG.zones.width, cid = game.zoneClassId, cls = shipById(cid);
   if (ui.zoneMode) {
     for (let x = 2; x <= r.cols - 3; x++) {
-      if (!zoneClasses(game, { x, w: B }).length) continue;
-      ctx.fillStyle = 'rgba(160,230,90,.10)'; ctx.fillRect(OX + x * CELL, 0, CELL, H);
-      ctx.fillStyle = 'rgba(160,230,90,.8)'; ctx.fillRect(OX + x * CELL + 3, 0, CELL - 6, 7);
+      const p = game.zonePlanFor(x, cid), v = p.volume;
+      const col = v === Infinity ? [255, 90, 80] : v <= 0 ? [160, 230, 90] : v < 300 ? [220, 230, 90] : v < 1200 ? [255, 190, 70] : [255, 140, 60];
+      ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${v === Infinity ? 0.05 : 0.10})`; ctx.fillRect(OX + x * CELL, 0, CELL, H);
+      ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},.85)`; ctx.fillRect(OX + x * CELL + 3, 0, CELL - 6, 7);
     }
-    ctx.font = font(13); const t = 'Kreuzungsstelle: Spalte antippen (grün = genug Platz), bestehende antippen = entfernen', w = ctx.measureText(t).width + 16;
-    ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H - fs(13) - 14, w, fs(13) + 8); ctx.fillStyle = '#d6f5a8'; ctx.fillText(t, OX + 14, H - 12);
+    const hx = ui.hoverX;
+    if (hx != null && hx >= 2 && hx <= r.cols - 3) {
+      const p = game.zonePlanFor(hx, cid);
+      drawZoneWindows(ctx, game, p, 0.35);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(OX + (hx - 1) * CELL, 1, B * CELL, H - 2);
+      const t = p.volume === Infinity ? `Hier zu schmal für ${cls.name} (auch mit Uferstreifen)` : p.volume <= 0 ? `Platz für ${cls.name} ist da` : `${cls.icon} fehlt noch ${Math.round(p.volume).toLocaleString('de-CH')} m³ Aushub${p.land ? ' (Ufer abtragen, Löffelbagger)' : ''}`;
+      ctx.font = font(14); const w = ctx.measureText(t).width + 18, bx = Math.min(W - w - 6, Math.max(6, OX + hx * CELL - w / 2));
+      ctx.fillStyle = '#000c'; ctx.fillRect(bx, 24, w, fs(14) + 10); ctx.fillStyle = p.volume === Infinity ? '#ffb4a8' : p.volume <= 0 ? '#d6f5a8' : '#ffe08a'; ctx.fillText(t, bx + 9, 24 + fs(14) + 2);
+    }
+    ctx.font = font(13); const t = `Kreuzungsstelle planen für ${cls.name} (${2 * cls.beam + 1} Zellen Breite nötig): Spalte antippen · grün = frei, gelb/orange = so viel fehlt noch`, w = ctx.measureText(t).width + 16;
+    ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H - fs(13) - 14, Math.min(w, W - OX - 12), fs(13) + 8); ctx.fillStyle = '#d6f5a8'; ctx.fillText(t, OX + 14, H - 12);
   }
   for (const z of game.zones ?? []) {
-    const cl = zoneClasses(game, z), ok = cl.length > 0, x0 = OX + (z.x - z.w / 2 + 0.5) * CELL;
-    ctx.fillStyle = ok ? 'rgba(160,230,90,.13)' : 'rgba(255,90,80,.16)'; ctx.fillRect(x0, 0, z.w * CELL, H);
-    ctx.strokeStyle = ok ? '#a6e65a' : '#ff7a6b'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+    const zc = z.cls ?? cid, p = game.zonePlanFor(z.x, zc), ready = p.ready, c = shipById(zc), x0 = OX + (z.x - z.w / 2 + 0.5) * CELL;
+    if (!ready) drawZoneWindows(ctx, game, p);
+    ctx.fillStyle = ready ? 'rgba(160,230,90,.13)' : 'rgba(255,200,70,.12)'; ctx.fillRect(x0, 0, z.w * CELL, H);
+    ctx.strokeStyle = ready ? '#a6e65a' : '#ffc94d'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
     ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.moveTo(x0 + z.w * CELL, 0); ctx.lineTo(x0 + z.w * CELL, H); ctx.stroke(); ctx.setLineDash([]);
-    ctx.font = font(12); ctx.textAlign = 'center'; const label = ok ? `Kreuzung ${cl.map((c) => c.icon).join('')}` : 'kein Platz mehr'; ctx.fillStyle = '#000b'; ctx.fillText(label, x0 + z.w * CELL / 2 + 1, 15); ctx.fillStyle = ok ? '#d6f5a8' : '#ffb4a8'; ctx.fillText(label, x0 + z.w * CELL / 2, 14); ctx.textAlign = 'start';
+    const label = ready ? `Kreuzung ${c.icon} ✓` : `Kreuzung ${c.icon}: fehlt ${p.volume === Infinity ? '?' : Math.round(p.volume) + ' m³'}`;
+    ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(label).width + 10;
+    ctx.fillStyle = '#000b'; ctx.fillRect(x0 + z.w * CELL / 2 - tw / 2, 3, tw, fs(12) + 6); ctx.fillStyle = ready ? '#d6f5a8' : '#ffe08a'; ctx.fillText(label, x0 + z.w * CELL / 2, 4 + fs(12)); ctx.textAlign = 'start';
   }
 }
 
@@ -319,6 +368,10 @@ export function drawSlice(ctx, game, sim, ui = {}) {
   const dark = ctx.createLinearGradient(0, SURF, 0, H); dark.addColorStop(0, 'rgba(0,0,0,0)'); dark.addColorStop(1, 'rgba(0,0,0,.4)');
   ctx.fillStyle = dark; ctx.fillRect(0, SURF, W, H - SURF);
   ctx.restore();
+  for (let c = 0; c < n; c++) { // Rohstoffvorkommen: goldene Tönung und Kennzeichnung
+    const dep = r.deposits?.[(r.dep[r.idx(sl.centerCol, sl.x0 + c)] || 0) - 1];
+    if (dep?.known) { const top = Y(hi[c]); ctx.fillStyle = dep.owned ? 'rgba(255,215,80,.30)' : 'rgba(255,215,80,.14)'; ctx.fillRect(c * U, top, U, Math.max(0, Y(Math.min(hi[c], Math.max(r.rock[r.idx(sl.centerCol, sl.x0 + c)], wl - 20))) - top)); ctx.fillStyle = '#ffe9a0'; ctx.fillRect(c * U + 2, top + 2, U - 4, 3); }
+  }
   // Land über Wasser: grüne Grasnarbe
   for (let c = 0; c < n; c++) {
     if (hi[c] > wl) { const strip = r.ext[r.idx(sl.centerCol, sl.x0 + c)] === 1; ctx.fillStyle = strip ? '#c9b050' : '#6fa05a'; ctx.fillRect(c * U, Y(hi[c]) - 3, U + 1, 8); }

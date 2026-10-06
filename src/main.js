@@ -2,8 +2,9 @@ import { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, car
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass } from './sim/traffic.js';
-import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, targetClass } from './sim/fleet.js';
+import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, targetClass } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
+import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
 import { toolName } from './sim/dredge.js';
 import { priceOf, trend } from './sim/market.js';
@@ -197,32 +198,73 @@ function updateMarket() {
   }));
 }
 
+let depositSig = null;
+function updateDeposits() {
+  const r = game.river, price = (d) => materialPrice(d.kind, game.stats, game.market);
+  const rows = r.deposits.map((d) => ({ d, rest: r.depositRemaining(d.id) }));
+  const sig = JSON.stringify([rows.map(({ d, rest }) => [d.id, d.known, d.owned, Math.round(rest / 5)]), Math.floor(game.money / 500), game.fleet.mine, Math.round(game.totals.premium / 100)]);
+  if (sig === depositSig) return;
+  depositSig = sig;
+  const box = $('deposits'), unknown = rows.filter(({ d }) => !d.known).length, eb = game.exploreBlock();
+  const items = rows.filter(({ d }) => d.known).map(({ d, rest }) => {
+    const worth = rest * price(d) * (d.mult - 1), block = game.concessionBlock(d.id);
+    return `<div class="unit"><div><b>${d.name}</b> <small>Spalte ${Math.round(d.cx) + 1} · Aufschlag ×${d.mult} · Rest ${num(rest)} m³ (Mehrwert ca. ${chf(worth)})<br>${d.owned ? '✓ Konzession erworben: Abbau wird mit Aufschlag bezahlt' : 'ohne Konzession kein Aufschlag'}</small></div>${d.owned ? '' : `<button data-conc="${d.id}" ${block ? 'disabled' : ''} title="${block ?? ''}">Konzession ${chf(d.cost)}</button>`}</div>`;
+  }).join('');
+  box.innerHTML = `<small>Hochwertige Vorkommen im Flussbett (Kies, Quarzsand, Erz): Mit Konzession wird der Abbau sofort mit Preisaufschlag bezahlt, zusätzlich zu Baggerentgelt und Verkauf. Das erste Vorkommen gehört dir schon: baggere dort zuerst. Bisher Aufschlag: ${chf(game.totals.premium)}.</small>
+    ${items}
+    ${unknown ? `<button id="btn-explore" class="primary" ${eb ? 'disabled' : ''}>Gebiet erkunden (${chf(CONFIG.deposits.exploreCost)}) · ${unknown} unbekannt</button>${eb ? `<small class="warn">${eb}</small>` : ''}` : '<small>Alle Vorkommen sind erkundet.</small>'}`;
+  for (const b of box.querySelectorAll('[data-conc]')) b.onclick = () => { if (game.buyConcession(+b.dataset.conc)) { depositSig = null; updateDeposits(); updatePanel(); } };
+  const eBtn = $('btn-explore'); if (eBtn) eBtn.onclick = () => { const d = game.explore(); if (d) { toast(`Gefunden: ${d.name} bei Spalte ${Math.round(d.cx) + 1}`, 'good', true); depositSig = null; updateDeposits(); updatePanel(); } };
+}
+
+let hazardSig = null;
+function updateHazard() {
+  const r = game.river, sum = r.altlastSummary(), price = Math.abs(CONFIG.materials[KIND.altlast].price * game.stats.disposalFactor);
+  const lanes = game.level.classes.map((id) => [id, game.fair?.[id]?.altlast ?? 0]).filter(([, v]) => v > 0.5);
+  const sig = JSON.stringify([Math.round(sum.volume), sum.cells, Math.round(sum.corridor), lanes.map(([id, v]) => [id, Math.round(v)]), game.totals.sunk, Math.round(price)]);
+  if (sig === hazardSig) return;
+  hazardSig = sig;
+  const rows = lanes.map(([id, v]) => `<div class="frow"><div>${shipById(id).icon} <b>${shipById(id).name}</b><br><small>Altlast in der Rinne, die weg muss</small></div><div style="text-align:right"><span class="no">${num(v)} m³</span><br><small>≈ ${chf(v * price)} Entsorgung</small></div></div>`).join('');
+  $('hazard').innerHTML = sum.cells ? `<div><b>${num(sum.volume)} m³</b> Altlast in ${sum.cells} Zellen (davon im Baggerkorridor ${num(sum.corridor)} m³)</div>
+    <small>Auf der Karte orange mit ☢. Entsorgung kostet ${chf(price)} pro m³ (Entwässerung senkt es), Abtrag trübt stärker. Quellen: alte Industrie (beim Start ausgewiesen) und gesunkene Schiffe (Öl, Chemie, Treibstoff).${game.totals.sunk ? ` Bisher gesunken: ${game.totals.sunk}.` : ''}</small>${rows}` : '<small>Keine Altlasten im Fluss. Sinkt ein Schiff, entstehen welche (Öl, Chemie, Treibstoff).</small>';
+}
+
 let trafficSig = null;
 function updateTrafficPanel() {
-  const st = game.stats, cap = bayCapacity(game), mz = maxZones(game);
-  const sig = JSON.stringify([cap, mz, game.zones.map((z) => [z.id, z.x, zoneClasses(game, z).length]), zoneMode, game.totals.turnedAway, st.signals, st.tugs, Math.floor(game.money / 500)]);
+  const st = game.stats, cap = bayCapacity(game), mz = maxZones(game), cid = game.zoneClassId, cls = shipById(cid);
+  const plans = game.zones.map((z) => { const p = game.zonePlanFor(z.x, z.cls ?? cid); return [z.id, z.x, z.cls ?? cid, p.ready, Math.round(p.volume === Infinity ? -1 : p.volume)]; });
+  const sig = JSON.stringify([cap, mz, plans, cid, zoneMode, game.totals.turnedAway, st.signals, st.tugs, Math.floor(game.money / 500)]);
   if (sig === trafficSig) return;
   trafficSig = sig;
   const box = $('trafficpanel');
-  const rows = game.zones.map((z) => { const cl = zoneClasses(game, z); return `<div class="unit"><div><b>Kreuzung bei Spalte ${z.x + 1}</b> <small>${cl.length ? cl.map((c) => c.icon).join(' ') + ' können sich hier begegnen' : 'kein Platz mehr für zwei Rinnen'}</small></div><button data-zone="${z.id}">Entfernen</button></div>`; }).join('');
+  const opts = (sel) => game.level.classes.map((id) => `<option value="${id}" ${id === sel ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name} (${2 * shipById(id).beam + 1} Zellen)</option>`).join('');
+  const rows = game.zones.map((z, k) => { const [, , zc, ready, vol] = plans[k]; return `<div class="unit"><div><b>Kreuzung bei Spalte ${z.x + 1}</b> <small>${ready ? '✓ bereit: Schiffe begegnen sich hier' : vol < 0 ? 'kein Platz, auch nicht mit Uferstreifen' : `geplant: fehlt noch ${num(vol)} m³ Aushub`}<br><select data-zcls="${z.id}">${opts(zc)}</select></small></div><button data-zone="${z.id}">Entfernen</button></div>`; }).join('');
   box.innerHTML = `<div>Warteplatz: <b>${cap}</b> Schiff${cap > 1 ? 'e' : ''} je Seite · Kreuzungsstellen <b>${game.zones.length}/${mz}</b></div>
-    <small>Wer keinen Platz im Warteplatz findet, dreht ab (bisher ${game.totals.turnedAway}). Rotlichter (Signalanlage) und Schlepper bauen den Warteplatz aus, Rotlichter erlauben weitere Kreuzungsstellen, Schlepper machen grosse Schiffe schneller. In einer Kreuzungsstelle (genug Platz für zwei Rinnen) warten Schiffe aufeinander und fahren dann aneinander vorbei, auch in einer Einbahnrinne.</small>
-    ${rows}<button id="btn-zone2" class="primary">${zoneMode ? '✔ Fertig (K)' : `↔ Kreuzungsstelle setzen oder entfernen (${chf(CONFIG.zones.cost)}, K)`}</button>`;
+    <small>Wer keinen Platz im Warteplatz findet, dreht ab (bisher ${game.totals.turnedAway}). Rotlichter (Signalanlage) und Schlepper bauen den Warteplatz aus, Rotlichter erlauben weitere Kreuzungsstellen, Schlepper machen grosse Schiffe schneller.</small>
+    <small>Kreuzen brauchen zwei Rinnen nebeneinander: <b>2 × Schiffsbreite + 1 Zelle</b> quer zum Fluss (Lastkahn und Motorschiff 5, Tanker und Container 7, Schubverband 9 Zellen), durchgehend so tief wie die Klasse braucht, auf 3 Spalten. Kreuzungsstellen lassen sich überall <b>planen</b>: die Karte zeigt, wie viel noch auszutragen ist (rot markiert). Die Flotte baut geplante Stellen aus.</small>
+    <label class="fleet-widen">Planen für <select id="zone-cls">${opts(cid)}</select></label>
+    ${rows}<button id="btn-zone2" class="primary">${zoneMode ? '✔ Fertig (K)' : `↔ Kreuzungsstelle planen oder entfernen (${chf(CONFIG.zones.cost)}, K)`}</button>`;
   $('btn-zone2').onclick = toggleZoneMode;
+  $('zone-cls').onchange = (e) => { game.zoneClass = e.target.value; trafficSig = null; updateTrafficPanel(); };
   for (const b of box.querySelectorAll('[data-zone]')) b.onclick = () => { game.removeZone(+b.dataset.zone); trafficSig = null; updateTrafficPanel(); };
+  for (const sel of box.querySelectorAll('[data-zcls]')) sel.onchange = (e) => { game.setZoneClass(+sel.dataset.zcls, e.target.value); trafficSig = null; updateTrafficPanel(); };
 }
 function toggleZoneMode() {
-  if (tow || sim.mode !== 'map') { toast('Kreuzungsstellen setzt du auf der Karte', 'info', true); return; }
+  if (tow || sim.mode !== 'map') { toast('Kreuzungsstellen planst du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
   zoneMode = !zoneMode; ui.zoneMode = zoneMode; trafficSig = null; mapTarget = null;
-  $('btn-zone').textContent = zoneMode ? '✔ Kreuzungsstellen: fertig (K)' : '↔ Kreuzungsstelle setzen (K)';
+  $('btn-zone').textContent = zoneMode ? '✔ Kreuzungsstellen: fertig (K)' : '↔ Kreuzungsstelle planen (K)';
   updateTrafficPanel();
-  if (zoneMode) toast('Spalte antippen: grün = genug Platz für zwei Rinnen', 'info', true);
+  if (zoneMode) { const c = shipById(game.zoneClassId); toast(`Planen für ${c.name}: Spalte antippen, die Zahl zeigt den fehlenden Aushub`, 'info', true); }
 }
 function zoneClick(px, py) {
   void py;
   const x = Math.floor((px - OX) / CELL), near = game.zones.find((z) => Math.abs(z.x - x) <= 1);
   if (near) { game.removeZone(near.id); toast('Kreuzungsstelle entfernt', 'info', true); }
-  else { const why = game.zoneBlock(x); if (why) toast(why, 'bad', true); else if (game.placeZone(x)) toast('Kreuzungsstelle ausgewiesen', 'good', true); }
+  else {
+    const why = game.zoneBlock(x);
+    if (why) toast(why, 'bad', true);
+    else if (game.placeZone(x)) { const z = game.zones[game.zones.length - 1], p = game.zonePlanFor(z.x, z.cls); toast(p.ready ? 'Kreuzungsstelle ausgewiesen: sofort nutzbar' : `Kreuzungsstelle geplant: noch ${num(p.volume)} m³ Aushub`, 'good', true); }
+  }
   trafficSig = null; updateTrafficPanel();
 }
 
@@ -246,7 +288,7 @@ function updateConcrete() {
 let fleetSig = null;
 function updateFleet() {
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, game.stats.betonrohr, Math.round(game.concrete / 10)]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
@@ -255,10 +297,12 @@ function updateFleet() {
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
     <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
+    <label class="fleet-widen"><input type="checkbox" id="fleet-mine" ${F.mine ? 'checked' : ''}> Rohstoffe abbauen: freie Pontons baggern Vorkommen mit Konzession (Preisaufschlag)</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-pour" ${F.pour ? 'checked' : ''} ${game.stats.betonrohr > 0 ? '' : 'disabled'}> Rinne betonieren (Betoniergerät und Beton nötig): freie Pontons verhärten Rinne und Böschung</label>
     <label class="fleet-goal">Ausbauziel <select id="fleet-goal">${opts}</select></label>
     <small>${cls ? `Aktuell: ${cls.icon} ${cls.name}` : 'Alle Klassen fahren'}</small>
     <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
+  $('fleet-mine').onchange = (e) => { setMine(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-pour').onchange = (e) => { setPour(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-widen').onchange = (e) => { setWiden(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-widthsel').onchange = (e) => { setWiden(game, F.widen, +e.target.value); fleetSig = null; updateFleet(); };
@@ -326,7 +370,7 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+function updatePanel() { updateDeposits(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -571,7 +615,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; zoneMode = false; ui.zoneMode = false; tow = null;
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; tow = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -603,6 +647,11 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
+canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
+  if (!zoneMode) { ui.hoverX = null; return; }
+  const r = canvas.getBoundingClientRect();
+  ui.hoverX = Math.floor((((e.clientX - r.left) / r.width) * canvas.logicalW - OX) / CELL);
+});
 canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfernt eine Kreuzungsstelle (Touch läuft über onTap)
   if (!zoneMode || e.pointerType === 'touch' || sim.mode !== 'map' || tow) return;
   const r = canvas.getBoundingClientRect();

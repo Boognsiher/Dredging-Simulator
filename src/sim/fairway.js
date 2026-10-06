@@ -1,4 +1,4 @@
-import { CONFIG, SHIPS } from '../config.js';
+import { CONFIG, SHIPS, KIND } from '../config.js';
 
 // Fahrrinnen-Analyse: Für jede Schiffsklasse wird die günstigste Rinne von links nach rechts gesucht (Dijkstra über die Zellen).
 // Eine Rinnenposition (x, y) deckt `beam` Zellen quer zum Fluss ab; jede davon muss im Baggerkorridor liegen und genug Wasser
@@ -129,17 +129,46 @@ export function crossColumns(river, def, beam) {
   return out;
 }
 
+// Planung einer Kreuzungsstelle (Mitte xc, drei Spalten) für eine Klasse: in jeder Spalte müssen zwei getrennte Rinnen (je beam Zeilen, eine Zeile Abstand)
+// tief genug sein. Berechnet je Spalte die günstigsten zwei Fenster und das fehlende Volumen (m³). Zellen im Ausbaustreifen (Land, Flachwasser) zählen mit,
+// sie müssen dafür abgetragen werden; Zellen ausserhalb davon sperren. volume = Infinity, wenn auch so kein Platz ist.
+export function zonePlan(river, wl, cls, xc, w = 3) {
+  const needTop = wl - needDepth(cls) + EPS, beam = cls.beam, rows = river.rows, wins = [];
+  let volume = 0, land = false, rock = false, armor = false;
+  for (let x = xc - Math.floor(w / 2); x <= xc + Math.floor(w / 2); x++) {
+    if (x < 0 || x >= river.cols) return { volume: Infinity, wins: null };
+    const c = new Array(rows);
+    for (let y = 0; y < rows; y++) {
+      const i = y * river.cols + x;
+      c[y] = river.zone[i] ? Math.max(0, river.top[i] - needTop) : river.ext[i] ? Math.max(0.05, river.top[i] - needTop) : Infinity;
+    }
+    const wc = [];
+    for (let a = 0; a + beam <= rows; a++) { let t = 0; for (let k = a; k < a + beam; k++) t += c[k]; wc.push(t); }
+    let best = Infinity, ba = -1, bb = -1;
+    for (let a = 0; a < wc.length; a++) for (let b = a + beam + 1; b < wc.length; b++) if (wc[a] + wc[b] < best) { best = wc[a] + wc[b]; ba = a; bb = b; }
+    if (best === Infinity) return { volume: Infinity, wins: null };
+    volume += best * river.area;
+    wins.push({ x, a: ba, b: bb });
+    for (const a of [ba, bb]) for (let k = a; k < a + beam; k++) {
+      const i = k * river.cols + x;
+      if (!river.zone[i]) land = true;
+      if (river.top[i] > needTop) { if (river.rock[i] > needTop) rock = true; if (river.armor[i] > 0) armor = true; }
+    }
+  }
+  return { volume, wins, land, rock, armor, needTop, beam };
+}
+
 export function analyzeClass(river, wl, cls) {
   const need = needDepth(cls), def = deficits(river, wl, need), beam = cls.beam;
   const nodes = bestPath(river, def, beam, river.flow, null);
   const res = { id: cls.id, need, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
   if (!nodes) return res; // Baggerkorridor ist zu schmal für dieses Schiff
   const cov = covered(river, nodes, beam);
-  let miss = 0, worst = 0, worstX = nodes[0].x;
+  let miss = 0, worst = 0, worstX = nodes[0].x, altlast = 0;
   const perCol = new Map();
-  for (const i of cov) { const m = def[i]; miss += m; if (m > 0) perCol.set(i % river.cols, (perCol.get(i % river.cols) ?? 0) + m); }
+  for (const i of cov) { const m = def[i]; miss += m; if (m > 0 && river.kind[i] === KIND.altlast) altlast += Math.min(m, river.top[i] - river.rock[i]) * river.area; if (m > 0) perCol.set(i % river.cols, (perCol.get(i % river.cols) ?? 0) + m); }
   for (const [x, m] of perCol) if (m > worst) { worst = m; worstX = x; }
-  res.volume = miss * river.area;
+  res.volume = miss * river.area; res.altlast = altlast; // davon Altlast (m³)
   res.passable = miss <= 1e-6;
   const sp = smoothPath(river, nodes, beam);
   res.path = sp; res.length = sp.length; res.nodes = nodes;

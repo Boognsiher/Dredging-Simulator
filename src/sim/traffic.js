@@ -1,4 +1,4 @@
-import { CONFIG, SHIPS, CARGOS, shipById, cargoById } from '../config.js';
+import { CONFIG, SHIPS, CARGOS, DEBRIS, shipById, cargoById } from '../config.js';
 import { priceOf, ratioOf } from './market.js';
 import { minDepthAt, pointOnPath } from './fairway.js';
 import { creditContracts } from './contracts.js';
@@ -106,6 +106,21 @@ function assignMeets(g, ship, opposing, ships) {
   return res;
 }
 
+const C0 = CONFIG;
+// Schiff sinkt: Wrack als Untiefe in der Rinne (Hindernis für die Pumpe), Altlast ringsum, Umweltbusse
+function sinkShip(g, ship, p) {
+  const K = CONFIG.sinking, cls = shipById(ship.cls), hazard = ship.cargo === 'oel' || ship.cargo === 'chemie', r = g.river;
+  const n = r.contaminate(p.x, p.y, hazard ? K.spillRadius : K.leakRadius, K.raise);
+  const hx = Math.min(r.cols - 1, Math.max(0, Math.floor(p.x))), hy = Math.min(r.rows - 1, Math.max(0, Math.floor(p.y)));
+  r.debris[r.idx(hx, hy)] = DEBRIS.length - 1; // Schiffswrack (die Bombe bleibt der letzte Eintrag)
+  const fine = Math.round((cls.fee * 3 + (hazard ? K.fineHazard : K.fineBase)) / 100) * 100;
+  g.money -= fine; g.totals.sunk++; g.totals.sunkFines += fine; g.today.costs += fine;
+  const what = hazard ? (ship.cargo === 'oel' ? 'Öl' : 'Chemie') : 'Treibstoff';
+  g.say(`${cls.name} gesunken bei Spalte ${hx + 1}! ${what} läuft aus: ${n} Zellen Altlast, Wrack in der Rinne, Umweltbusse −${fine} CHF`, 'bad');
+  g.notify(`${cls.name} gesunken! Wrack und Altlast bei Spalte ${hx + 1} (−${fine.toLocaleString('de-CH')} CHF)`, 'bad');
+  g.flash.push({ x: p.x, y: p.y, text: '☢', color: '#ff9d4a' });
+}
+
 export function updateTraffic(g, dt) {
   const T = g.traffic, C = CONFIG.traffic, ships = T.ships, vts = g.stats.vts;
   T.spawnIn -= dt;
@@ -132,6 +147,7 @@ export function updateTraffic(g, dt) {
       if (ship.ground <= 0) {
         const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
         if (depth >= cls.draught - C.groundMargin - 0.1 * vts) { ship.state = 'sail'; g.say(`${cls.name} ist wieder flott.`, 'info'); }
+        else if (g.rng() < (C0.sinking.risk[ship.cargo] ?? 0.2)) { sinkShip(g, ship, p); ship.state = 'left'; }
         else { ship.state = 'left'; g.totals.towed++; g.say(`${cls.name} wurde abgeschleppt (ohne Gebühr).`, 'bad'); }
       }
       continue;

@@ -22,7 +22,8 @@ export const CONFIG = {
   hard: { factor: 1.5 }, // harte Schicht: Leistung geteilt durch (1 + Härte * factor)
   box: { cols: 4 }, // der Ponton baggert gleichzeitig 4 Karten-Spalten (Flussrichtung) und 16 Zellen quer zum Fluss
   // Baggerentgelt der Wasserstrassenverwaltung für Material aus dem Baggerkorridor; Naturschutzzone (Ufer, Flachwasser) kostet
-  pay: { perM3: 28, protectFine: 220, landFee: 14 }, // landFee: Landerwerb/Entsorgung pro m³ Aushub aus dem Ausbaustreifen am Ufer
+  deposits: { exploreCost: 1500 },
+  pay: { perM3: 40, protectFine: 220, landFee: 14 }, // landFee: Landerwerb/Entsorgung pro m³ Aushub aus dem Ausbaustreifen am Ufer
   // Material der Flusssohle (Index = Wert in river.kind). Preis in CHF pro m³ nach der Aufbereitung: positiv = Verkauf, negativ = Entsorgung.
   // Der Kiespreis folgt dem Markt (Fracht "Kies & Sand").
   materials: [
@@ -56,6 +57,7 @@ export const CONFIG = {
     { zone: 0.18, hits: 3, speed: 1.3, clog: 8 }, // Schiffsanker
     { zone: 0.42, hits: 1, speed: 0.9, clog: 3 }, // Fischernetz-Rest: weich
     { zone: 0.16, hits: 3, speed: 1.2, clog: 9 }, // Autowrack
+    { zone: 0.15, hits: 3, speed: 1.2, clog: 9 }, // Schiffswrack
     { zone: 0.14, hits: 3, speed: 1.0, clog: 10 }, // Fliegerbombe (Blindgänger, bitte nicht zucken)
   ],
   turbidityFineThreshold: 0.8, turbidityFinePerSecond: 150, turbidityGain: 30, turbidityDecay: 0.08,
@@ -101,6 +103,9 @@ export const CONFIG = {
   dailyCost: 450, perUpgradeLevelCost: 22, // Betrieb und Wartung pro Tag (CHF), plus je ausgebaute Stufe
   advisor: { firstAfter: 18, gap: 55, tipCooldown: 240, tau: 30, eventWindow: 120, bufferFull: 0.45, turbidity: 0.55, richMoney: 40000 },
   refundShare: 0.75,
+  // Schiffsuntergang: kommt ein aufgelaufenes Schiff nicht frei (Schlepper müssen es aufgeben), sinkt es mit dieser Wahrscheinlichkeit (je Fracht).
+  // Dann liegt ein Wrack als Untiefe in der Rinne, und ausgelaufener Treibstoff, Öl oder Chemie macht den Boden ringsum zur Altlast.
+  sinking: { risk: { oel: 0.8, chemie: 0.9, kohle: 0.3, erz: 0.3, container: 0.25, getreide: 0.2, kies: 0.15 }, leakRadius: 1.4, spillRadius: 3.2, raise: 1.0, fineBase: 1500, fineHazard: 6000 },
   // Beton: verhärtet die oberste Sedimentschicht (Boden und Seiten). Verhärtete Zellen verlanden und rutschen kaum noch, müssen zum Tieferbaggern aber
   // erst aufgebrochen werden (Saugkopf fast nutzlos, Löffel schafft es; Bruch zählt als Fels). Anfangs wird Beton gekauft, später mischt ihn das Betonwerk
   // aus Kies und Sand des Flusses (plus Zement).
@@ -119,14 +124,14 @@ export const KIND = { schlick: 0, sand: 1, kies: 2, altlast: 3, fels: 4 };
 
 // Basiswerte ohne Upgrades
 export const BASE_STATS = {
-  power: 8.0, // m³/s Saugleistung
+  power: 10.0, // m³/s Saugleistung
   radius: 1.8, // Zellen
   speed: 4.0, // Zellen/s (Ponton auf der Karte)
   headSpeed: 4.8, // Einheiten/s: Höchsttempo der Pumpe an Katze und Kette
   curtain: 0, // Trübungsschutz (0..1)
   suctionSpeedFactor: 0.55,
-  plantCapacity: 4.5, // m³/s, die die Anlage verarbeitet
-  bufferCapacity: 140, // m³ Puffer vor der Anlage; ist er voll, muss das Saugen pausieren
+  plantCapacity: 5.5, // m³/s, die die Anlage verarbeitet
+  bufferCapacity: 160, // m³ Puffer vor der Anlage; ist er voll, muss das Saugen pausieren
   disposalFactor: 1, // Faktor auf Entsorgungskosten (Entwässerung senkt ihn)
   sortBonus: 1, // Faktor auf Verkaufserlöse (Sortieranlage hebt ihn)
   rockFirmness: 0.04, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
@@ -150,7 +155,7 @@ export const BASE_STATS = {
 
 // Jedes Upgrade: Stufe n kostet baseCost * growth^n, wirkt über apply()
 export const UPGRADES = {
-  power: { group: 'ponton', name: 'Saugpumpe', desc: 'Mehr m³ pro Sekunde', maxLevel: 8, baseCost: 8000, growth: 1.5, apply: (s, l) => { s.power += l * 1.6; } },
+  power: { group: 'ponton', name: 'Saugpumpe', desc: 'Mehr m³ pro Sekunde', maxLevel: 8, baseCost: 6000, growth: 1.5, apply: (s, l) => { s.power += l * 2.0; } },
   radius: { group: 'ponton', name: 'Saugkopf', desc: 'Grössere Saugfläche', maxLevel: 5, baseCost: 6000, growth: 1.6, apply: (s, l) => { s.radius += l * 0.5; } },
   speed: { group: 'ponton', name: 'Ponton-Antrieb', desc: 'Schnelleres Fahren auf der Karte', maxLevel: 5, baseCost: 5000, growth: 1.5, apply: (s, l) => { s.speed += l * 0.6; } },
   winch: { group: 'ponton', name: 'Katze & Winde', desc: 'Pumpe fährt und taucht schneller (Höchsttempo)', maxLevel: 5, baseCost: 5000, growth: 1.5, apply: (s, l) => { s.headSpeed += l * 0.7; } },
@@ -161,8 +166,8 @@ export const UPGRADES = {
   betonrohr: { group: 'ponton', name: 'Betoniergerät', desc: 'Verhärtet Boden und Ufer (V = Gerät wechseln): weniger Verlandung und Rutschung. Zum Tieferbaggern muss der Beton wieder aufgebrochen werden (Löffel)', maxLevel: 3, baseCost: 11000, growth: 1.6, apply: (s, l) => { s.betonrohr = l; s.pourPower = l > 0 ? 2 + 2 * (l - 1) : 0; } },
   mixer: { group: 'plant', name: 'Betonwerk', desc: 'Mischt Beton aus Kies und Sand des Flusses (plus Zement), viel billiger als Zukaufen', maxLevel: 3, baseCost: 16000, growth: 1.7, apply: (s, l) => { s.mixer = l; s.mixRate = 0.2 * l; } },
   echolot: { group: 'ponton', name: 'Echolot', desc: 'Genauere Peilung: die Automatik trifft die Solltiefe besser', maxLevel: 2, baseCost: 9000, growth: 1.8, apply: (s, l) => { s.echolot = l; } },
-  auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 15000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
-  plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer', maxLevel: 6, baseCost: 10000, growth: 1.5, apply: (s, l) => { s.plantCapacity += l * 1.2; s.bufferCapacity += l * 45; } },
+  auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 12000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
+  plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer', maxLevel: 6, baseCost: 7000, growth: 1.5, apply: (s, l) => { s.plantCapacity += l * 1.2; s.bufferCapacity += l * 45; } },
   dewater: { group: 'plant', name: 'Entwässerung', desc: 'Trockeneres Material: Entsorgung wird günstiger', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.disposalFactor = Math.max(0.4, 1 - l * 0.15); } },
   sorter: { group: 'plant', name: 'Sortieranlage', desc: 'Kies und Sand besser verkaufen', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.sortBonus = 1 + l * 0.2; } },
   beacons: { group: 'traffic', name: 'Betonnung & Leuchtfeuer', desc: 'Sicher auch bei Nacht: mehr Schiffe pro Tag', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.trafficMult = 1 + l * 0.18; } },
@@ -194,8 +199,17 @@ export const CARGOS = [
 ];
 export const cargoById = (id) => CARGOS.find((c) => c.id === id);
 
+// Rohstoffvorkommen im Flussbett: hochwertiges Material, das mit Konzession (im Panel erwerben) einen Preisaufschlag bringt (mult mal Materialpreis,
+// der Aufschlag wird sofort bar bezahlt). Neue Vorkommen müssen erst erkundet werden. kind = Material der Zellen, cost = Konzession in CHF.
+export const DEPOSITS = [
+  { id: 'kiesbank', name: 'Kiesbank (Premium-Kies)', kind: 2, mult: 3.0, cost: 2500, color: '#e6cf86' },
+  { id: 'quarz', name: 'Quarzsand (Glasindustrie)', kind: 1, mult: 4.5, cost: 6000, color: '#f4f2e8' },
+  { id: 'seife', name: 'Erzseife (Schwermineralsand)', kind: 1, mult: 9, cost: 12000, color: '#f0b838' },
+];
+export const depositType = (id) => DEPOSITS.find((d) => d.id === id);
+
 // Fremdstoffe im Fluss (Index = Wert in river.debris - 1)
-export const DEBRIS = ['Einkaufswagen', 'Velo', 'Gummiente (gross)', 'Schiffsanker', 'Fischernetz', 'Autowrack', 'Fliegerbombe (Blindgänger!)'];
+export const DEBRIS = ['Einkaufswagen', 'Velo', 'Gummiente (gross)', 'Schiffsanker', 'Fischernetz', 'Autowrack', 'Schiffswrack (Rumpf)', 'Fliegerbombe (Blindgänger!)'];
 
 // ---------- Levels ----------
 // river: Parameter der Flussgenerierung. bars = Barren über die ganze Breite (Höhe in m, die die Rinne dort flacher ist),
@@ -205,21 +219,21 @@ export const LEVELS = [
   {
     id: 'hochrhein', name: 'Hochrhein: Basel–Birsfelden', short: 'Hochrhein',
     blurb: 'Der Klassiker: breiter Fluss, ein paar Barren, ein harmloser Felsriegel. Erst kommen nur Kähne durch, mit Baggern kommen Tanker und Containerschiffe.',
-    river: { halfWidth: 6.8, depthMax: 2.4, rockDepth: 6.4, meander: 2.4, bars: [{ x: 9, w: 3.5, raise: 0.5 }, { x: 22, w: 4, raise: 0.55 }, { x: 36, w: 3.5, raise: 0.45 }], ridges: [{ x: 30, w: 4, depth: 4.3 }], shoals: 5, altlast: 2, hardBlobs: 3, debris: 14 },
-    classes: ['kahn', 'motor', 'tank', 'container'], traffic: 1, goalTons: 70000, startMoney: 50000, deadlineDays: 120, turbidityMult: 1,
+    river: { halfWidth: 6.8, depthMax: 2.4, rockDepth: 6.4, meander: 2.4, bars: [{ x: 9, w: 3.5, raise: 0.5 }, { x: 22, w: 4, raise: 0.55 }, { x: 36, w: 3.5, raise: 0.45 }], ridges: [{ x: 30, w: 4, depth: 4.3 }], shoals: 5, altlast: 2, hardBlobs: 3, debris: 14, deposits: ['kiesbank', 'quarz', 'seife'] },
+    classes: ['kahn', 'motor', 'tank', 'container'], traffic: 1, goalTons: 70000, startMoney: 60000, deadlineDays: 120, turbidityMult: 1,
     palette: { water: [38, 120, 160], land: [96, 130, 78] },
   },
   {
     id: 'loreley', name: 'Mittelrhein: Loreley-Enge', short: 'Loreley',
     blurb: 'Schmal, felsig und viel Verkehr. Zwei Felsriegel sperren die Grossen aus: ohne Felsfräse kommt kein Schubverband durch, und an der Enge ist Gegenverkehr ein Thema.',
-    river: { halfWidth: 5.6, depthMax: 2.3, rockDepth: 5.2, meander: 2.8, bars: [{ x: 7, w: 3, raise: 0.5 }, { x: 18, w: 3.5, raise: 0.5 }, { x: 38, w: 3, raise: 0.5 }], ridges: [{ x: 13, w: 4.5, depth: 3.6 }, { x: 30, w: 4, depth: 3.3 }], shoals: 4, altlast: 3, hardBlobs: 7, debris: 18 },
+    river: { halfWidth: 5.6, depthMax: 2.3, rockDepth: 5.2, meander: 2.8, bars: [{ x: 7, w: 3, raise: 0.5 }, { x: 18, w: 3.5, raise: 0.5 }, { x: 38, w: 3, raise: 0.5 }], ridges: [{ x: 13, w: 4.5, depth: 3.6 }, { x: 30, w: 4, depth: 3.3 }], shoals: 4, altlast: 3, hardBlobs: 7, debris: 18, deposits: ['kiesbank', 'quarz', 'quarz', 'seife'] },
     classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.3, goalTons: 110000, startMoney: 55000, deadlineDays: 120, turbidityMult: 1.1,
     palette: { water: [44, 104, 124], land: [92, 100, 84] },
   },
   {
     id: 'donau', name: 'Donau: Eisernes Tor', short: 'Eisernes Tor',
     blurb: 'Breiter Strom, harter Fels und alte Industrie am Ufer: viele Altlasten, viele Blindgänger. Wer hier den Schubverbänden die Rinne öffnet, verdient richtig.',
-    river: { halfWidth: 7.4, depthMax: 2.6, rockDepth: 5.0, meander: 2.2, bars: [{ x: 8, w: 3.5, raise: 0.6 }, { x: 20, w: 4, raise: 0.6 }, { x: 33, w: 3.5, raise: 0.6 }], ridges: [{ x: 14, w: 4, depth: 3.5 }, { x: 27, w: 5, depth: 3.2 }, { x: 40, w: 3, depth: 3.6 }], shoals: 6, altlast: 6, hardBlobs: 8, debris: 22 },
+    river: { halfWidth: 7.4, depthMax: 2.6, rockDepth: 5.0, meander: 2.2, bars: [{ x: 8, w: 3.5, raise: 0.6 }, { x: 20, w: 4, raise: 0.6 }, { x: 33, w: 3.5, raise: 0.6 }], ridges: [{ x: 14, w: 4, depth: 3.5 }, { x: 27, w: 5, depth: 3.2 }, { x: 40, w: 3, depth: 3.6 }], shoals: 6, altlast: 6, hardBlobs: 8, debris: 22, deposits: ['kiesbank', 'kiesbank', 'quarz', 'seife', 'seife'] },
     classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.5, goalTons: 160000, startMoney: 60000, deadlineDays: 130, turbidityMult: 1,
     palette: { water: [56, 110, 110], land: [108, 112, 80] },
   },

@@ -6,7 +6,7 @@ import { CONFIG, DEBRIS, KIND } from '../config.js';
 // work = Arbeitsrichtung: nur nach rechts wird gesaugt; der Rückweg saugt nicht.
 export const SLICE = { cols: 16, viewH: 7.6, below: 6.1, work: { x: 1, y: 1 }, returnBoost: 1.6, minWaterDepth: 0.5 };
 
-const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0 };
+const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0, dep: {} };
 
 // Geräte: Saugkopf, Löffelbagger (Upgrade loeffel), Betoniergerät (Upgrade betonrohr)
 export const TOOLS = ['pump', 'loeffel', 'beton'];
