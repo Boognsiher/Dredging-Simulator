@@ -109,7 +109,7 @@ export function updateTraffic(g, dt) {
     const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
     if (p.x > 0 && p.x < g.river.cols && depth < cls.draught - C.groundMargin - 0.1 * vts) {
       const cost = Math.round((cls.fee * C.salvageFactor * (1 - 0.25 * vts)) / 10) * 10;
-      ship.state = 'grounded'; ship.ground = C.groundSeconds * (1 - 0.25 * vts);
+      ship.state = 'grounded'; ship.ground = C.groundSeconds * (1 - 0.25 * vts); ship.salvage = cost;
       g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost;
       g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
       g.notify(`${cls.name} aufgelaufen! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad');

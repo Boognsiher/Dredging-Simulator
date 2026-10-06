@@ -32,6 +32,16 @@ Steuerung, Aufbau und Oberfläche folgen dem Seesanierungs-Spiel ([Romans-Altlas
 - **Flotte:** Mit der Automatik (Stufe 1 und höher) kannst du bis zu vier **Pontons mieten** (Panel «Flotte», Kosten steigen, Löhne pro Tag). Sie fahren selbstständig zur nächsten Engstelle des
   **Ausbauziels** (Klasse wählbar, Standard: die kleinste, die noch nicht fährt), ankern, baggern per Automatik auf Solltiefe (bei Fels mit dem Löffel, wenn vorhanden) und suchen danach die nächste Stelle.
   Du musst den Querschnitt nicht mehr öffnen; dein eigener Ponton bleibt frei steuerbar. Pontons ohne Arbeit melden, was fehlt (z. B. «Fels im Weg»). Ankernde Pontons bremsen den Verkehr.
+- **Land-Automatik:** In der Flotte lässt sich «Ufer verbreitern» einschalten (braucht den Löffelbagger, 1–5 Zeilen Breite wählbar). Der letzte gemietete Ponton baut dann selbstständig
+  den Ausbaustreifen neben dem Korridor ab, bis die Tiefe der Ausbauklasse erreicht ist. So entstehen zusätzliche Korridorzellen für breitere Rinnen und Gegenverkehr. Das ist viel Material und dauert.
+- **Beton:** Das Betoniergerät (Upgrade, `V` wechselt das Gerät) verhärtet die oberste Sedimentschicht von Boden und Seiten (Leertaste bringt Beton aus, Kosten: Betonvorrat).
+  Verhärtete Zellen **verlanden kaum noch** (auch bei Hochwasser) und **rutschen nicht nach**. Wer später tiefer baggern will, muss den Beton **aufbrechen**: der Saugkopf schafft das fast nicht,
+  der Löffelbagger schon (Bruch zählt als Fels und wird als Schotter verwertet). Die Flotte nimmt dafür den Löffel; ohne Löffel meldet sie «Beton im Weg».
+  Beton wird anfangs **gekauft** (Panel «Beton», 110 CHF/m³). Mit dem **Betonwerk** (Anlage ausbauen) mischst du ihn selbst aus Kies und Sand des Flusses (die Anlage leitet sie ins Lager um, wenn der Haken gesetzt ist)
+  plus Zement (38 CHF/m³): deutlich billiger.
+- **Aufläufer-Minispiel:** Läuft ein Schiff auf Grund (Niedrigwasser, Verlandung), blockiert es die Rinne. Fährst du mit dem Ponton in seine Nähe (Karte: Ring um das Schiff) und startest
+  «Aufläufer freischleppen» (`T` oder Knopf), kannst du es selbst freiziehen: **Zugtaste halten** (Leertaste, am Handy der grosse Knopf), um Spannung aufzubauen, loslassen lässt sie sinken. Nur im **grünen Band** bewegt
+  sich das Schiff, zu viel Zug lässt die Leine reissen (Strafe). Schwere Schiffe haben ein schmaleres Band. Schaffst du es, ist das Schiff sofort frei und ein Teil der Bergungskosten kommt zurück; sonst kommen die Schlepper wie gewohnt.
 - **Ziel:** Jedes Level hat ein Verkehrsziel in Tonnen. Erreichst du es und schliesst mit Gewinn ab (oder die Frist läuft mit Gewinn ab), schaltest du das nächste Level frei.
   Gewonnen hat, wer am Ende am meisten Geld hat. Levels: **Hochrhein** (Einstieg), **Loreley-Enge** (schmal, Felsriegel, Schubverband), **Eisernes Tor** (Fels, Altlasten, Blindgänger).
 
@@ -39,7 +49,7 @@ Steuerung, Aufbau und Oberfläche folgen dem Seesanierungs-Spiel ([Romans-Altlas
 **Computer**
 - Karte: WASD / Pfeile (oder Maus gedrückt) fahren den Ponton, `E`/Leertaste wirft den Anker, `1`–`5` wählen die Schiffsklasse, Tippen/Klicken auf die Klassenleiste auch.
 - Querschnitt: `A`/`D` Pumpe quer zum Fluss, `W`/`S` Kette hoch/runter, Leertaste Pumpe ein/aus (saugt nach rechts und im Stillstand, rückwärts nie), `Z`/`X` Tempo,
-  `F`/`G` Solltiefe, `V` Gerät (Saugkopf/Löffel), `1`–`5` Solltiefe für eine Klasse, `T` Automatik, `R` Reset, `Q` zurück zur Karte, `P` Pause, `M` Ton, `B` Flussmeister Fritz.
+  `F`/`G` Solltiefe, `V` Gerät (Saugkopf/Löffel/Beton), `T` auf der Karte: Aufläufer freischleppen, `1`–`5` Solltiefe für eine Klasse, `T` Automatik, `R` Reset, `Q` zurück zur Karte, `P` Pause, `M` Ton, `B` Flussmeister Fritz.
 
 **Handy:** Stick links (Karte), Pfeil-Knöpfe (Querschnitt), grosser Knopf rechts (Anker / Pumpe an-aus / Freispülen), Tempo- und Solltiefe-Regler, Tipp auf die Karte fährt hin und ankert,
 Klassenleiste oben, Shop als Fach unten (Spiel steht still, solange es offen ist).
@@ -56,7 +66,8 @@ Die **Automatik** (Upgrade) fährt auf die Solltiefe, **Echolot** macht die Peil
 | `src/sim/fairway.js` | Fahrrinnen-Analyse je Schiffsklasse (Dijkstra), Gegenverkehr, Pfade |
 | `src/sim/slice.js` | Querschnitt: Pumpe, Kette, Automatik, Fremdstoffe, Freispülen |
 | `src/sim/dredge.js` | Ponton-Sitzung: Karte und Querschnitt, Trübung |
-| `src/sim/fleet.js` | Flotte: gemietete Pontons, die selbstständig baggern |
+| `src/sim/fleet.js` | Flotte: gemietete Pontons, die selbstständig baggern (Rinne und Uferstreifen) |
+| `src/sim/tow.js` | Minispiel: aufgelaufene Schiffe freischleppen |
 | `src/sim/traffic.js` | Schiffe: Spawn, Warteschlange, Einbahnrinne, Havarie, Einnahmen |
 | `src/sim/market.js` | Frachtpreise (Schwankung, Schocks, Nachfrage) |
 | `src/sim/plant.js` | Anlage an Land: Verkauf und Entsorgung des Baggerguts |
@@ -73,10 +84,10 @@ Prinzip: `src/sim/` kennt weder DOM noch Canvas und ist getestet.
 
 ## Speichern
 Das Spiel speichert automatisch im Browser (`localStorage`, Schlüssel `dredging.save`): bei jedem neuen Tag, alle 10 Sekunden, bei Käufen, beim Pausieren und beim Verlassen der Seite.
-Gespeichert werden Geld, Zeit, Upgrades, Markt, Schiffe, Aufträge, Flotte und die Flusssohle (Spielstände älterer Versionen werden nicht mehr geladen); die laufende Pontonfahrt nicht. Rekorde je Level stehen unter `dredging.levels`.
+Gespeichert werden Geld, Zeit, Upgrades, Markt, Schiffe, Aufträge, Flotte, Betonvorrat und die Flusssohle (mit Betonschicht) (Spielstände älterer Versionen werden nicht mehr geladen); die laufende Pontonfahrt nicht. Rekorde je Level stehen unter `dredging.levels`.
 
 ## Ideen für später
-Land abtragen automatisieren (Ausbaustreifen per Flotte), weitere Geräte (Eimerkettenbagger, Greifer), Tauchdrohne für Peilung und Abnahme, Kran-Minispiel für Wracks, Schleusen und Häfen als eigene Stationen, Kosten für Verklappung im Fluss, Jahreszeiten (Pegelkurve), weitere Flüsse.
+Beton per Flotte ausbringen, Betonqualitäten, weitere Geräte (Eimerkettenbagger, Greifer), Tauchdrohne für Peilung und Abnahme, Kran-Minispiel für Wracks, Schleusen und Häfen als eigene Stationen, Kosten für Verklappung im Fluss, Jahreszeiten (Pegelkurve), weitere Flüsse.
 
 ## Einzeldatei zum Ausprobieren
 `dist/fahrrinne-frei.html` ist eine einzelne Datei, die per Doppelklick (ohne Server) im Browser läuft. Neu bauen mit `npm run build`.

@@ -2,7 +2,9 @@ import { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, car
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass } from './sim/traffic.js';
-import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, targetClass } from './sim/fleet.js';
+import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, targetClass } from './sim/fleet.js';
+import { TowSim, groundedNear } from './sim/tow.js';
+import { toolName } from './sim/dredge.js';
 import { priceOf, trend } from './sim/market.js';
 import { needDepth } from './sim/fairway.js';
 import { Advisor } from './sim/advisor.js';
@@ -14,7 +16,7 @@ import { fitSize, renderQuality } from './ui/layout.js';
 import { hintsFor } from './ui/hints.js';
 import { Fx } from './ui/fx.js';
 import { createAudio } from './ui/audio.js';
-import { view, CELL, OX, sizeCanvas, drawMap, drawSlice, sliceHeadScreen, sliceMouthScreen, sliceY } from './ui/render.js';
+import { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, sliceHeadScreen, sliceMouthScreen, sliceY } from './ui/render.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
@@ -53,6 +55,8 @@ sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false;
+let tow = null; // Minispiel: Aufläufer freischleppen
+const curMode = () => (tow ? 'tow' : sim.mode);
 const narrow = () => matchMedia('(max-width: 860px)').matches;
 const isTouch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 const ui = { classSel: null, floaters: [], t: 0, dt: 1 / 60, mapTarget: null };
@@ -191,10 +195,27 @@ function updateMarket() {
   }));
 }
 
+let concreteSig = null;
+function updateConcrete() {
+  const C = CONFIG.concrete, st = game.stats;
+  const sig = JSON.stringify([Math.round(game.concrete), Math.round(game.agg.kies), Math.round(game.agg.sand), st.mixer, st.betonrohr, game.divertAgg, Math.floor(game.money / 1000), Math.round(game.totals.concreteUsed / 10)]);
+  if (sig === concreteSig) return;
+  concreteSig = sig;
+  const box = $('concrete');
+  const packs = C.packs.map((m) => ({ m, block: game.concreteBlock(m) }));
+  box.innerHTML = `<div>Betonvorrat: <b>${num(game.concrete)}</b> / ${C.stockCap} m³ · ${num(game.totals.concreteUsed)} m³ verbaut</div>
+    <small>${st.betonrohr > 0 ? 'Betoniergerät: Taste V (Gerät wechseln) im Querschnitt, Leertaste bringt Beton aus.' : 'Betoniergerät (Ausrüstung) bringt Beton aus.'} Beton verhärtet Boden und Ufer: weniger Verlandung, die Böschung hält. Zum Tieferbaggern muss er mit dem Löffel wieder aufgebrochen werden.</small>
+    <div class="packs">${packs.map((p) => `<button data-pack="${p.m}" ${p.block ? 'disabled' : ''} title="${p.block ?? ''}">+${p.m} m³ kaufen (${chf(p.m * C.price)})</button>`).join('')}</div>
+    ${st.mixer > 0 ? `<div class="mixer">Betonwerk Stufe ${st.mixer}: mischt ${st.mixRate.toFixed(1)} m³/s · Lager Kies ${game.agg.kies.toFixed(0)} / Sand ${game.agg.sand.toFixed(0)} m³ (je m³ Beton ${C.mix.kies} Kies, ${C.mix.sand} Sand, Zement ${C.cement} CHF)
+      <label><input type="checkbox" id="chk-divert" ${game.divertAgg ? 'checked' : ''}> Kies und Sand aus der Anlage ins Betonwerk statt verkaufen</label></div>` : '<small>Mit dem Betonwerk (Anlage ausbauen) mischst du Beton selbst aus Kies und Sand des Flusses, viel billiger als Zukaufen.</small>'}`;
+  for (const b of box.querySelectorAll('[data-pack]')) b.onclick = () => { if (game.buyConcrete(+b.dataset.pack)) { concreteSig = null; updateConcrete(); updatePanel(); } };
+  const chk = $('chk-divert'); if (chk) chk.onchange = (e) => { game.divertAgg = e.target.checked; };
+}
+
 let fleetSig = null;
 function updateFleet() {
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
@@ -202,9 +223,12 @@ function updateFleet() {
   const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
+    <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
     <label class="fleet-goal">Ausbauziel <select id="fleet-goal">${opts}</select></label>
     <small>${cls ? `Aktuell: ${cls.icon} ${cls.name}` : 'Alle Klassen fahren'}</small>
     <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
+  $('fleet-widen').onchange = (e) => { setWiden(game, e.target.checked); fleetSig = null; updateFleet(); };
+  $('fleet-widthsel').onchange = (e) => { setWiden(game, F.widen, +e.target.value); fleetSig = null; updateFleet(); };
   $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
   $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
   for (const b of box.querySelectorAll('[data-fire]')) b.onclick = () => { dismissUnit(game, +b.dataset.fire); fleetSig = null; updateFleet(); };
@@ -269,7 +293,7 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateToolButton(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+function updatePanel() { updateToolButton(); updateTowButton(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -351,7 +375,7 @@ function fitCanvas() {
 
 function updateHints() {
   const box = $('hints');
-  box.replaceChildren(...hintsFor(sim.mode, isTouch).map(([key, what]) => {
+  box.replaceChildren(...hintsFor(curMode(), isTouch).map(([key, what]) => {
     const item = document.createElement('span'), k = document.createElement('kbd');
     k.textContent = key; item.append(k, what);
     return item;
@@ -360,12 +384,13 @@ function updateHints() {
 
 // ---------- Modus: Karte / Querschnitt ----------
 function syncMode() {
-  const mode = sim.mode;
+  const mode = curMode();
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
-  $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice'; $('btn-pump').hidden = mode !== 'slice';
-  $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt' }[mode];
-  if (mode !== 'slice') { $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
+  $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
+  $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
+  $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
+  if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
   updateHints(); fitCanvas();
 }
 function anchor() {
@@ -373,7 +398,21 @@ function anchor() {
   if (!sim.anchor()) return;
   syncMode();
 }
-function leave() { if (sim.leave()) syncMode(); }
+function leave() { if (tow) { tow = null; syncMode(); return; } if (sim.leave()) syncMode(); }
+
+// Aufläufer freischleppen: Ponton nahe ans Schiff, dann Minispiel
+function startTow() {
+  if (tow || sim.mode !== 'map') return;
+  const ship = groundedNear(game, sim.x, sim.y);
+  if (!ship) { toast('Kein aufgelaufenes Schiff in Reichweite: näher heranfahren', 'bad', true); return; }
+  tow = new TowSim(game, ship); mapTarget = null; syncMode();
+  toast('Zugtaste halten: Spannung im grünen Bereich halten', 'info', true);
+}
+function updateTowButton() {
+  const b = $('btn-tow'), any = game.traffic.ships.some((s) => s.state === 'grounded');
+  b.hidden = !any || !!tow || sim.mode !== 'map';
+  if (!b.hidden) { const near = groundedNear(game, sim.x, sim.y); b.disabled = !near; b.textContent = near ? '🛟 Aufläufer freischleppen (T)' : '🛟 Aufläufer: näher heranfahren'; b.classList.toggle('primary', !!near); }
+}
 function toggleAuto() { sim.toggleAuto(); }
 function toggleSound() { audio.setMuted(!audio.muted); for (const id of ['btn-sound', 'btn-sound2']) $(id).textContent = audio.muted ? '🔇 Ton aus (M)' : '🔊 Ton an (M)'; }
 function togglePump() {
@@ -386,16 +425,16 @@ function togglePump() {
 }
 function fixAuto() { sim.fixAuto(); }
 function toggleTool() {
-  const to = sim.tool === 'loeffel' ? 'pump' : 'loeffel';
-  if (to === 'loeffel' && game.stats.loeffel <= 0) { toast('Der Löffelbagger fehlt: unter Ausrüstung kaufen', 'bad', true); return; }
+  const to = sim.nextTool();
+  if (to === sim.tool) { toast('Kein weiteres Gerät: Löffelbagger oder Betoniergerät unter Ausrüstung kaufen', 'bad', true); return; }
   if (!sim.setTool(to)) { toast('Gerät lässt sich jetzt nicht wechseln (Verstopfung oder Kippen)', 'bad', true); return; }
   game.tool = sim.tool; audio.toggle(true);
-  if (sim.mode === 'map') toast(`Nächste Verankerung mit ${to === 'loeffel' ? 'Löffelbagger' : 'Saugkopf'}`, 'info', true);
+  if (sim.mode === 'map') toast(`Nächste Verankerung mit ${toolName(to)}`, 'info', true);
 }
 function updateToolButton() {
-  const b = $('btn-tool'), has = game.stats.loeffel > 0;
-  b.hidden = !has;
-  if (has) b.textContent = `🔧 Gerät: ${sim.tool === 'loeffel' ? 'Löffelbagger' : 'Saugkopf'} (V)`;
+  const b = $('btn-tool'), has = game.stats.loeffel > 0 || game.stats.betonrohr > 0;
+  b.hidden = !has || !!tow;
+  if (has) b.textContent = `🔧 Gerät: ${toolName(sim.tool)} (V)`;
 }
 function setDepthValue(v) {
   sim.setTargetDepth(v);
@@ -498,7 +537,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null;
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; tow = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -532,6 +571,7 @@ $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
 $('btn-fix').onclick = fixAuto;
 $('btn-tool').onclick = toggleTool;
+$('btn-tow').onclick = startTow;
 $('cut').oninput = (e) => setDepthValue(parseFloat(e.target.value));
 $('spd').oninput = (e) => setSpeed(parseFloat(e.target.value));
 
@@ -543,7 +583,7 @@ function frame(now) {
   if (readInput.tap('KeyP')) togglePause();
   if (readInput.tap('KeyB') && !overlayOpen()) setFritz(!advisor.enabled);
   const running = !paused && !sheetOpen && !overlayOpen() && !tipOpen && game.status === 'playing';
-  touch?.setMode(sim.mode);
+  touch?.setMode(curMode());
 
   if (!running) audio.hum(false, 0);
   if (readInput.tap('KeyM')) toggleSound();
@@ -553,6 +593,8 @@ function frame(now) {
     const inMap = sim.mode === 'map';
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
+    if (tow) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {
       inp.suction = false;
@@ -563,8 +605,10 @@ function frame(now) {
           if (st.arrived) { mapTarget = null; anchor(); } else { inp.dx = st.dx; inp.dy = st.dy; }
         }
       }
-      if (readInput.tap('Space', 'Enter', 'KeyE')) anchor();
-      if (readInput.tap('KeyV')) toggleTool();
+      if (!tow && readInput.tap('Space', 'Enter', 'KeyE')) anchor();
+      if (!tow && readInput.tap('KeyV')) toggleTool();
+      if (!tow && readInput.tap('KeyT')) startTow();
+      if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
       if (readInput.tap('Escape', 'KeyQ')) leave();
       if (readInput.tap('KeyT')) toggleAuto();
@@ -579,6 +623,17 @@ function frame(now) {
     }
     game.site = sim.mode === 'slice' ? { x: sim.x, y: sim.y } : null;
     sim.bufferRoom = game.bufferRoom;
+    sim.concreteAvail = game.concrete;
+    if (tow) {
+      tow.update(dt, readInput.read({ x: 0, y: 0 }, { keysOnly: true }).suction);
+      for (const ev of tow.events.splice(0)) {
+        if (ev.kind === 'snap') { audio.clog(); toast('Leine gerissen! (Strafe)', 'bad'); try { navigator.vibrate?.(60); } catch { /* egal */ } }
+        else if (ev.kind === 'free') { audio.free('cleared'); toast('Schiff frei!', 'good', true); }
+        else if (ev.kind === 'lost') toast('Zeit abgelaufen: die Schlepper übernehmen (teuer)', 'bad', true);
+        else if (ev.kind === 'gone') toast('Das Schiff ist inzwischen frei', 'info', true);
+      }
+      if (tow.over) { tow = null; syncMode(); }
+    }
     const before = game.money, d = sim.update(dt, inp);
     game.collect(d);
     advisor.observe(dt, d, game, sim);
@@ -598,16 +653,16 @@ function frame(now) {
       $('btn-auto').hidden = sim.stats.autoLevel <= 0;
       $('btn-auto').textContent = sl.auto.on ? '🤖 Automatik aus (T)' : '🤖 Automatik an (T)';
       $('btn-fix').hidden = !sl.auto.error;
-      const bucket = sl.tool === 'loeffel';
-      $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : bucket ? (sim.pumpOn ? '⛏ Löffel: AN (Leertaste)' : '⛏ Löffel: AUS (Leertaste)') : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';
+      const tl = sl.tool;
+      $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : tl === 'beton' ? (sim.pumpOn ? '🧱 Beton: AN (Leertaste)' : '🧱 Beton: AUS (Leertaste)') : tl === 'loeffel' ? (sim.pumpOn ? '⛏ Löffel: AN (Leertaste)' : '⛏ Löffel: AUS (Leertaste)') : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';
       $('btn-pump').classList.toggle('on', sim.pumpOn);
-      touch?.setPump(sim.pumpOn, !!sl.freeing, bucket);
+      touch?.setPump(sim.pumpOn, !!sl.freeing, tl);
       $('spd-box').hidden = false;
       if (document.activeElement !== $('spd')) { $('spd').value = sim.pumpSpeed; $('spd-val').textContent = pct(sim.pumpSpeed); }
       $('cut-box').hidden = false;
       if (document.activeElement !== $('cut')) { $('cut').value = sim.targetDepth; $('cut-val').textContent = `${sim.targetDepth.toFixed(1)} m`; }
     }
-    $('s-removed').textContent = sim.mode === 'slice'
+    $('s-removed').textContent = tow ? `Schleppen: ${Math.round((tow.progress / tow.need) * 100)} % · noch ${Math.ceil(tow.timeLeft)} s` : sim.mode === 'slice'
       ? `${game.totals.removed.toFixed(0)} m³ gebaggert · ${sim.slice.restCount()} Zellen über Solltiefe${sim.bufferFull ? ' · Puffer voll, Pumpe pausiert!' : ''}`
       : `${game.traffic.ships.filter((s) => s.state === 'sail').length} Schiffe unterwegs · ${game.traffic.ships.filter((s) => s.state === 'queue').length} wartend`;
     $('s-turb').value = sim.turbidity;
@@ -641,7 +696,8 @@ function frame(now) {
   if (sim.mode !== 'map') mapTarget = null;
   ui.mapTarget = mapTarget;
   ctx.setTransform(canvas.q || 1, 0, 0, canvas.q || 1, 0, 0);
-  if (sim.mode === 'slice') {
+  if (tow) drawTowView(ctx, game, tow, ui);
+  else if (sim.mode === 'slice') {
     const o = fx.offset();
     ctx.save(); ctx.translate(o.x, o.y); drawSlice(ctx, game, sim, ui); fx.draw(ctx); ctx.restore();
   } else drawMap(ctx, game, sim, ui);

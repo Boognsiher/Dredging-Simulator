@@ -1,4 +1,5 @@
 import { CONFIG, UPGRADES, SHIPS, KIND, levelById } from '../config.js';
+import { toolAvailable } from './slice.js';
 import { River } from './river.js';
 import { carveFairway, analyzeFairway } from './fairway.js';
 import { DredgeSim } from './dredge.js';
@@ -34,6 +35,9 @@ export class Game {
     this.targetDepth = CONFIG.echolot.defaultDepth;
     this.pumpSpeed = CONFIG.pumpSpeed.default;
     this.tool = 'pump'; // zuletzt gewähltes Gerät des eigenen Pontons
+    this.concrete = 0; // Betonvorrat in m³ (gekauft oder im Betonwerk gemischt)
+    this.agg = { kies: 0, sand: 0 }; // Lager für das Betonwerk (m³)
+    this.divertAgg = true; // Kies und Sand ins Betonwerk statt verkaufen
     this.market = createMarket();
     this.traffic = createTraffic();
     this.fleet = createFleet();
@@ -41,7 +45,7 @@ export class Game {
     this.contractSeq = 0;
     this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
     this.rejectedBy = {};
-    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
+    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
     this.today = freshDay();
     this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
@@ -99,7 +103,8 @@ export class Game {
     sim.pumpSpeed = this.pumpSpeed;
     sim.bufferRoom = this.bufferRoom;
     sim.turbidityMult = this.level.turbidityMult ?? 1;
-    if (this.tool === 'loeffel' && this.stats.loeffel > 0) sim.tool = 'loeffel';
+    if (toolAvailable(this.stats, this.tool)) sim.tool = this.tool;
+    sim.concreteAvail = this.concrete;
     return sim;
   }
 
@@ -117,10 +122,40 @@ export class Game {
     }
   }
 
+  // Beton zukaufen (m³): kostet CONFIG.concrete.price pro m³, Lager hat eine Obergrenze
+  concreteBlock(m3) {
+    const C = CONFIG.concrete;
+    if (this.status !== 'playing') return 'Spiel beendet';
+    if (this.concrete + m3 > C.stockCap + 1e-9) return 'Betonlager voll';
+    if (this.money < m3 * C.price) return `Braucht ${Math.round(m3 * C.price).toLocaleString('de-CH')} CHF`;
+    return null;
+  }
+  buyConcrete(m3) {
+    if (this.concreteBlock(m3)) return false;
+    const cost = m3 * CONFIG.concrete.price;
+    this.money -= cost; this.concrete += m3; this.totals.concreteBought += m3; this.totals.concreteSpend += cost;
+    this.say(`${m3} m³ Beton gekauft (−${Math.round(cost).toLocaleString('de-CH')} CHF)`, 'upgrade');
+    return true;
+  }
+
+  // Aufgelaufenes Schiff vom Ponton freigeschleppt (Minispiel): sofort flott, ein Teil der Bergungskosten kommt zurück
+  rescueShip(id) {
+    const ship = this.traffic.ships.find((s) => s.id === id);
+    if (!ship || ship.state !== 'grounded') return false;
+    ship.state = 'sail'; ship.ground = 0;
+    const refund = Math.round(((ship.salvage ?? 0) * CONFIG.tow.refund) / 10) * 10;
+    this.money += refund; this.totals.rescued++; this.totals.rescueRefund += refund; this.totals.salvage -= refund;
+    this.say(`Schiff freigeschleppt! Bergungskosten −${refund} CHF gespart.`, 'good');
+    this.notify(`Schiff frei! +${refund.toLocaleString('de-CH')} CHF zurück`, 'good');
+    this.flash.push({ x: 2, y: 2, text: `+${refund}`, color: '#7bd88f' });
+    return true;
+  }
+
   // Verbucht, was der Ponton in einem Schritt getan hat (siehe DredgeSim.update)
   collect(d) {
     if (this.status !== 'playing') return;
     for (let k = 0; k < 5; k++) { this.stock[k] += d.by[k]; this.totals.byKind[k] += d.by[k]; }
+    if (d.concrete) { this.concrete = Math.max(0, this.concrete - d.concrete); this.totals.concreteUsed += d.concrete; }
     const pay = d.zone * CONFIG.pay.perM3, protect = d.out * CONFIG.pay.protectFine, land = (d.land ?? 0) * CONFIG.pay.landFee;
     let bomb = 0;
     if (d.bombs) { bomb = 4500 * d.bombs; this.totals.bombs += d.bombs; this.say(`Blindgänger! Der Kampfmittelräumdienst rückt aus (−${bomb} CHF).`, 'bad'); this.notify('Fliegerbombe! Kampfmittelräumdienst −4500 CHF', 'bad'); }
@@ -141,7 +176,17 @@ export class Game {
     this.closed = this.wl > K.base + K.floodClose;
     if (this.closed !== wasClosed) { this.say(this.closed ? 'Schifffahrt gesperrt (Hochwasser).' : 'Schifffahrt wieder frei.', this.closed ? 'bad' : 'good'); if (!this.closed) this.notify('Schifffahrt wieder frei', 'good'); }
 
-    const pl = processPlant(this.stock, dt, this.stats, this.market);
+    const mixerOn = this.stats.mixer > 0 && this.divertAgg, C = CONFIG.concrete;
+    const divert = mixerOn ? { [KIND.kies]: { room: C.aggCap - this.agg.kies }, [KIND.sand]: { room: C.aggCap - this.agg.sand } } : null;
+    const pl = processPlant(this.stock, dt, this.stats, this.market, divert);
+    if (mixerOn) { this.agg.kies += pl.moved[KIND.kies]; this.agg.sand += pl.moved[KIND.sand]; }
+    if (this.stats.mixer > 0) { // Betonwerk: mischt aus Kies und Sand des Flusses (plus Zement)
+      const m = Math.min(this.stats.mixRate * dt, C.stockCap - this.concrete, this.agg.kies / C.mix.kies, this.agg.sand / C.mix.sand);
+      if (m > 1e-9) {
+        this.agg.kies -= m * C.mix.kies; this.agg.sand -= m * C.mix.sand; this.concrete += m;
+        const cost = m * C.cement; this.money -= cost; this.totals.cementCost += cost; this.totals.concreteMixed += m; this.today.costs += cost;
+      }
+    }
     if (pl.vol > 0) {
       this.money += pl.net; this.totals.plantNet += pl.net; this.today.plant += pl.net;
       for (let k = 0; k < 5; k++) { if (pl.by[k] >= 0) this.totals.sold += pl.by[k]; else this.totals.disposal -= pl.by[k]; }

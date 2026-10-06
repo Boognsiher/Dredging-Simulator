@@ -13,17 +13,20 @@ export function materialPrice(kindIdx, stats, market) {
   return m.price * stats.sortBonus * marketMult;
 }
 
-export function processPlant(stock, dt, stats, market) {
+// divert: { [Materialindex]: { room } }: so viel (m³) dieses Materials wird statt verkauft ins Betonwerk-Lager umgeleitet
+export function processPlant(stock, dt, stats, market, divert = null) {
   const total = stockTotal(stock);
-  if (total <= 1e-9) return { vol: 0, net: 0, by: [0, 0, 0, 0, 0] };
+  const moved = [0, 0, 0, 0, 0];
+  if (total <= 1e-9) return { vol: 0, net: 0, by: [0, 0, 0, 0, 0], moved };
   const take = Math.min(total, stats.plantCapacity * dt), share = take / total;
   let net = 0;
   const by = [0, 0, 0, 0, 0];
   for (let k = 0; k < stock.length; k++) {
-    const v = stock[k] * share;
+    let v = stock[k] * share;
     stock[k] -= v;
+    if (divert?.[k] && divert[k].room > 0) { const d = Math.min(v, divert[k].room); divert[k].room -= d; moved[k] = d; v -= d; }
     by[k] = v * materialPrice(k, stats, market);
     net += by[k];
   }
-  return { vol: take, net, by };
+  return { vol: take, net, by, moved };
 }

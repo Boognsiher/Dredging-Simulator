@@ -30,7 +30,7 @@ export const CONFIG = {
     { id: 'sand', name: 'Sand', price: 12, color: '#c8b27c', particle: '#d9c590' },
     { id: 'kies', name: 'Kies', price: 26, color: '#9d9488', particle: '#b5ab9d' },
     { id: 'altlast', name: 'Altlast', price: -160, color: '#7a4a33', particle: '#ff7a3d' },
-    { id: 'fels', name: 'Fels', price: 6, color: '#6f747a', particle: '#9aa1a8' },
+    { id: 'fels', name: 'Fels & Bruch', price: 6, color: '#6f747a', particle: '#9aa1a8' },
   ],
   // Sedimentation: der Fluss lagert Schwebstoffe ab, besonders in langsamem Wasser (Rand, Innenkurve). Die Rinne verlandet wieder.
   sediment: { rate: 0.003, maxAbove: 0.3, floodDeposit: [0.18, 0.34], flowPower: 2 },
@@ -97,11 +97,17 @@ export const CONFIG = {
   dailyCost: 450, perUpgradeLevelCost: 22, // Betrieb und Wartung pro Tag (CHF), plus je ausgebaute Stufe
   advisor: { firstAfter: 18, gap: 55, tipCooldown: 240, tau: 30, eventWindow: 120, bufferFull: 0.45, turbidity: 0.55, richMoney: 40000 },
   refundShare: 0.75,
+  // Beton: verhärtet die oberste Sedimentschicht (Boden und Seiten). Verhärtete Zellen verlanden und rutschen kaum noch, müssen zum Tieferbaggern aber
+  // erst aufgebrochen werden (Saugkopf fast nutzlos, Löffel schafft es; Bruch zählt als Fels). Anfangs wird Beton gekauft, später mischt ihn das Betonwerk
+  // aus Kies und Sand des Flusses (plus Zement).
+  concrete: { price: 110, thickness: 0.25, depositFactor: 0.12, pumpBreak: 0.04, bucketBreak: 0.6, cement: 38, mix: { kies: 0.55, sand: 0.35 }, aggCap: 300, stockCap: 800, packs: [20, 100], radius: 1.2 },
+  // Aufläufer: ein aufgelaufenes Schiff kann der Spieler mit dem Ponton freischleppen (Minispiel); schafft er es, spart er einen Teil der Bergungskosten
+  tow: { range: 4.5, seconds: 30, band: [0.4, 0.7], gain: 0.5, drain: 0.35, snapAt: 1.0, need: 6, refund: 0.6, snapPenalty: 400 },
   // Löffelbagger (Schaufeln): langsamer als der Saugbagger, aber ohne Verstopfen, besser bei harter Schicht und Fels, wenig Trübung,
   // und er reicht über den Wasserspiegel: damit lässt sich Ufer im Ausbaustreifen abtragen (der Fluss wird breiter)
   bucket: { hardFactor: 0.5, turbidity: 0.3, stability: 3, reachAbove: 2.2, bombChance: 1 },
   // Flotte: gemietete Pontons arbeiten selbstständig (Automatik), ohne dass du den Querschnitt öffnest
-  fleet: { max: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
+  fleet: { widenRows: 3, max: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
 };
 
 // Materialindex
@@ -127,6 +133,10 @@ export const BASE_STATS = {
   vts: 0, // Verkehrsleitsystem: schnellere Bergung, kleinere Abstände
   pilot: 0, // Lotsendienst: höhere Gebühren
   loeffel: 0, // Löffelbagger-Stufe (0 = nicht vorhanden)
+  betonrohr: 0, // Betoniergerät-Stufe
+  pourPower: 0, // m³/s Beton, die das Gerät ausbringt
+  mixer: 0, // Betonwerk-Stufe
+  mixRate: 0, // m³/s Beton, die das Werk mischt
   bucketPower: 0, // m³/s Grabeleistung des Löffels
   bucketRadius: 1.1, // Zellen
   bucketRock: 0.3, // Anteil der Leistung im Fels
@@ -142,6 +152,8 @@ export const UPGRADES = {
   curtain: { group: 'ponton', name: 'Trübungsschutz', desc: 'Schlammvorhang: weniger Trübung, weniger Bussen', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.curtain = Math.min(0.8, l * 0.2); } },
   cutter: { group: 'ponton', name: 'Felsfräse', desc: 'Schneidkopf: Felsriegel lassen sich abtragen (ohne Fräse kaum)', maxLevel: 4, baseCost: 14000, growth: 1.7, apply: (s, l) => { s.rockFirmness += l * 0.14; } },
   loeffel: { group: 'ponton', name: 'Löffelbagger', desc: 'Ausleger mit Schaufel (V = Gerät wechseln): verstopft nie, schafft Fels und harte Schicht, wenig Trübung, reicht über Wasser (Ufer abtragen). Höhere Stufen: mehr Leistung', maxLevel: 5, baseCost: 12000, growth: 1.6, apply: (s, l) => { s.loeffel = l; if (l > 0) { s.bucketPower = 2.4 + 1.3 * (l - 1); s.bucketRadius = 1.0 + 0.12 * l; s.bucketRock = 0.28 + 0.08 * l; } } },
+  betonrohr: { group: 'ponton', name: 'Betoniergerät', desc: 'Verhärtet Boden und Ufer (V = Gerät wechseln): weniger Verlandung und Rutschung. Zum Tieferbaggern muss der Beton wieder aufgebrochen werden (Löffel)', maxLevel: 3, baseCost: 11000, growth: 1.6, apply: (s, l) => { s.betonrohr = l; s.pourPower = l > 0 ? 2 + 2 * (l - 1) : 0; } },
+  mixer: { group: 'plant', name: 'Betonwerk', desc: 'Mischt Beton aus Kies und Sand des Flusses (plus Zement), viel billiger als Zukaufen', maxLevel: 3, baseCost: 16000, growth: 1.7, apply: (s, l) => { s.mixer = l; s.mixRate = 0.2 * l; } },
   echolot: { group: 'ponton', name: 'Echolot', desc: 'Genauere Peilung: die Automatik trifft die Solltiefe besser', maxLevel: 2, baseCost: 9000, growth: 1.8, apply: (s, l) => { s.echolot = l; } },
   auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 15000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
   plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer', maxLevel: 6, baseCost: 10000, growth: 1.5, apply: (s, l) => { s.plantCapacity += l * 1.2; s.bufferCapacity += l * 45; } },

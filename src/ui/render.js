@@ -4,6 +4,7 @@ import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById } from '../config.js';
 import { shipPos, queuePos } from '../sim/traffic.js';
 import { needDepth } from '../sim/fairway.js';
 import { Chain, drawChain } from './chain.js';
+import { groundedNear } from '../sim/tow.js';
 
 const chain = new Chain();
 
@@ -64,7 +65,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const i = y * cols + x;
-      if (!r.isWater(i)) continue;
+      if (!r.isWater(i) && !r.armor[i]) continue;
       const px = OX + x * CELL, py = y * CELL;
       if (r.kind[i] === KIND.altlast && r.top[i] - r.rock[i] > 0.05) { ctx.fillStyle = 'rgba(255,120,40,.5)'; ctx.fillRect(px + 1, py + 1, CELL - 2, CELL - 2); }
       if (r.top[i] - r.rock[i] < 0.05) { ctx.fillStyle = 'rgba(90,95,105,.55)'; ctx.fillRect(px, py, CELL, CELL); }
@@ -73,6 +74,10 @@ export function drawMap(ctx, game, sim, ui = {}) {
         ctx.moveTo(px, py + CELL); ctx.lineTo(px + CELL, py);
         if (r.hard[i] > 1) { ctx.moveTo(px, py); ctx.lineTo(px + CELL, py + CELL); }
         ctx.stroke();
+      }
+      if (r.armor[i] > 0) { // Beton: hellgrau mit Kreuzschraffur
+        ctx.fillStyle = 'rgba(205,208,214,.5)'; ctx.fillRect(px, py, CELL, CELL);
+        ctx.strokeStyle = 'rgba(90,95,105,.65)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px + 2, py + 2); ctx.lineTo(px + CELL - 2, py + CELL - 2); ctx.moveTo(px + CELL - 2, py + 2); ctx.lineTo(px + 2, py + CELL - 2); ctx.stroke();
       }
       if (r.debris[i]) { ctx.fillStyle = '#f2f2f2'; ctx.fillRect(px + 5, py + 5, 6, 6); ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(px + 5.5, py + 5.5, 5, 5); }
     }
@@ -165,8 +170,12 @@ function drawShip(ctx, cls, ship, p, game, ui) {
   ctx.fillStyle = '#f4f4f0'; ctx.fillRect(L / 2 - B * 0.95, -B * 0.28, B * 0.34, B * 0.56); // Brücke
   ctx.restore();
   if (ship.state === 'grounded') {
+    const pulse = 0.5 + 0.5 * Math.sin((ui.t ?? 0) * 5), near = ui.towShip === ship.id;
+    ctx.strokeStyle = near ? `rgba(120,255,160,${0.5 + 0.4 * pulse})` : `rgba(255,120,100,${0.35 + 0.4 * pulse})`; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(q.x, q.y, L / 2 + 8 + pulse * 5, 0, Math.PI * 2); ctx.stroke();
     ctx.font = font(18); ctx.textAlign = 'center'; ctx.fillStyle = (Math.floor((ui.t ?? 0) * 3) % 2) ? '#ff7a6b' : '#fff';
-    ctx.fillText('⚠', q.x, q.y - 12); ctx.textAlign = 'start';
+    ctx.fillText('⚠', q.x, q.y - 12);
+    ctx.font = font(12); ctx.fillStyle = near ? '#9bf5b8' : '#ffb4a8'; ctx.fillText(near ? 'Schleppen: T' : 'aufgelaufen', q.x, q.y + L / 2 + 20); ctx.textAlign = 'start';
   }
 }
 
@@ -312,6 +321,10 @@ export function drawSlice(ctx, game, sim, ui = {}) {
   ctx.strokeStyle = '#f0e4c8'; ctx.lineWidth = 2.5; ctx.beginPath();
   for (let c = 0; c < n; c++) (c ? ctx.lineTo(xs(c), Y(hi[c])) : ctx.moveTo(xs(c), Y(hi[c])));
   ctx.stroke();
+  for (let c = 0; c < n; c++) { // Betonschicht: graue Kappe auf der Sohle
+    const a = r.armor[r.idx(sl.centerCol, sl.x0 + c)];
+    if (a > 0 && hi[c] < wl + 1) { ctx.fillStyle = 'rgba(200,204,210,.92)'; ctx.fillRect(c * U, Y(hi[c]) - 1, U + 1, Math.max(3, a * PPM)); ctx.strokeStyle = 'rgba(70,75,85,.8)'; ctx.lineWidth = 1; ctx.strokeRect(c * U + 0.5, Y(hi[c]) - 0.5, U, Math.max(3, a * PPM)); }
+  }
   // Wasserspiegel
   ctx.strokeStyle = '#d9f1ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, SURF); ctx.lineTo(W, SURF); ctx.stroke();
 
@@ -367,7 +380,7 @@ export function drawSlice(ctx, game, sim, ui = {}) {
 }
 
 function drawPump(ctx, game, sim, ui) {
-  if (sim.slice.tool === 'loeffel') return drawBucket(ctx, game, sim, ui);
+  if (sim.slice.tool === 'loeffel' || sim.slice.tool === 'beton') return drawBucket(ctx, game, sim, ui);
   const sl = sim.slice, wl = game.river.wl;
   const head = sliceHeadScreen(sl), pumpX = head.x + PW * 0.2, py = head.y;
   const dt = ui.dt ?? 1 / 60;
@@ -413,10 +426,18 @@ function drawBucket(ctx, game, sim, ui) {
   const mx = (bx + tx) / 2, my = (by + ty) / 2, dx = tx - bx, dy = ty - by, len = Math.hypot(dx, dy) || 1;
   const bend = Math.min(60, len * 0.28) * (sl.suctioning ? 1 + 0.25 * Math.sin((ui.t ?? 0) * 7) : 1);
   const ex = mx + (dy / len) * bend, ey = my - (dx / len) * bend; // Knick zur Seite
-  ctx.strokeStyle = '#e8c33a'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const pour = sl.tool === 'beton';
+  ctx.strokeStyle = pour ? '#9aa1a8' : '#e8c33a'; ctx.lineWidth = pour ? 12 : 9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex, ey); ctx.lineTo(tx, ty); ctx.stroke();
   ctx.strokeStyle = '#3b2f08'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex, ey); ctx.lineTo(tx, ty); ctx.stroke();
   ctx.lineCap = 'butt';
+  if (pour) { // Schüttrohr: Düse und fallender Beton
+    ctx.fillStyle = '#5c6168'; ctx.fillRect(tx - 9, ty - 4, 18, 22); ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2; ctx.strokeRect(tx - 9, ty - 4, 18, 22);
+    if (sl.suctioning) { ctx.fillStyle = 'rgba(190,194,200,.85)'; for (let k = 0; k < 7; k++) { const f = ((ui.t ?? 0) * 3 + k / 7) % 1; ctx.fillRect(tx - 5 + Math.sin(k * 5) * 6, ty + 18 + f * 46, 6, 8); } }
+    ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sl.toolParams().radius * U, sl.toolParams().radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.font = font(13); ctx.fillStyle = (sim.concreteAvail ?? 0) > 0.05 ? '#dfe3e8' : '#ff9d8f'; ctx.fillText(`Beton ${(sim.concreteAvail ?? 0).toFixed(0)} m³`, bx + 22, by - 14);
+    return;
+  }
   const swing = sl.suctioning ? Math.sin((ui.t ?? 0) * 7) * 0.5 : 0;
   ctx.save(); ctx.translate(tx, ty); ctx.rotate(0.3 + swing);
   ctx.fillStyle = '#6b6f73'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
@@ -439,3 +460,51 @@ function drawFreeing(ctx, sl) {
 }
 
 export { CARGOS };
+
+// ---------- Minispiel: Aufläufer freischleppen ----------
+export function drawTowView(ctx, game, tow, ui = {}) {
+  const t = ui.t ?? 0, SURFY = 150, cls = tow.cls;
+  const sky = ctx.createLinearGradient(0, 0, 0, SURFY); sky.addColorStop(0, '#6aa6d2'); sky.addColorStop(1, '#bcd9ee');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, SURFY);
+  const wg = ctx.createLinearGradient(0, SURFY, 0, H); wg.addColorStop(0, '#3a86ab'); wg.addColorStop(1, '#0d2c43');
+  ctx.fillStyle = wg; ctx.fillRect(0, SURFY, W, H - SURFY);
+  // Untiefe: links hoch, nach rechts tiefer
+  const barY = (x) => (x < 360 ? 205 + x * 0.30 : 313 + (x - 360) * 0.02);
+  ctx.fillStyle = '#c8b27c'; ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(0, barY(0));
+  for (let x = 0; x <= W; x += 20) ctx.lineTo(x, barY(x));
+  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#f0e4c8'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.strokeStyle = '#d9f1ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, SURFY); ctx.lineTo(W, SURFY); ctx.stroke();
+  // Ponton mit Winde rechts
+  const px = W - 110, py = SURFY;
+  ctx.fillStyle = '#e8c33a'; ctx.strokeStyle = '#3b2f08'; ctx.lineWidth = 2; ctx.fillRect(px - 70, py - 22, 140, 30); ctx.strokeRect(px - 70, py - 22, 140, 30);
+  ctx.fillStyle = '#2b2b2b'; ctx.fillRect(px - 10, py - 40, 20, 20);
+  // Schiff (Seitenansicht), rückt mit dem Fortschritt nach rechts
+  const frac = Math.min(1, tow.progress / tow.need), sx = 90 + frac * 330, sy = barY(sx) - 16, ang = Math.atan2(barY(sx + 30) - barY(sx - 30), 60);
+  const len = 150 + cls.len * 10, hh = 26 + cls.draught * 4;
+  ctx.save(); ctx.translate(sx, sy); ctx.rotate(ang);
+  ctx.fillStyle = cls.color; ctx.strokeStyle = '#10202c'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-len / 2, -hh * 0.5); ctx.lineTo(len / 2 - 14, -hh * 0.5); ctx.lineTo(len / 2 + 10, -hh * 0.1); ctx.lineTo(len / 2 - 20, hh * 0.5); ctx.lineTo(-len / 2 + 10, hh * 0.5); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#f4f4f0'; ctx.fillRect(-len / 2 + 8, -hh * 0.5 - 22, 34, 22); ctx.fillStyle = '#7fd3ff'; ctx.fillRect(-len / 2 + 14, -hh * 0.5 - 17, 22, 8);
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(-len / 2 + 50, -hh * 0.5 - 8, len - 90, 8);
+  ctx.restore();
+  // Schleppleine: Farbe nach Spannung, Durchhang bei wenig Zug
+  const [b0, b1] = tow.band, tn = tow.tension, color = tn > b1 ? '#ff5d4d' : tn >= b0 ? '#7bf0a0' : '#ffd24d';
+  const ax = sx + len / 2 - 10, ay = sy - 4, bx = px - 40, by = py - 8, sag = (1 - Math.min(1, tn)) * 38 + 4;
+  ctx.strokeStyle = color; ctx.lineWidth = 3 + tn * 3; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo((ax + bx) / 2, (ay + by) / 2 + sag + Math.sin(t * 9) * tn * 3, bx, by); ctx.stroke();
+  // Spannungsanzeige mit grünem Band
+  const gw = 420, gh = 26, gx = (W - gw) / 2, gy = H - 54;
+  ctx.fillStyle = '#000b'; ctx.fillRect(gx - 14, gy - 58, gw + 28, 112);
+  ctx.fillStyle = '#34495e'; ctx.fillRect(gx, gy, gw, gh);
+  ctx.fillStyle = '#4bd16a'; ctx.fillRect(gx + b0 * gw, gy, (b1 - b0) * gw, gh);
+  ctx.fillStyle = '#c0453a'; ctx.fillRect(gx + CONFIG_TOW_SNAP() * gw - 4, gy, 4, gh);
+  ctx.fillStyle = '#fff'; ctx.fillRect(gx + Math.min(1, tn) * gw - 3, gy - 5, 6, gh + 10);
+  ctx.fillStyle = '#34495e'; ctx.fillRect(gx, gy - 24, gw, 10);
+  ctx.fillStyle = '#7fe3ff'; ctx.fillRect(gx, gy - 24, gw * frac, 10);
+  ctx.font = font(14); ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+  ctx.fillText(`${cls.name} aufgelaufen · noch ${Math.ceil(tow.timeLeft)} s${tow.snaps ? ` · ${tow.snaps}× Leine gerissen` : ''}`, W / 2, gy - 34);
+  ctx.font = font(12, false); ctx.fillStyle = '#cfe'; ctx.fillText('Zugtaste halten (Leertaste / Knopf): Spannung im grünen Bereich halten, nicht über die rote Marke', W / 2, gy + gh + 18);
+  ctx.textAlign = 'start';
+}
+const CONFIG_TOW_SNAP = () => CONFIG.tow.snapAt;
+export { groundedNear };

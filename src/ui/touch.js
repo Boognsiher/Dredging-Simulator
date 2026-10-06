@@ -47,14 +47,17 @@ export function setupTouch(input, hooks) {
 
   act.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    if (mode === 'tow') { act.setPointerCapture(e.pointerId); input.virtual.suction = true; act.classList.add('held'); return; } // Zugtaste: halten
     if (mode === 'map') hooks.anchor(); else hooks.togglePump();
   });
+  const releaseAct = () => { if (mode === 'tow') { input.virtual.suction = false; act.classList.remove('held'); } };
+  act.addEventListener('pointerup', releaseAct); act.addEventListener('pointercancel', releaseAct); act.addEventListener('lostpointercapture', releaseAct);
   for (const el of [stick, act]) el.addEventListener('contextmenu', (e) => e.preventDefault());
 
   return {
-    setPump(on, clogged = false, bucket = false) {
+    setPump(on, clogged = false, tool = 'pump') {
       if (mode !== 'slice') return;
-      act.textContent = clogged ? '🔧 Freispülen!' : bucket ? (on ? '⛏ Löffel AN' : '⛏ Löffel AUS') : on ? '🌀 Pumpe AN' : '🌀 Pumpe AUS';
+      act.textContent = clogged ? '🔧 Freispülen!' : tool === 'beton' ? (on ? '🧱 Beton AN' : '🧱 Beton AUS') : tool === 'loeffel' ? (on ? '⛏ Löffel AN' : '⛏ Löffel AUS') : on ? '🌀 Pumpe AN' : '🌀 Pumpe AUS';
       act.classList.toggle('held', on && !clogged);
     },
     setMode(m) {
@@ -64,7 +67,8 @@ export function setupTouch(input, hooks) {
       pressed.clear(); for (const b of dpad.querySelectorAll('.dp')) b.classList.remove('held');
       stick.hidden = m === 'slice'; dpad.hidden = m !== 'slice';
       input.virtual.dx = 0; input.virtual.dy = 0; knob.style.transform = '';
-      act.textContent = { map: '⚓ Anker', slice: '🌀 Pumpe AUS' }[m];
+      input.virtual.suction = false;
+      act.textContent = { map: '⚓ Anker', slice: '🌀 Pumpe AUS', tow: '🪢 Ziehen (halten)' }[m];
     },
   };
 }

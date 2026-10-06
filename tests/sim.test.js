@@ -647,3 +647,216 @@ test('Flotte: Spielstand speichert Pontons und sie arbeiten danach weiter; Löhn
   assert.ok(g2.totals.wages > w0, 'Löhne');
   assert.equal(fleetSites(g2).length >= 0, true);
 });
+
+// ---------- Beton, Aufläufer-Minispiel, Land-Automatik ----------
+import { TowSim, groundedNear } from '../src/sim/tow.js';
+import { openWidenColumns, setWiden } from '../src/sim/fleet.js';
+import { TOOLS, toolAvailable } from '../src/sim/slice.js';
+
+test('Beton: Gerät nur mit Betoniergerät, Gerätewechsel reihum', () => {
+  const g = new Game(1); g.money = 1e6;
+  const sim = g.createSession();
+  assert.equal(sim.nextTool(), 'pump');
+  g.buyUpgrade('loeffel'); g.buyUpgrade('betonrohr'); sim.setStats(g.stats);
+  assert.deepEqual(TOOLS.filter((t) => toolAvailable(g.stats, t)), ['pump', 'loeffel', 'beton']);
+  assert.equal(sim.nextTool(), 'loeffel');
+  sim.setTool('loeffel'); assert.equal(sim.nextTool(), 'beton');
+  sim.setTool('beton'); assert.equal(sim.nextTool(), 'pump');
+});
+
+test('Beton: Ausbringen verhärtet die Sedimentschicht, verbraucht Vorrat und ändert die Sohle nicht', () => {
+  const r = flat(3);
+  const top0 = r.top[r.idx(20, 12)];
+  const res = r.pourSwath([19, 20, 21], 20, 12.5, r.wl - 2.9, 1.5, 5);
+  assert.ok(res.used > 0 && res.used <= 5 + 1e-9);
+  assert.equal(r.top[r.idx(20, 12)], top0);
+  let armored = 0, vol = 0;
+  for (let i = 0; i < r.armor.length; i++) if (r.armor[i] > 0) { armored++; vol += r.armor[i] * r.area; }
+  assert.ok(armored > 0 && Math.abs(vol - res.used) < 1e-6);
+  for (let k = 0; k < 60; k++) r.pourSwath([19, 20, 21], 20, 12.5, r.wl - 2.9, 1.5, 5);
+  assert.ok(r.armor[r.idx(20, 12)] <= CONFIG.concrete.thickness + 1e-6, 'nicht dicker als die Schichtdicke');
+});
+
+test('Beton: Fels und Schutzzone bekommen keinen Beton', () => {
+  const r = new River(CONFIG.river.cols, CONFIG.river.rows).setFlat(3, 3); // Fels direkt unter der Sohle
+  assert.equal(r.pourSwath([20], 20, 12.5, r.wl - 2.9, 1.5, 5).used, 0);
+  const p = flat(3); p.zone.fill(0); p.ext.fill(0);
+  assert.equal(p.pourSwath([20], 20, 12.5, r.wl - 2.9, 1.5, 5).used, 0);
+});
+
+test('Beton: weniger Verlandung, auch bei Hochwasser, und die Böschung rutscht nicht', () => {
+  const run = (armored) => {
+    const r = flat(3); r.flow.fill(0.1);
+    r.top.fill(r.wl - 4); r.cap.fill(r.wl - 3);
+    if (armored) r.armor.fill(0.25);
+    r.deposit(200); r.flood(0.2);
+    return r.top[0] - (r.wl - 4);
+  };
+  assert.ok(run(true) < run(false) * 0.4);
+  const r = flat(4);
+  for (let y = 0; y < r.rows; y++) for (let x = 20; x < 30; x++) r.top[r.idx(x, y)] = r.wl - 1;
+  for (let y = 0; y < r.rows; y++) r.armor[r.idx(21, y)] = 0.25;
+  for (let x = 19; x <= 22; x++) for (let y = 0; y < r.rows; y++) r.pending.add(r.idx(x, y));
+  const before = r.top[r.idx(22, 5)];
+  for (let k = 0; k < 20; k++) r.settle(Infinity);
+  assert.equal(r.top[r.idx(22, 5)], before, 'verhärtete Böschung hält');
+});
+
+test('Beton: Aufbrechen: Saugkopf fast chancenlos, Löffel schafft es, Bruch zählt als Fels', () => {
+  const dig = (tool) => {
+    const r = flat(3); r.kind.fill(KIND.sand); r.armor.fill(0.25);
+    const stats = computeStats({ loeffel: 3, power: 3 });
+    const sl = new SliceSim(r, stats, 20, 12, createRng(1), 3, 1, tool);
+    sl.h = r.wl - 3.1; sl.x = sl.x0 + 6;
+    let broken = 0;
+    for (let i = 0; i < 60; i++) broken += sl.update(0.05, { dx: 0, dy: 0, suction: true }).by[KIND.fels];
+    return broken;
+  };
+  const pump = dig('pump'), bucket = dig('loeffel');
+  assert.ok(bucket > pump * 3 && bucket > 0, `${bucket} vs ${pump}`);
+});
+
+test('Beton: Betoniergerät im Querschnitt braucht Vorrat und verbraucht ihn', () => {
+  const g = new Game(2); g.money = 1e6; g.buyUpgrade('betonrohr');
+  const sim = g.createSession(); sim.setStats(g.stats);
+  sim.x = 22; sim.y = g.river.centerY(22); sim.anchor(); sim.setTool('beton');
+  const sl = sim.slice; sl.h = g.wl - 2.2; sl.x = sl.x0 + 8;
+  sim.pumpOn = true;
+  sim.concreteAvail = 0;
+  let d = sim.update(0.1, { dx: 0, dy: 0, suction: true });
+  assert.equal(d.concrete, 0);
+  g.concrete = 30; let used = 0;
+  for (let i = 0; i < 100; i++) { sim.concreteAvail = g.concrete; d = sim.update(0.1, { dx: 0, dy: 0, suction: true }); g.collect(d); used += d.concrete; }
+  assert.ok(used > 3 && used <= 30);
+  assert.ok(Math.abs(g.concrete - (30 - used)) < 1e-6);
+  assert.ok(g.totals.concreteUsed > 0);
+});
+
+test('Beton: kaufen kostet Geld und das Lager ist begrenzt', () => {
+  const g = new Game(3); g.money = 20000;
+  assert.ok(g.buyConcrete(20));
+  assert.equal(g.money, 20000 - 20 * CONFIG.concrete.price);
+  assert.equal(g.concrete, 20);
+  assert.ok(g.concreteBlock(1000));
+  g.money = 0; assert.match(g.concreteBlock(10), /Braucht/);
+});
+
+test('Betonwerk: leitet Kies und Sand um, mischt Beton und zahlt Zement', () => {
+  const g = new Game(4); g.money = 1e6; g.buyUpgrade('mixer'); g.buyUpgrade('plant');
+  g.traffic.spawnIn = 1e9; g.eventsOn = false;
+  g.stock = [0, 40, 60, 0, 0];
+  const m0 = g.money;
+  for (let i = 0; i < 20 * 60; i++) g.update(0.05);
+  assert.ok(g.totals.concreteMixed > 5 && g.concrete > 5);
+  assert.ok(g.totals.cementCost > 0);
+  const kiesUsed = g.totals.concreteMixed * CONFIG.concrete.mix.kies;
+  assert.ok(g.agg.kies + kiesUsed <= 60 + 1e-6 && g.agg.kies + kiesUsed > 50, 'Kies wurde ins Werk umgeleitet statt verkauft');
+  // ohne Umleitung wird Kies verkauft
+  const h = new Game(4); h.money = 1e6; h.buyUpgrade('mixer'); h.buyUpgrade('plant'); h.divertAgg = false; h.traffic.spawnIn = 1e9; h.eventsOn = false; h.stock = [0, 40, 60, 0, 0];
+  for (let i = 0; i < 20 * 60; i++) h.update(0.05);
+  assert.equal(h.concrete, 0); assert.ok(h.totals.plantNet > g.totals.plantNet);
+  void m0;
+});
+
+test('Betonwerk: Beton aus eigenem Kies ist billiger als Zukaufen', () => {
+  const C = CONFIG.concrete, own = C.cement + C.mix.kies * 26 + C.mix.sand * 12;
+  assert.ok(own < C.price * 0.7, `${own} vs ${C.price}`);
+});
+
+function groundedGame() {
+  const g = new Game(6, 'hochrhein'); g.eventsOn = false; g.traffic.spawnIn = 1e9;
+  const path = g.fair.kahn.path;
+  const ship = { id: 77, cls: 'kahn', dir: 1, cargo: 'kies', tons: 200, price: 18, state: 'grounded', wait: 0, s: 20, ground: 18, lane: 'one', path, salvage: 1000 };
+  g.traffic.ships.push(ship);
+  return { g, ship };
+}
+
+test('Aufläufer: Ponton in Reichweite findet das Schiff, sonst nicht', () => {
+  const { g, ship } = groundedGame();
+  const p = pointOnPath(ship.path, ship.s);
+  assert.equal(groundedNear(g, p.x + 1, p.y)?.id, 77);
+  assert.equal(groundedNear(g, p.x + 20, p.y), null);
+});
+
+test('Aufläufer-Minispiel: im grünen Band halten befreit das Schiff und erstattet Kosten', () => {
+  const { g, ship } = groundedGame();
+  const tow = new TowSim(g, ship, createRng(1));
+  const m0 = g.money;
+  let guard = 0;
+  while (!tow.over && guard++ < 5000) {
+    const mid = (tow.band[0] + tow.band[1]) / 2;
+    tow.update(0.05, tow.tension < mid);
+  }
+  assert.ok(tow.success && ship.state === 'sail');
+  assert.ok(g.money > m0 && g.totals.rescued === 1);
+});
+
+test('Aufläufer-Minispiel: zu viel Zug reisst die Leine (Strafe), zu wenig kostet Zeit und das Schiff bleibt', () => {
+  const { g, ship } = groundedGame();
+  const tow = new TowSim(g, ship, createRng(1));
+  const m0 = g.money;
+  for (let i = 0; i < 200 && tow.snaps === 0; i++) tow.update(0.05, true);
+  assert.ok(tow.snaps >= 1 && g.money < m0);
+  const { g: g2, ship: s2 } = groundedGame();
+  const idle = new TowSim(g2, s2, createRng(1));
+  let k = 0;
+  while (!idle.over && k++ < 5000) idle.update(0.05, false);
+  assert.ok(idle.over && !idle.success && s2.state === 'grounded');
+});
+
+test('Aufläufer-Minispiel: schwere Schiffe haben ein schmaleres Band und brauchen länger', () => {
+  const { g, ship } = groundedGame();
+  const light = new TowSim(g, ship), heavy = new TowSim(g, { ...ship, cls: 'schub' });
+  assert.ok(heavy.band[1] - heavy.band[0] < light.band[1] - light.band[0]);
+  assert.ok(heavy.need > light.need);
+});
+
+test('Aufläufer-Minispiel: endet, wenn das Schiff von selbst frei kommt', () => {
+  const { g, ship } = groundedGame();
+  const tow = new TowSim(g, ship);
+  ship.state = 'sail';
+  tow.update(0.05, true);
+  assert.ok(tow.over && !tow.success);
+});
+
+test('Land-Automatik: Flotte trägt Ufer im Ausbaustreifen ab und macht es zum Korridor', () => {
+  const g = new Game(3, 'hochrhein'), r = g.river;
+  g.money = 1e6; for (const id of ['auto', 'auto', 'loeffel', 'loeffel', 'loeffel', 'plant', 'plant']) g.buyUpgrade(id);
+  g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn';
+  setWiden(g, true, 2);
+  const open0 = openWidenColumns(g).length, zone0 = r.zone.reduce((a, b) => a + b, 0);
+  assert.ok(open0 > 10);
+  hireUnit(g);
+  for (let i = 0; i < 14 * 40 * 20; i++) g.update(0.05);
+  assert.ok(g.totals.landRemoved > 20 && g.totals.landFees > 0);
+  assert.ok(r.zone.reduce((a, b) => a + b, 0) > zone0, 'neue Korridorzellen');
+  assert.ok(g.fleet.units[0].note.length > 0);
+});
+
+test('Land-Automatik: ohne Löffelbagger oder wenn ausgeschaltet bleibt das Ufer stehen', () => {
+  const g = new Game(3, 'hochrhein');
+  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn';
+  setWiden(g, true, 2); hireUnit(g);
+  for (let i = 0; i < 14 * 15 * 20; i++) g.update(0.05);
+  assert.equal(g.totals.landRemoved, 0);
+  assert.match(g.fleet.units[0].note, /Löffel|Rinne|Engstelle/);
+});
+
+test('Flotte: Beton im Weg verlangt den Löffelbagger', () => {
+  const g = new Game(3, 'hochrhein'), r = g.river;
+  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'motor';
+  const f = g.fair.motor;
+  for (const n of f.nodes) for (let y = n.y; y <= n.y + 1; y++) r.armor[y * r.cols + n.x] = 0.25;
+  hireUnit(g);
+  let msg = '';
+  for (let i = 0; i < 14 * 12 * 20 && !/Beton/.test(msg); i++) { g.update(0.05); msg = g.fleet.units[0].note; }
+  assert.match(msg, /Beton/);
+});
+
+test('Spielstand: Beton, Lager und Betonschicht überleben Speichern und Laden', () => {
+  const g = new Game(9, 'hochrhein'); g.money = 1e6; g.buyUpgrade('mixer');
+  g.concrete = 12; g.agg.kies = 5; g.river.armor[100] = 0.2; g.fleet.widen = true;
+  const g2 = restoreGame(serializeGame(g));
+  assert.ok(g2);
+  assert.equal(g2.concrete, 12); assert.equal(g2.agg.kies, 5); assert.ok(Math.abs(g2.river.armor[100] - 0.2) < 1e-6); assert.equal(g2.fleet.widen, true);
+});

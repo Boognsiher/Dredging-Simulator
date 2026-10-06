@@ -23,6 +23,7 @@ export class River {
     this.hard = new Uint8Array(n); // 0 weich, 1 verdichtet, 2 hart (mehrere Überfahrten)
     this.debris = new Uint8Array(n); // 0 nichts, sonst Index in DEBRIS + 1
     this.zone = new Uint8Array(n);
+    this.armor = new Float32Array(n); // Dicke der Betonschicht (m), die die Oberfläche der Zelle verhärtet; 0 = unbehandelt
     this.ext = new Uint8Array(n); // Ausbaustreifen am Ufer: 1 = Land, 2 = Flachwasser. Mit dem Löffelbagger abtragbar (wird dann zum Korridor), sonst Schutzgebiet
     this.pending = new Set(); // Zellen, deren Böschung noch nachrutscht (abgeleitet, wird nicht gespeichert)
     this.slumpedTotal = 0; // m³ nachgerutscht (Anzeige)
@@ -58,7 +59,7 @@ export class River {
           r.ext[i] = rel >= 0.82 ? 2 : 0; // Flachwasser am Ufer: Schutzzone für den Saugbagger, mit dem Löffel als Ausbaustreifen abtragbar
           r.rock[i] = WL - (cfg.rockDepth + 0.8 * (1 - rel) + 0.25 * noise(y, x));
         } else {
-          r.top[i] = Math.min(WL + 7, WL + 0.5 + (rel - 1) * 3.2 + 0.1 * noise(x, y));
+          r.top[i] = Math.min(WL + 7, WL + 0.4 + (rel - 1) * (rel < 1.9 ? 2.0 : 6) + 0.1 * noise(x, y)); // flaches Ufer im Ausbaustreifen, dahinter steiler
           r.rock[i] = WL - 3; // Ufer: viel Sediment, rutscht nach, wenn man zu nah baggert
           r.flow[i] = 0;
           r.ext[i] = rel < 1.9 ? 1 : 0;
@@ -150,7 +151,7 @@ export class River {
         if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
         const j = ny * cols + nx;
         const hi = this.top[i] > this.top[j] ? i : j, lo = hi === i ? j : i, diff = this.top[hi] - this.top[lo];
-        if (diff <= S + 1e-6) continue;
+        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0) continue; // Beton hält die Böschung
         const sed = this.top[hi] - this.rock[hi];
         if (sed <= 1e-6) continue; // Fels rutscht nicht
         const m = Math.min(sed, (diff - S) / 2);
@@ -169,7 +170,7 @@ export class River {
     const S = CONFIG.sediment, a = S.rate * dt * mult;
     for (let i = 0; i < this.top.length; i++) {
       if (this.cap[i] <= 0 || this.top[i] >= this.cap[i]) continue;
-      const k = a * (1.1 - this.flow[i]) ** S.flowPower;
+      const k = a * (1.1 - this.flow[i]) ** S.flowPower * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1);
       if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
       this.top[i] = Math.min(this.cap[i], this.top[i] + k);
       this.pending.add(i);
@@ -180,7 +181,7 @@ export class River {
   flood(amount) {
     for (let i = 0; i < this.top.length; i++) {
       if (this.cap[i] <= 0) continue;
-      this.top[i] = Math.min(this.cap[i] + 0.25, this.top[i] + amount * (1 - 0.5 * this.flow[i]));
+      this.top[i] = Math.min(this.cap[i] + 0.25, this.top[i] + amount * (1 - 0.5 * this.flow[i]) * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1));
       if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
       this.pending.add(i);
     }
@@ -210,7 +211,7 @@ export class River {
   _adj(cells, firmness) { return cells.map(([i, w]) => [i, this.top[i] - this.rock[i] > 1e-6 ? w : w * firmness]); }
 
   // Gewichtetes Abtragen: verteilt `amount` (Höhe in m) auf die Zellen. Liefert Höhen je Material (by) und Summen.
-  _drain(cells, amount, firmness, adjusted = false, hardFactor = CONFIG.hard.factor, allowLand = false) {
+  _drain(cells, amount, firmness, adjusted = false, hardFactor = CONFIG.hard.factor, allowLand = false, armorEff = CONFIG.concrete.pumpBreak) {
     if (!adjusted) cells = this._adj(cells, firmness);
     const res = { by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, removed: 0, touched: [] };
     let wSum = 0;
@@ -221,8 +222,11 @@ export class River {
       const sed = this.top[i] - this.rock[i];
       let eff = 1 / (1 + this.hard[i] * hardFactor);
       if (sed <= 1e-6) eff *= firmness;
+      const armor = this.armor[i];
+      if (armor > 1e-6) eff *= armorEff; // Beton muss erst aufgebrochen werden
       let take = ((amount * w) / wSum) * eff;
-      if (sed > 1e-6) take = Math.min(take, sed); // erst das Sediment, dann (im nächsten Schritt) der Fels darunter
+      if (sed > 1e-6) take = Math.min(take, sed);
+      if (armor > 1e-6) take = Math.min(take, armor); // zuerst die Betonschicht // erst das Sediment, dann (im nächsten Schritt) der Fels darunter
       if (take <= 0) continue;
       const fromSed = Math.min(take, Math.max(0, sed)), fromRock = take - fromSed;
       this.top[i] -= take;
@@ -230,7 +234,9 @@ export class River {
       const left = this.top[i] - this.rock[i];
       let snap = 0;
       if (fromRock === 0 && left > 0 && left < CONFIG.layer.snap) { snap = left; this.top[i] -= snap; } // winziger Rest gilt als erledigt
-      res.by[this.kind[i]] += fromSed + snap; res.by[KIND.fels] += fromRock;
+      if (armor > 1e-6) { this.armor[i] = Math.max(0, armor - take); if (this.armor[i] < 0.01) this.armor[i] = 0; res.by[KIND.fels] += fromSed; } // Betonbruch zählt wie Fels (Schotter)
+      else res.by[this.kind[i]] += fromSed + snap;
+      res.by[KIND.fels] += fromRock;
       take += snap;
       res.removed += take;
       const strip = this.ext[i] === 1 || (this.ext[i] === 2 && allowLand);
@@ -253,17 +259,43 @@ export class River {
   // Spalten, in denen an der Einsaugstelle etwas zu holen ist. Die Einsaugstelle folgt dem Gelände jeder Spalte
   // (gleicher Abstand zur lokalen Oberfläche wie in der Mittelspalte). amount in m³.
   suckSwath(cols, centerCol, headY, headH, radius, amount, firmness = CONFIG_BASE_FIRMNESS, opts = {}) {
-    const { allowLand = false, hardFactor = CONFIG.hard.factor } = opts;
+    const { allowLand = false, hardFactor = CONFIG.hard.factor, armorEff = CONFIG.concrete.pumpBreak } = opts;
     const my = clamp(Math.floor(headY), 0, this.rows - 1), base = this.top[this.idx(centerCol, my)];
     const work = cols.map((c) => this._adj(this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius, allowLand), firmness)).filter((cells) => cells.length);
     const rowW = work.map((cells) => cells.reduce((a, c) => a + c[1], 0)), total = rowW.reduce((a, b) => a + b, 0);
     const sum = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0 };
     for (let k = 0; k < work.length; k++) {
-      const res = this._vol(this._drain(work[k], (amount * rowW[k]) / total / this.area, firmness, true, hardFactor, allowLand));
+      const res = this._vol(this._drain(work[k], (amount * rowW[k]) / total / this.area, firmness, true, hardFactor, allowLand, armorEff));
       sum.removed += res.removed; sum.zone += res.zone; sum.out += res.out; sum.land += res.land; sum.hard += res.hard;
       for (let m = 0; m < 5; m++) sum.by[m] += res.by[m];
     }
     return sum;
+  }
+
+  // Beton ausbringen: verhärtet die oberste Sedimentschicht (bis CONFIG.concrete.thickness) der Zellen im Bereich um (headY, headH).
+  // Nur im Baggerkorridor und im Ausbaustreifen (sonst Schutzgebiet), nur auf Sediment (Fels trägt keinen Beton). amount in m³ Beton,
+  // Rückgabe: verbrauchte Menge (m³) und Anzahl neu verhärteter Zellen. Die Höhe der Sohle ändert sich nicht.
+  pourSwath(cols, centerCol, headY, headH, radius, amount) {
+    const T = CONFIG.concrete.thickness, my = clamp(Math.floor(headY), 0, this.rows - 1), base = this.top[this.idx(centerCol, my)];
+    const cells = [];
+    for (const c of cols) {
+      for (const [i, w] of this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius, true)) {
+        const ok = this.zone[i] || this.ext[i] === 1 || this.ext[i] === 2;
+        if (ok && this.top[i] - this.rock[i] > T * 0.5 && this.armor[i] < T - 1e-6) cells.push([i, w]);
+      }
+    }
+    let wSum = 0;
+    for (const [, w] of cells) wSum += w;
+    if (!wSum) return { used: 0, cells: 0 };
+    let left = amount, used = 0, done = 0;
+    for (const [i, w] of cells) {
+      const want = Math.min(T - this.armor[i], this.sedAt(i), (amount * (w / wSum)) / this.area);
+      const dv = Math.min(left, want * this.area);
+      if (dv <= 0) continue;
+      this.armor[i] += dv / this.area; left -= dv; used += dv;
+      if (this.armor[i] >= T - 1e-6) done++;
+    }
+    return { used, cells: done };
   }
 
   // Hüllkurven der Spalten `cols` über die Querschnittsfenster-Zellen y0..y0+n-1: höchster Punkt (= die engste Stelle für Schiffe) und tiefster

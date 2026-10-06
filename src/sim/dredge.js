@@ -1,5 +1,5 @@
 import { CONFIG, KIND } from '../config.js';
-import { SliceSim } from './slice.js';
+import { SliceSim, TOOLS, toolAvailable, toolName } from './slice.js';
 
 // Baggersitzung mit zwei Ansichten, die in Echtzeit laufen (die Uhr gehört dem Game):
 //  - mode 'map':   Draufsicht, Ponton positionieren (nur auf Wasser mit genug Tiefe)
@@ -14,6 +14,7 @@ export class DredgeSim {
     this.targetDepth = CONFIG.echolot.defaultDepth;
     this.pumpSpeed = CONFIG.pumpSpeed.default;
     this.bufferRoom = Infinity;
+    this.concreteAvail = 0; // Betonvorrat (m³), setzt das Game
     this.mode = 'map';
     this.slice = null;
     this.pumpOn = false;
@@ -59,10 +60,16 @@ export class DredgeSim {
 
   // Gerät wechseln: im Querschnitt sofort, auf der Karte für die nächste Verankerung
   setTool(tool) {
-    if (tool === 'loeffel' && this.stats.loeffel <= 0) return false;
+    if (!toolAvailable(this.stats, tool)) return false;
     if (this.mode === 'slice') { if (!this.slice.setTool(tool)) return false; this.pumpOn = false; }
     this.tool = tool;
     return true;
+  }
+
+  // Nächstes verfügbares Gerät (Saugkopf → Löffel → Beton → Saugkopf)
+  nextTool() {
+    for (let k = 1; k <= TOOLS.length; k++) { const t = TOOLS[(TOOLS.indexOf(this.tool) + k) % TOOLS.length]; if (toolAvailable(this.stats, t)) return t; }
+    return this.tool;
   }
 
   setTargetDepth(v) {
@@ -90,7 +97,7 @@ export class DredgeSim {
   // input: { dx, dy in -1..1, suction: bool }
   update(dt, input) {
     const s = this.stats;
-    const d = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, fines: 0, repairs: 0, tips: 0, clogs: 0, clogItems: [], bombs: 0 };
+    const d = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0, fines: 0, repairs: 0, tips: 0, clogs: 0, clogItems: [], bombs: 0 };
 
     if (this.mode === 'map') {
       let dx = input.dx || 0, dy = input.dy || 0;
@@ -100,7 +107,8 @@ export class DredgeSim {
       if (this.canFloat(nx, this.y)) this.x = nx; // Land und Flachwasser halten den Ponton auf
       if (this.canFloat(this.x, ny)) this.y = ny;
     } else {
-      this.slice.blocked = this.bufferFull;
+      this.slice.blocked = this.bufferFull && this.slice.tool !== 'beton';
+      this.slice.concreteAvail = this.concreteAvail;
       const r = this.slice.update(dt, { ...input, suction: input.suction || this.pumpOn, pumpOn: this.pumpOn });
       if (this.autoStartedPump && !this.slice.auto.on) { this.pumpOn = false; this.autoStartedPump = false; }
       for (const n of this.slice.notes.splice(0)) {
@@ -108,7 +116,7 @@ export class DredgeSim {
         if (n.kind === 'clog') { d.clogs++; d.clogItems.push(n.item); if (n.bomb) d.bombs++; }
         if (n.kind === 'tip') { d.tips++; d.repairs += CONFIG.pump.repairCost; this.pumpOn = false; }
       }
-      d.removed = r.removed; d.by = r.by; d.zone = r.zone; d.out = r.out; d.land = r.land; d.hard = r.hard;
+      d.removed = r.removed; d.by = r.by; d.zone = r.zone; d.out = r.out; d.land = r.land; d.hard = r.hard; d.concrete = r.concrete ?? 0;
       // Trübung entsteht nur, wenn die Pumpe am Boden wirklich Material saugt; Mehr Leistung, Bewegung und Altlasten = mehr Trübung.
       const T = this.slice.toolParams(), use = T.power * dt > 0 ? Math.min(1, Math.max(0, r.removed / (T.power * dt))) : 0;
       if (this.slice.suctioning && use > 0) {
@@ -125,3 +133,5 @@ export class DredgeSim {
     return d;
   }
 }
+
+export { TOOLS, toolName };
