@@ -6,7 +6,7 @@ import { CONFIG, DEBRIS, KIND } from '../config.js';
 // work = Arbeitsrichtung: nur nach rechts wird gesaugt; der Rückweg saugt nicht.
 export const SLICE = { cols: 16, viewH: 7.6, below: 6.1, work: { x: 1, y: 1 }, returnBoost: 1.6, minWaterDepth: 0.5 };
 
-const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, hard: 0 };
+const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0 };
 
 const AUTO_ERRORS = [
   { id: 'stuck', text: 'Automatik hängt sich auf und starrt aufs Wasser' },
@@ -17,8 +17,9 @@ const AUTO_ERRORS = [
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export class SliceSim {
-  constructor(river, stats, mapX, mapY, rng = Math.random, targetDepth = CONFIG.echolot.defaultDepth, speedSetting = CONFIG.pumpSpeed.default) {
+  constructor(river, stats, mapX, mapY, rng = Math.random, targetDepth = CONFIG.echolot.defaultDepth, speedSetting = CONFIG.pumpSpeed.default, tool = 'pump') {
     this.river = river;
+    this.tool = tool === 'loeffel' && stats.loeffel > 0 ? 'loeffel' : 'pump'; // Gerät: Saugkopf oder Löffelbagger
     this.stats = stats;
     this.rng = rng;
     const B = CONFIG.box.cols;
@@ -42,6 +43,8 @@ export class SliceSim {
     this.clog = 0;
     this.freeing = null;
     this.auto = { on: false, dir: 'sweep', error: null, errLeft: 0, startX: this.x, didWork: false };
+    this.soundNoise = null; // überschreibt die Messungenauigkeit (Flottenpontons haben ein Peilgerät an Bord)
+    this.autoRange = null; // [erste, letzte Zeile quer zum Fluss], auf die sich die Automatik beschränkt (Flotte: nur die Rinne), sonst null = alles im Korridor
     this.notes = [];
   }
 
@@ -49,9 +52,29 @@ export class SliceSim {
   set h(v) { this._h = v; this.setH = v; }
 
   get wl() { return this.river.wl; }
-  maxH() { return this.wl - CONFIG.pump.maxHeightBelowWater; }
+  maxH() { return this.tool === 'loeffel' ? this.wl + CONFIG.bucket.reachAbove : this.wl - CONFIG.pump.maxHeightBelowWater; }
+
+  // Kennwerte des gewählten Geräts. Der Löffel verstopft nicht, kippt kaum, trübt wenig, schafft harte Schicht und Fels besser und reicht über Wasser.
+  toolParams() {
+    const s = this.stats, B = CONFIG.bucket;
+    if (this.tool === 'loeffel') return { power: s.bucketPower, radius: s.bucketRadius, firmness: s.bucketRock, hardFactor: B.hardFactor, allowLand: true, turb: B.turbidity, stability: s.stability * B.stability, clogs: false };
+    return { power: s.power, radius: s.radius, firmness: s.rockFirmness, hardFactor: CONFIG.hard.factor, allowLand: false, turb: 1, stability: s.stability, clogs: true };
+  }
+
+  // Gerät wechseln (nur mit ausgebautem Löffel; nicht während Verstopfung oder Kippen)
+  setTool(tool) {
+    if (tool === this.tool || this.tipped > 0 || this.clog > 0) return false;
+    if (tool === 'loeffel' && this.stats.loeffel <= 0) return false;
+    this.tool = tool; this.suctioning = false; this.auto.on = false;
+    const b = this.bounds();
+    this.x = clamp(this.x, b.min, b.max - CONFIG.pump.offsetX);
+    this.h = Math.min(this.maxH(), this.surfaceAt(this.x) + 1.5);
+    this.say('info', tool === 'loeffel' ? 'Löffelbagger eingeschwenkt: verstopft nie, reicht über Wasser.' : 'Saugkopf eingeschwenkt.');
+    return true;
+  }
   // Erlaubter Bereich quer zum Fluss: nur dort, wo genug Wasser ist (Ufer und Flachstellen gehen nicht)
   bounds() {
+    if (this.tool === 'loeffel') return { min: this.x0 + 0.01, max: this.x0 + SLICE.cols - 0.01 }; // der Ausleger reicht über das ganze Fenster, auch ans Ufer
     let min = Infinity, max = -Infinity;
     for (let c = 0; c < SLICE.cols; c++) {
       if (this.wl - this.envTop(this.x0 + c) >= SLICE.minWaterDepth) { min = Math.min(min, this.x0 + c + 0.01); max = Math.max(max, this.x0 + c + 0.99); }
@@ -106,14 +129,14 @@ export class SliceSim {
 
   // Echolot: lotet das Profil aus (mit Messfehler je nach Stufe); ohne Echolot ist die Peilung grob
   sound() {
-    const amp = CONFIG.echolot.noise[this.stats.echolot] ?? 0;
+    const amp = this.soundNoise ?? CONFIG.echolot.noise[this.stats.echolot] ?? 0;
     this.sounding = new Float32Array(SLICE.cols);
     for (let c = 0; c < SLICE.cols; c++) this.sounding[c] = this.envTop(this.x0 + c) + (this.rng() - 0.5) * 2 * amp;
   }
 
   // Ist die Spalte c des Fensters nach Peilung auf Solltiefe (oder gehört nicht zum Korridor)?
   _inZone(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)]); }
-  _colOpen(c) { return this._inZone(c) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
+  _colOpen(c) { if (this.autoRange && (this.x0 + c < this.autoRange[0] || this.x0 + c > this.autoRange[1])) return false; return this._inZone(c) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
   colDone(c) { return !this._colOpen(c); }
   allDone() { for (let c = this.auto.on ? this.autoFromCol() : 0; c < SLICE.cols; c++) if (this._colOpen(c)) return false; return true; }
   _openLeft() { for (let c = 0; c < this.autoFromCol(); c++) if (this._colOpen(c)) return c; return -1; }
@@ -234,27 +257,32 @@ export class SliceSim {
       return ZERO;
     }
 
-    // Fremdstoff an der Einsaugstelle? Wer den Kopf anhebt, fährt drüber weg.
+    // Fremdstoff an der Einsaugstelle? Wer den Kopf anhebt, fährt drüber weg. Der Löffel hebt Fremdstoffe einfach aus (ausser Bomben).
+    const T = this.toolParams();
     const m = this.mouth(), my = clamp(Math.floor(m.x), 0, R.rows - 1);
     let di;
     for (const c of this.cols) { const i = R.idx(c, my); if (R.debris[i]) { di = i; break; } }
     const d = di === undefined ? 0 : R.debris[di];
     if (d && m.h <= this.surfaceAt(m.x) + 1.5) {
+      const bomb = d === DEBRIS.length;
       R.debris[di] = 0;
-      this.clog = a.on ? CONFIG.auto.clogSeconds[lvl] : (CONFIG.debrisInfo[d - 1]?.clog ?? CONFIG.debris.clogSeconds);
-      if (!a.on) this._startFreeing(d - 1);
-      this.suctioning = false;
-      this.say('clog', `Pumpe verstopft: ${DEBRIS[d - 1]}!`, { item: DEBRIS[d - 1], bomb: d === DEBRIS.length });
-      return ZERO;
+      if (T.clogs || bomb) {
+        this.clog = a.on ? CONFIG.auto.clogSeconds[lvl] : (CONFIG.debrisInfo[d - 1]?.clog ?? CONFIG.debris.clogSeconds);
+        if (!a.on) this._startFreeing(d - 1);
+        this.suctioning = false;
+        this.say('clog', `${T.clogs ? 'Pumpe verstopft' : 'Löffel blockiert'}: ${DEBRIS[d - 1]}!`, { item: DEBRIS[d - 1], bomb });
+        return ZERO;
+      }
+      this.say('info', `Löffel hebt aus: ${DEBRIS[d - 1]}`);
     }
-    const res = R.suckSwath(this.cols, this.centerCol, m.x, m.h, s.radius, s.power * dt, s.rockFirmness);
+    const res = R.suckSwath(this.cols, this.centerCol, m.x, m.h, T.radius, T.power * dt, T.firmness, { allowLand: T.allowLand, hardFactor: T.hardFactor });
 
     // Zu tief abgetragen: pro gefahrene Zelle wird zu viel weggesaugt, der Boden bricht vor der Pumpe weg und sie kippt.
     const dist = Math.max(Math.abs(this.x - oldX), P.minTravel * dt), cut = res.removed / R.area / dist;
-    if (cut > s.stability || liftGain > 0) this.tilt += Math.max(0, cut - s.stability) * P.tiltRate * dt + liftGain;
+    if (cut > T.stability || liftGain > 0) this.tilt += Math.max(0, cut - T.stability) * P.tiltRate * dt + liftGain;
     else this.tilt = Math.max(0, this.tilt - P.tiltRecover * dt);
     if (res.out > 1e-6 && this.overNote <= 0) {
-      this.say('bad', 'Naturschutzzone! Die Fischereiaufsicht schaut zu (Busse pro m³).');
+      this.say('bad', this.tool === 'loeffel' ? 'Schutzgebiet! Hier darf nicht abgetragen werden (Busse pro m³).' : 'Naturschutzzone! Die Fischereiaufsicht schaut zu (Busse pro m³).');
       this.overNote = 8;
     }
     if (this.tilt >= 1) this._tip();
@@ -263,7 +291,7 @@ export class SliceSim {
 
   _tip() {
     this.tilt = 1; this.tipped = CONFIG.pump.tipSeconds; this.suctioning = false;
-    this.say('tip', 'Pumpe gekippt! Sie liegt jetzt am Grund und nennt es Mittagspause.');
+    this.say('tip', this.tool === 'loeffel' ? 'Bagger gekippt! Der Löffel liegt im Wasser.' : 'Pumpe gekippt! Sie liegt jetzt am Grund und nennt es Mittagspause.');
   }
 }
 

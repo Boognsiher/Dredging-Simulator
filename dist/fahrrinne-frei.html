@@ -300,6 +300,12 @@ body.touch #classbar { padding-right: 58px; }
 #topbar #classbar { flex: 1; min-width: 0; }
 body.touch #topbar #btn-pause2 { position: static; flex: none; width: 46px; height: 46px; margin: 0 2px 0 0; }
 body.touch #classbar { padding-right: 4px; }
+/* Flotte */
+#fleet { font-size: 13px; } #fleet small { color: var(--muted); display: block; margin: 4px 0; }
+.unit { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #ffffff0d; border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+.unit button { margin: 0; padding: 4px 8px; font-size: 12px; background: #3a2f2f; }
+.fleet-goal { display: block; margin-top: 8px; } #fleet-goal { width: 100%; margin-top: 4px; padding: 6px; border-radius: 6px; background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; font: inherit; }
+#fleet .primary { margin-top: 8px; } #fleet .warn { color: var(--bad); }
 
 </style>
 </head>
@@ -328,6 +334,7 @@ body.touch #classbar { padding-right: 4px; }
         <span><i style="background:rgba(90,95,105,.8)"></i>Fels</span>
         <span><i style="background:repeating-linear-gradient(45deg,#2a3a4a,#2a3a4a 2px,#8fa6ba 2px,#8fa6ba 3px)"></i>harte Schicht</span>
         <span><i style="background:#fff;border:1px solid #222"></i>Fremdstoff</span>
+        <span><i style="background:rgba(235,200,70,.6)"></i>Ausbaustreifen (Löffel)</span>
         <span><i style="background:rgba(255,70,60,.7)"></i>zu flach (Klasse)</span>
         <span><i style="background:rgba(150,90,200,.7)"></i>Fels im Weg</span>
       </div>
@@ -342,6 +349,7 @@ body.touch #classbar { padding-right: 4px; }
         <button id="btn-leave">↩ Zurück zur Karte (Q)</button>
         <button id="btn-auto">🤖 Automatik an (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
+        <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
         <button id="btn-pump">🌀 Pumpe: AUS (Leertaste)</button>
         <button id="btn-sound">🔊 Ton an (M)</button>
         <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
@@ -368,6 +376,8 @@ body.touch #classbar { padding-right: 4px; }
       <div id="goal"></div>
       <h2>Wasserstrasse</h2>
       <div id="fairway"></div>
+      <h2>Flotte</h2>
+      <div id="fleet"></div>
       <h2>Frachtmarkt</h2>
       <div id="market"></div>
       <h2>Frachtaufträge</h2>
@@ -393,18 +403,20 @@ const { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, carg
 const { Game } = __m(2);
 const { acceptContract } = __m(12);
 const { waitingByClass } = __m(11);
+const { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, targetClass } = __m(13);
 const { priceOf, trend } = __m(8);
 const { needDepth } = __m(4);
-const { Advisor } = __m(14);
-const { serializeGame, restoreGame, savedSummary } = __m(15);
-const { createInput } = __m(16);
-const { setupTouch } = __m(18);
-const { steerToward } = __m(17);
-const { fitSize, renderQuality } = __m(19);
-const { hintsFor } = __m(20);
-const { Fx } = __m(21);
-const { createAudio } = __m(22);
-const { view, CELL, OX, sizeCanvas, drawMap, drawSlice, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(23);
+const { Advisor } = __m(15);
+const { serializeGame, restoreGame, savedSummary } = __m(16);
+const { createInput } = __m(17);
+const { setupTouch } = __m(19);
+const { steerToward } = __m(18);
+const { fitSize, renderQuality } = __m(20);
+const { hintsFor } = __m(21);
+const { Fx } = __m(22);
+const { createAudio } = __m(23);
+const { view, CELL, OX, sizeCanvas, drawMap, drawSlice, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(24);
+
 
 
 
@@ -597,6 +609,25 @@ function updateMarket() {
   }));
 }
 
+let fleetSig = null;
+function updateFleet() {
+  const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id]);
+  if (sig === fleetSig) return;
+  fleetSig = sig;
+  const box = $('fleet'), cls = targetClass(game);
+  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert</small></div><button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button></div>`).join('');
+  const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
+  box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
+    ${rows}
+    <label class="fleet-goal">Ausbauziel <select id="fleet-goal">${opts}</select></label>
+    <small>${cls ? `Aktuell: ${cls.icon} ${cls.name}` : 'Alle Klassen fahren'}</small>
+    <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
+  $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
+  $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
+  for (const b of box.querySelectorAll('[data-fire]')) b.onclick = () => { dismissUnit(game, +b.dataset.fire); fleetSig = null; updateFleet(); };
+}
+
 let contractSig = null;
 function updateContracts() {
   const sig = JSON.stringify(game.contracts.map((c) => [c.id, c.status, Math.floor(c.done / 50)])) + Math.floor(game.money / 500);
@@ -656,7 +687,7 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+function updatePanel() { updateToolButton(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -772,6 +803,18 @@ function togglePump() {
   if (sim.togglePump()) audio.toggle(sim.pumpOn);
 }
 function fixAuto() { sim.fixAuto(); }
+function toggleTool() {
+  const to = sim.tool === 'loeffel' ? 'pump' : 'loeffel';
+  if (to === 'loeffel' && game.stats.loeffel <= 0) { toast('Der Löffelbagger fehlt: unter Ausrüstung kaufen', 'bad', true); return; }
+  if (!sim.setTool(to)) { toast('Gerät lässt sich jetzt nicht wechseln (Verstopfung oder Kippen)', 'bad', true); return; }
+  game.tool = sim.tool; audio.toggle(true);
+  if (sim.mode === 'map') toast(`Nächste Verankerung mit ${to === 'loeffel' ? 'Löffelbagger' : 'Saugkopf'}`, 'info', true);
+}
+function updateToolButton() {
+  const b = $('btn-tool'), has = game.stats.loeffel > 0;
+  b.hidden = !has;
+  if (has) b.textContent = `🔧 Gerät: ${sim.tool === 'loeffel' ? 'Löffelbagger' : 'Saugkopf'} (V)`;
+}
 function setDepthValue(v) {
   sim.setTargetDepth(v);
   game.targetDepth = sim.targetDepth;
@@ -873,7 +916,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = [];
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -906,6 +949,7 @@ $('btn-anchor').onclick = anchor;
 $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
 $('btn-fix').onclick = fixAuto;
+$('btn-tool').onclick = toggleTool;
 $('cut').oninput = (e) => setDepthValue(parseFloat(e.target.value));
 $('spd').oninput = (e) => setSpeed(parseFloat(e.target.value));
 
@@ -938,10 +982,12 @@ function frame(now) {
         }
       }
       if (readInput.tap('Space', 'Enter', 'KeyE')) anchor();
+      if (readInput.tap('KeyV')) toggleTool();
     } else {
       if (readInput.tap('Escape', 'KeyQ')) leave();
       if (readInput.tap('KeyT')) toggleAuto();
       if (readInput.tap('KeyR')) fixAuto();
+      if (readInput.tap('KeyV')) toggleTool();
       if (readInput.tap('Space')) togglePump();
       inp.suction = sim.pumpOn;
       if (readInput.tap('KeyZ')) setSpeed(sim.pumpSpeed - 0.1);
@@ -970,9 +1016,10 @@ function frame(now) {
       $('btn-auto').hidden = sim.stats.autoLevel <= 0;
       $('btn-auto').textContent = sl.auto.on ? '🤖 Automatik aus (T)' : '🤖 Automatik an (T)';
       $('btn-fix').hidden = !sl.auto.error;
-      $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';
+      const bucket = sl.tool === 'loeffel';
+      $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : bucket ? (sim.pumpOn ? '⛏ Löffel: AN (Leertaste)' : '⛏ Löffel: AUS (Leertaste)') : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';
       $('btn-pump').classList.toggle('on', sim.pumpOn);
-      touch?.setPump(sim.pumpOn, !!sl.freeing);
+      touch?.setPump(sim.pumpOn, !!sl.freeing, bucket);
       $('spd-box').hidden = false;
       if (document.activeElement !== $('spd')) { $('spd').value = sim.pumpSpeed; $('spd-val').textContent = pct(sim.pumpSpeed); }
       $('cut-box').hidden = false;
@@ -1087,7 +1134,7 @@ const CONFIG = {
   hard: { factor: 1.5 }, // harte Schicht: Leistung geteilt durch (1 + Härte * factor)
   box: { cols: 4 }, // der Ponton baggert gleichzeitig 4 Karten-Spalten (Flussrichtung) und 16 Zellen quer zum Fluss
   // Baggerentgelt der Wasserstrassenverwaltung für Material aus dem Baggerkorridor; Naturschutzzone (Ufer, Flachwasser) kostet
-  pay: { perM3: 28, protectFine: 220 },
+  pay: { perM3: 28, protectFine: 220, landFee: 14 }, // landFee: Landerwerb/Entsorgung pro m³ Aushub aus dem Ausbaustreifen am Ufer
   // Material der Flusssohle (Index = Wert in river.kind). Preis in CHF pro m³ nach der Aufbereitung: positiv = Verkauf, negativ = Entsorgung.
   // Der Kiespreis folgt dem Markt (Fracht "Kies & Sand").
   materials: [
@@ -1162,6 +1209,11 @@ const CONFIG = {
   dailyCost: 450, perUpgradeLevelCost: 22, // Betrieb und Wartung pro Tag (CHF), plus je ausgebaute Stufe
   advisor: { firstAfter: 18, gap: 55, tipCooldown: 240, tau: 30, eventWindow: 120, bufferFull: 0.45, turbidity: 0.55, richMoney: 40000 },
   refundShare: 0.75,
+  // Löffelbagger (Schaufeln): langsamer als der Saugbagger, aber ohne Verstopfen, besser bei harter Schicht und Fels, wenig Trübung,
+  // und er reicht über den Wasserspiegel: damit lässt sich Ufer im Ausbaustreifen abtragen (der Fluss wird breiter)
+  bucket: { hardFactor: 0.5, turbidity: 0.3, stability: 3, reachAbove: 2.2, bombChance: 1 },
+  // Flotte: gemietete Pontons arbeiten selbstständig (Automatik), ohne dass du den Querschnitt öffnest
+  fleet: { max: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
 };
 
 // Materialindex
@@ -1186,6 +1238,10 @@ const BASE_STATS = {
   trafficMult: 1, // Betonnung & Leuchtfeuer: mehr Schiffe
   vts: 0, // Verkehrsleitsystem: schnellere Bergung, kleinere Abstände
   pilot: 0, // Lotsendienst: höhere Gebühren
+  loeffel: 0, // Löffelbagger-Stufe (0 = nicht vorhanden)
+  bucketPower: 0, // m³/s Grabeleistung des Löffels
+  bucketRadius: 1.1, // Zellen
+  bucketRock: 0.3, // Anteil der Leistung im Fels
 };
 
 // Jedes Upgrade: Stufe n kostet baseCost * growth^n, wirkt über apply()
@@ -1197,6 +1253,7 @@ const UPGRADES = {
   ballast: { group: 'ponton', name: 'Pumpen-Ballast', desc: 'Pumpe steht fester und kippt später', maxLevel: 4, baseCost: 6000, growth: 1.5, apply: (s, l) => { s.stability += l * 0.25; } },
   curtain: { group: 'ponton', name: 'Trübungsschutz', desc: 'Schlammvorhang: weniger Trübung, weniger Bussen', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.curtain = Math.min(0.8, l * 0.2); } },
   cutter: { group: 'ponton', name: 'Felsfräse', desc: 'Schneidkopf: Felsriegel lassen sich abtragen (ohne Fräse kaum)', maxLevel: 4, baseCost: 14000, growth: 1.7, apply: (s, l) => { s.rockFirmness += l * 0.14; } },
+  loeffel: { group: 'ponton', name: 'Löffelbagger', desc: 'Ausleger mit Schaufel (V = Gerät wechseln): verstopft nie, schafft Fels und harte Schicht, wenig Trübung, reicht über Wasser (Ufer abtragen). Höhere Stufen: mehr Leistung', maxLevel: 5, baseCost: 12000, growth: 1.6, apply: (s, l) => { s.loeffel = l; if (l > 0) { s.bucketPower = 2.4 + 1.3 * (l - 1); s.bucketRadius = 1.0 + 0.12 * l; s.bucketRock = 0.28 + 0.08 * l; } } },
   echolot: { group: 'ponton', name: 'Echolot', desc: 'Genauere Peilung: die Automatik trifft die Solltiefe besser', maxLevel: 2, baseCost: 9000, growth: 1.8, apply: (s, l) => { s.echolot = l; } },
   auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 15000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
   plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer', maxLevel: 6, baseCost: 10000, growth: 1.5, apply: (s, l) => { s.plantCapacity += l * 1.2; s.bufferCapacity += l * 45; } },
@@ -1273,8 +1330,10 @@ const { computeStats, upgradeCost } = __m(9);
 const { createRng } = __m(10);
 const { createMarket, stepMarket } = __m(8);
 const { createTraffic, updateTraffic } = __m(11);
-const { processPlant, stockTotal } = __m(13);
+const { processPlant, stockTotal } = __m(14);
 const { updateContracts } = __m(12);
+const { createFleet, updateFleet } = __m(13);
+
 
 
 
@@ -1309,14 +1368,17 @@ class Game {
     this.stock = [0, 0, 0, 0, 0]; // Puffer vor der Anlage in m³ je Material
     this.targetDepth = CONFIG.echolot.defaultDepth;
     this.pumpSpeed = CONFIG.pumpSpeed.default;
+    this.tool = 'pump'; // zuletzt gewähltes Gerät des eigenen Pontons
     this.market = createMarket();
     this.traffic = createTraffic();
+    this.fleet = createFleet();
     this.contracts = [];
     this.contractSeq = 0;
     this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
     this.rejectedBy = {};
-    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
+    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
     this.today = freshDay();
+    this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
     this.fairSig = {}; // zuletzt bekannter Zustand je Klasse (für Meldungen "jetzt befahrbar")
     this.status = 'playing'; // 'playing' | 'ended'
@@ -1372,6 +1434,7 @@ class Game {
     sim.pumpSpeed = this.pumpSpeed;
     sim.bufferRoom = this.bufferRoom;
     sim.turbidityMult = this.level.turbidityMult ?? 1;
+    if (this.tool === 'loeffel' && this.stats.loeffel > 0) sim.tool = 'loeffel';
     return sim;
   }
 
@@ -1393,13 +1456,13 @@ class Game {
   collect(d) {
     if (this.status !== 'playing') return;
     for (let k = 0; k < 5; k++) { this.stock[k] += d.by[k]; this.totals.byKind[k] += d.by[k]; }
-    const pay = d.zone * CONFIG.pay.perM3, protect = d.out * CONFIG.pay.protectFine;
+    const pay = d.zone * CONFIG.pay.perM3, protect = d.out * CONFIG.pay.protectFine, land = (d.land ?? 0) * CONFIG.pay.landFee;
     let bomb = 0;
     if (d.bombs) { bomb = 4500 * d.bombs; this.totals.bombs += d.bombs; this.say(`Blindgänger! Der Kampfmittelräumdienst rückt aus (−${bomb} CHF).`, 'bad'); this.notify('Fliegerbombe! Kampfmittelräumdienst −4500 CHF', 'bad'); }
-    this.money += pay - protect - d.fines - d.repairs - bomb;
+    this.money += pay - protect - land - d.fines - d.repairs - bomb;
     const t = this.totals, y = this.today;
-    t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect;
-    y.pay += pay; y.costs += protect + d.fines + d.repairs + bomb;
+    t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
+    y.pay += pay; y.costs += protect + land + d.fines + d.repairs + bomb;
   }
 
   update(dt) {
@@ -1426,6 +1489,7 @@ class Game {
     this.fairClock -= dt;
     if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
 
+    updateFleet(this, dt);
     updateTraffic(this, dt);
 
     const day = Math.floor(this.time / CONFIG.daySeconds) + 1;
@@ -1439,13 +1503,14 @@ class Game {
   dayEnd() {
     const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
     const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
-    this.money -= cost; t.opCost += cost;
+    const wages = CONFIG.fleet.wage * this.fleet.units.length;
+    this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;
-    y.costs += cost;
+    y.costs += cost + wages;
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();
     stepMarket(this.market, this.rng);
-    for (const e of EVENTS) {
+    for (const e of this.eventsOn ? EVENTS : []) {
       if (this.rng() < e.chance && (!e.when || e.when(this))) {
         const r = e.apply(this);
         if (r) { this.say(r.text, r.kind); this.notify(r.text, r.kind); }
@@ -1500,6 +1565,7 @@ class River {
     this.hard = new Uint8Array(n); // 0 weich, 1 verdichtet, 2 hart (mehrere Überfahrten)
     this.debris = new Uint8Array(n); // 0 nichts, sonst Index in DEBRIS + 1
     this.zone = new Uint8Array(n);
+    this.ext = new Uint8Array(n); // Ausbaustreifen am Ufer: 1 = Land, 2 = Flachwasser. Mit dem Löffelbagger abtragbar (wird dann zum Korridor), sonst Schutzgebiet
     this.pending = new Set(); // Zellen, deren Böschung noch nachrutscht (abgeleitet, wird nicht gespeichert)
     this.slumpedTotal = 0; // m³ nachgerutscht (Anzeige)
   }
@@ -1531,11 +1597,13 @@ class River {
           r.top[i] = WL - depth;
           r.flow[i] = clamp(1 - rel, 0, 1);
           r.zone[i] = rel < 0.82 ? 1 : 0;
+          r.ext[i] = rel >= 0.82 ? 2 : 0; // Flachwasser am Ufer: Schutzzone für den Saugbagger, mit dem Löffel als Ausbaustreifen abtragbar
           r.rock[i] = WL - (cfg.rockDepth + 0.8 * (1 - rel) + 0.25 * noise(y, x));
         } else {
           r.top[i] = Math.min(WL + 7, WL + 0.5 + (rel - 1) * 3.2 + 0.1 * noise(x, y));
           r.rock[i] = WL - 3; // Ufer: viel Sediment, rutscht nach, wenn man zu nah baggert
           r.flow[i] = 0;
+          r.ext[i] = rel < 1.9 ? 1 : 0;
         }
         const f = r.flow[i];
         r.kind[i] = !water[i] ? KIND.sand : f + 0.12 * noise(y, x) > 0.55 ? KIND.kies : f + 0.12 * noise(y, x) > 0.25 ? KIND.sand : KIND.schlick;
@@ -1668,12 +1736,12 @@ class River {
   }
 
   // Zellen [index, gewicht] einer Spalte `cx` im Saugbereich um (headY, headH). Gesaugt wird nur Sohle unter Wasser.
-  _profileCells(cx, headY, headH, radius) {
+  _profileCells(cx, headY, headH, radius, allowLand = false) {
     const cells = [];
     const y0 = Math.max(0, Math.floor(headY - radius)), y1 = Math.min(this.rows - 1, Math.ceil(headY + radius));
     for (let y = y0; y <= y1; y++) {
       const i = this.idx(cx, y), s = this.top[i];
-      if (s >= this.wl - 0.05) continue;
+      if (s >= this.wl - 0.05 && !(allowLand && s - this.rock[i] > 1e-6)) continue;
       const d = Math.hypot(y + 0.5 - headY, s - headH) / radius;
       if (d < 1) cells.push([i, 1 - d * d]);
     }
@@ -1684,16 +1752,16 @@ class River {
   _adj(cells, firmness) { return cells.map(([i, w]) => [i, this.top[i] - this.rock[i] > 1e-6 ? w : w * firmness]); }
 
   // Gewichtetes Abtragen: verteilt `amount` (Höhe in m) auf die Zellen. Liefert Höhen je Material (by) und Summen.
-  _drain(cells, amount, firmness, adjusted = false) {
+  _drain(cells, amount, firmness, adjusted = false, hardFactor = CONFIG.hard.factor, allowLand = false) {
     if (!adjusted) cells = this._adj(cells, firmness);
-    const res = { by: [0, 0, 0, 0, 0], zone: 0, out: 0, hard: 0, removed: 0, touched: [] };
+    const res = { by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, removed: 0, touched: [] };
     let wSum = 0;
     for (const c of cells) wSum += c[1];
     if (wSum === 0) return res;
     amount *= Math.min(1, wSum / CONFIG.pump.fullDraw); // im freien Wasser über dem Boden ist die Saugkraft schwach
     for (const [i, w] of cells) {
       const sed = this.top[i] - this.rock[i];
-      let eff = 1 / (1 + this.hard[i] * CONFIG.hard.factor);
+      let eff = 1 / (1 + this.hard[i] * hardFactor);
       if (sed <= 1e-6) eff *= firmness;
       let take = ((amount * w) / wSum) * eff;
       if (sed > 1e-6) take = Math.min(take, sed); // erst das Sediment, dann (im nächsten Schritt) der Fels darunter
@@ -1707,7 +1775,9 @@ class River {
       res.by[this.kind[i]] += fromSed + snap; res.by[KIND.fels] += fromRock;
       take += snap;
       res.removed += take;
-      if (this.zone[i]) res.zone += take; else res.out += take;
+      const strip = this.ext[i] === 1 || (this.ext[i] === 2 && allowLand);
+      if (this.zone[i]) res.zone += take; else if (strip) res.land += take; else res.out += take;
+      if (strip && !this.zone[i] && this.top[i] < this.wl - 0.1) { this.zone[i] = 1; this.flow[i] = 0.4; this.cap[i] = this.wl - 0.15; } // Land wird Wasser: neuer Korridor
       if (this.hard[i]) res.hard += fromSed;
       if (this.top[i] - this.rock[i] <= 1e-6) this.hard[i] = 0;
       res.touched.push(i);
@@ -1718,20 +1788,21 @@ class River {
 
   _vol(r) {
     const a = this.area;
-    return { removed: r.removed * a, by: r.by.map((v) => v * a), zone: r.zone * a, out: r.out * a, hard: r.hard * a };
+    return { removed: r.removed * a, by: r.by.map((v) => v * a), zone: r.zone * a, out: r.out * a, land: r.land * a, hard: r.hard * a };
   }
 
   // Querschnitt: Der Kasten umfasst die Spalten `cols` (Flussrichtung); die Pumpenleistung verteilt sich nach Bedarf auf alle
   // Spalten, in denen an der Einsaugstelle etwas zu holen ist. Die Einsaugstelle folgt dem Gelände jeder Spalte
   // (gleicher Abstand zur lokalen Oberfläche wie in der Mittelspalte). amount in m³.
-  suckSwath(cols, centerCol, headY, headH, radius, amount, firmness = CONFIG_BASE_FIRMNESS) {
+  suckSwath(cols, centerCol, headY, headH, radius, amount, firmness = CONFIG_BASE_FIRMNESS, opts = {}) {
+    const { allowLand = false, hardFactor = CONFIG.hard.factor } = opts;
     const my = clamp(Math.floor(headY), 0, this.rows - 1), base = this.top[this.idx(centerCol, my)];
-    const work = cols.map((c) => this._adj(this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius), firmness)).filter((cells) => cells.length);
+    const work = cols.map((c) => this._adj(this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius, allowLand), firmness)).filter((cells) => cells.length);
     const rowW = work.map((cells) => cells.reduce((a, c) => a + c[1], 0)), total = rowW.reduce((a, b) => a + b, 0);
-    const sum = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, hard: 0 };
+    const sum = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0 };
     for (let k = 0; k < work.length; k++) {
-      const res = this._vol(this._drain(work[k], (amount * rowW[k]) / total / this.area, firmness, true));
-      sum.removed += res.removed; sum.zone += res.zone; sum.out += res.out; sum.hard += res.hard;
+      const res = this._vol(this._drain(work[k], (amount * rowW[k]) / total / this.area, firmness, true, hardFactor, allowLand));
+      sum.removed += res.removed; sum.zone += res.zone; sum.out += res.out; sum.land += res.land; sum.hard += res.hard;
       for (let m = 0; m < 5; m++) sum.by[m] += res.by[m];
     }
     return sum;
@@ -1972,6 +2043,7 @@ class DredgeSim {
     this.turbidity = 0;
     this.turbidityMult = 1;
     this.autoStartedPump = false;
+    this.tool = 'pump'; // gewähltes Gerät (Saugkopf oder Löffelbagger), gilt für die nächste Verankerung
     this.removed = 0; this.clogs = 0; this.tips = 0; this.outside = 0;
   }
 
@@ -1992,7 +2064,7 @@ class DredgeSim {
   anchor() {
     if (this.mode !== 'map') return false;
     if (!this.canFloat(this.x, this.y)) return false;
-    this.slice = new SliceSim(this.river, this.stats, this.x, this.y, this.rng, this.targetDepth, this.pumpSpeed);
+    this.slice = new SliceSim(this.river, this.stats, this.x, this.y, this.rng, this.targetDepth, this.pumpSpeed, this.tool);
     this.mode = 'slice';
     this.pumpOn = false;
     return true;
@@ -2003,6 +2075,14 @@ class DredgeSim {
     this.slice = null;
     this.mode = 'map';
     this.pumpOn = false; this.autoStartedPump = false;
+    return true;
+  }
+
+  // Gerät wechseln: im Querschnitt sofort, auf der Karte für die nächste Verankerung
+  setTool(tool) {
+    if (tool === 'loeffel' && this.stats.loeffel <= 0) return false;
+    if (this.mode === 'slice') { if (!this.slice.setTool(tool)) return false; this.pumpOn = false; }
+    this.tool = tool;
     return true;
   }
 
@@ -2031,7 +2111,7 @@ class DredgeSim {
   // input: { dx, dy in -1..1, suction: bool }
   update(dt, input) {
     const s = this.stats;
-    const d = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, hard: 0, fines: 0, repairs: 0, tips: 0, clogs: 0, clogItems: [], bombs: 0 };
+    const d = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, fines: 0, repairs: 0, tips: 0, clogs: 0, clogItems: [], bombs: 0 };
 
     if (this.mode === 'map') {
       let dx = input.dx || 0, dy = input.dy || 0;
@@ -2049,12 +2129,12 @@ class DredgeSim {
         if (n.kind === 'clog') { d.clogs++; d.clogItems.push(n.item); if (n.bomb) d.bombs++; }
         if (n.kind === 'tip') { d.tips++; d.repairs += CONFIG.pump.repairCost; this.pumpOn = false; }
       }
-      d.removed = r.removed; d.by = r.by; d.zone = r.zone; d.out = r.out; d.hard = r.hard;
+      d.removed = r.removed; d.by = r.by; d.zone = r.zone; d.out = r.out; d.land = r.land; d.hard = r.hard;
       // Trübung entsteht nur, wenn die Pumpe am Boden wirklich Material saugt; Mehr Leistung, Bewegung und Altlasten = mehr Trübung.
-      const use = s.power * dt > 0 ? Math.min(1, Math.max(0, r.removed / (s.power * dt))) : 0;
+      const T = this.slice.toolParams(), use = T.power * dt > 0 ? Math.min(1, Math.max(0, r.removed / (T.power * dt))) : 0;
       if (this.slice.suctioning && use > 0) {
         const boost = (this.slice.moving ? 1.4 : 1) * (r.by[KIND.altlast] > 0 ? 1.5 : 1);
-        this.turbidity += (s.power / CONFIG.turbidityGain) * this.turbidityMult * boost * (1 - s.curtain) * use * dt;
+        this.turbidity += (T.power / CONFIG.turbidityGain) * this.turbidityMult * T.turb * boost * (1 - s.curtain) * use * dt;
       }
     }
 
@@ -2079,7 +2159,7 @@ const { CONFIG, DEBRIS, KIND } = __m(1);
 // work = Arbeitsrichtung: nur nach rechts wird gesaugt; der Rückweg saugt nicht.
 const SLICE = { cols: 16, viewH: 7.6, below: 6.1, work: { x: 1, y: 1 }, returnBoost: 1.6, minWaterDepth: 0.5 };
 
-const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, hard: 0 };
+const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0 };
 
 const AUTO_ERRORS = [
   { id: 'stuck', text: 'Automatik hängt sich auf und starrt aufs Wasser' },
@@ -2090,8 +2170,9 @@ const AUTO_ERRORS = [
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 class SliceSim {
-  constructor(river, stats, mapX, mapY, rng = Math.random, targetDepth = CONFIG.echolot.defaultDepth, speedSetting = CONFIG.pumpSpeed.default) {
+  constructor(river, stats, mapX, mapY, rng = Math.random, targetDepth = CONFIG.echolot.defaultDepth, speedSetting = CONFIG.pumpSpeed.default, tool = 'pump') {
     this.river = river;
+    this.tool = tool === 'loeffel' && stats.loeffel > 0 ? 'loeffel' : 'pump'; // Gerät: Saugkopf oder Löffelbagger
     this.stats = stats;
     this.rng = rng;
     const B = CONFIG.box.cols;
@@ -2115,6 +2196,8 @@ class SliceSim {
     this.clog = 0;
     this.freeing = null;
     this.auto = { on: false, dir: 'sweep', error: null, errLeft: 0, startX: this.x, didWork: false };
+    this.soundNoise = null; // überschreibt die Messungenauigkeit (Flottenpontons haben ein Peilgerät an Bord)
+    this.autoRange = null; // [erste, letzte Zeile quer zum Fluss], auf die sich die Automatik beschränkt (Flotte: nur die Rinne), sonst null = alles im Korridor
     this.notes = [];
   }
 
@@ -2122,9 +2205,29 @@ class SliceSim {
   set h(v) { this._h = v; this.setH = v; }
 
   get wl() { return this.river.wl; }
-  maxH() { return this.wl - CONFIG.pump.maxHeightBelowWater; }
+  maxH() { return this.tool === 'loeffel' ? this.wl + CONFIG.bucket.reachAbove : this.wl - CONFIG.pump.maxHeightBelowWater; }
+
+  // Kennwerte des gewählten Geräts. Der Löffel verstopft nicht, kippt kaum, trübt wenig, schafft harte Schicht und Fels besser und reicht über Wasser.
+  toolParams() {
+    const s = this.stats, B = CONFIG.bucket;
+    if (this.tool === 'loeffel') return { power: s.bucketPower, radius: s.bucketRadius, firmness: s.bucketRock, hardFactor: B.hardFactor, allowLand: true, turb: B.turbidity, stability: s.stability * B.stability, clogs: false };
+    return { power: s.power, radius: s.radius, firmness: s.rockFirmness, hardFactor: CONFIG.hard.factor, allowLand: false, turb: 1, stability: s.stability, clogs: true };
+  }
+
+  // Gerät wechseln (nur mit ausgebautem Löffel; nicht während Verstopfung oder Kippen)
+  setTool(tool) {
+    if (tool === this.tool || this.tipped > 0 || this.clog > 0) return false;
+    if (tool === 'loeffel' && this.stats.loeffel <= 0) return false;
+    this.tool = tool; this.suctioning = false; this.auto.on = false;
+    const b = this.bounds();
+    this.x = clamp(this.x, b.min, b.max - CONFIG.pump.offsetX);
+    this.h = Math.min(this.maxH(), this.surfaceAt(this.x) + 1.5);
+    this.say('info', tool === 'loeffel' ? 'Löffelbagger eingeschwenkt: verstopft nie, reicht über Wasser.' : 'Saugkopf eingeschwenkt.');
+    return true;
+  }
   // Erlaubter Bereich quer zum Fluss: nur dort, wo genug Wasser ist (Ufer und Flachstellen gehen nicht)
   bounds() {
+    if (this.tool === 'loeffel') return { min: this.x0 + 0.01, max: this.x0 + SLICE.cols - 0.01 }; // der Ausleger reicht über das ganze Fenster, auch ans Ufer
     let min = Infinity, max = -Infinity;
     for (let c = 0; c < SLICE.cols; c++) {
       if (this.wl - this.envTop(this.x0 + c) >= SLICE.minWaterDepth) { min = Math.min(min, this.x0 + c + 0.01); max = Math.max(max, this.x0 + c + 0.99); }
@@ -2179,14 +2282,14 @@ class SliceSim {
 
   // Echolot: lotet das Profil aus (mit Messfehler je nach Stufe); ohne Echolot ist die Peilung grob
   sound() {
-    const amp = CONFIG.echolot.noise[this.stats.echolot] ?? 0;
+    const amp = this.soundNoise ?? CONFIG.echolot.noise[this.stats.echolot] ?? 0;
     this.sounding = new Float32Array(SLICE.cols);
     for (let c = 0; c < SLICE.cols; c++) this.sounding[c] = this.envTop(this.x0 + c) + (this.rng() - 0.5) * 2 * amp;
   }
 
   // Ist die Spalte c des Fensters nach Peilung auf Solltiefe (oder gehört nicht zum Korridor)?
   _inZone(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)]); }
-  _colOpen(c) { return this._inZone(c) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
+  _colOpen(c) { if (this.autoRange && (this.x0 + c < this.autoRange[0] || this.x0 + c > this.autoRange[1])) return false; return this._inZone(c) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
   colDone(c) { return !this._colOpen(c); }
   allDone() { for (let c = this.auto.on ? this.autoFromCol() : 0; c < SLICE.cols; c++) if (this._colOpen(c)) return false; return true; }
   _openLeft() { for (let c = 0; c < this.autoFromCol(); c++) if (this._colOpen(c)) return c; return -1; }
@@ -2307,27 +2410,32 @@ class SliceSim {
       return ZERO;
     }
 
-    // Fremdstoff an der Einsaugstelle? Wer den Kopf anhebt, fährt drüber weg.
+    // Fremdstoff an der Einsaugstelle? Wer den Kopf anhebt, fährt drüber weg. Der Löffel hebt Fremdstoffe einfach aus (ausser Bomben).
+    const T = this.toolParams();
     const m = this.mouth(), my = clamp(Math.floor(m.x), 0, R.rows - 1);
     let di;
     for (const c of this.cols) { const i = R.idx(c, my); if (R.debris[i]) { di = i; break; } }
     const d = di === undefined ? 0 : R.debris[di];
     if (d && m.h <= this.surfaceAt(m.x) + 1.5) {
+      const bomb = d === DEBRIS.length;
       R.debris[di] = 0;
-      this.clog = a.on ? CONFIG.auto.clogSeconds[lvl] : (CONFIG.debrisInfo[d - 1]?.clog ?? CONFIG.debris.clogSeconds);
-      if (!a.on) this._startFreeing(d - 1);
-      this.suctioning = false;
-      this.say('clog', `Pumpe verstopft: ${DEBRIS[d - 1]}!`, { item: DEBRIS[d - 1], bomb: d === DEBRIS.length });
-      return ZERO;
+      if (T.clogs || bomb) {
+        this.clog = a.on ? CONFIG.auto.clogSeconds[lvl] : (CONFIG.debrisInfo[d - 1]?.clog ?? CONFIG.debris.clogSeconds);
+        if (!a.on) this._startFreeing(d - 1);
+        this.suctioning = false;
+        this.say('clog', `${T.clogs ? 'Pumpe verstopft' : 'Löffel blockiert'}: ${DEBRIS[d - 1]}!`, { item: DEBRIS[d - 1], bomb });
+        return ZERO;
+      }
+      this.say('info', `Löffel hebt aus: ${DEBRIS[d - 1]}`);
     }
-    const res = R.suckSwath(this.cols, this.centerCol, m.x, m.h, s.radius, s.power * dt, s.rockFirmness);
+    const res = R.suckSwath(this.cols, this.centerCol, m.x, m.h, T.radius, T.power * dt, T.firmness, { allowLand: T.allowLand, hardFactor: T.hardFactor });
 
     // Zu tief abgetragen: pro gefahrene Zelle wird zu viel weggesaugt, der Boden bricht vor der Pumpe weg und sie kippt.
     const dist = Math.max(Math.abs(this.x - oldX), P.minTravel * dt), cut = res.removed / R.area / dist;
-    if (cut > s.stability || liftGain > 0) this.tilt += Math.max(0, cut - s.stability) * P.tiltRate * dt + liftGain;
+    if (cut > T.stability || liftGain > 0) this.tilt += Math.max(0, cut - T.stability) * P.tiltRate * dt + liftGain;
     else this.tilt = Math.max(0, this.tilt - P.tiltRecover * dt);
     if (res.out > 1e-6 && this.overNote <= 0) {
-      this.say('bad', 'Naturschutzzone! Die Fischereiaufsicht schaut zu (Busse pro m³).');
+      this.say('bad', this.tool === 'loeffel' ? 'Schutzgebiet! Hier darf nicht abgetragen werden (Busse pro m³).' : 'Naturschutzzone! Die Fischereiaufsicht schaut zu (Busse pro m³).');
       this.overNote = 8;
     }
     if (this.tilt >= 1) this._tip();
@@ -2336,7 +2444,7 @@ class SliceSim {
 
   _tip() {
     this.tilt = 1; this.tipped = CONFIG.pump.tipSeconds; this.suctioning = false;
-    this.say('tip', 'Pumpe gekippt! Sie liegt jetzt am Grund und nennt es Mittagspause.');
+    this.say('tip', this.tool === 'loeffel' ? 'Bagger gekippt! Der Löffel liegt im Wasser.' : 'Pumpe gekippt! Sie liegt jetzt am Grund und nennt es Mittagspause.');
   }
 }
 
@@ -2496,6 +2604,8 @@ const { CONFIG, SHIPS, CARGOS, shipById, cargoById } = __m(1);
 const { priceOf, ratioOf } = __m(8);
 const { minDepthAt, pointOnPath } = __m(4);
 const { creditContracts } = __m(12);
+const { fleetSites } = __m(13);
+
 
 
 
@@ -2556,10 +2666,10 @@ function updateTraffic(g, dt) {
   T.spawnIn -= dt;
   if (T.spawnIn <= 0) { spawnShip(g); T.spawnIn = (CONFIG.daySeconds / Math.max(0.05, rate(g))) * g.rng.range(0.5, 1.5); }
 
-  const site = g.site, near = {};
+  const sites = [g.site, ...fleetSites(g)].filter(Boolean), near = {};
   for (const cls of SHIPS) { // liegt der Ponton in dieser Rinne?
     const pts = g.fair?.[cls.id]?.path?.points;
-    near[cls.id] = !!(site && pts && pts.some((p) => Math.hypot(p.x - site.x, p.y - site.y) < C.siteRadius));
+    near[cls.id] = !!(pts && sites.some((site) => pts.some((p) => Math.hypot(p.x - site.x, p.y - site.y) < C.siteRadius)));
   }
   const sailing = () => ships.filter((s) => s.state === 'sail' || s.state === 'grounded');
 
@@ -2582,7 +2692,7 @@ function updateTraffic(g, dt) {
     }
     let v = cls.speed * (ship.dir > 0 ? C.downFactor : C.upFactor);
     const p0 = shipPos(ship);
-    if (site && Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius) v *= C.siteSlow;
+    if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow;
     let gapMin = Infinity;
     for (const o of ships) {
       if (o === ship || o.dir !== ship.dir || (o.state !== 'sail' && o.state !== 'grounded') || o.s <= ship.s) continue;
@@ -2724,6 +2834,181 @@ function updateContracts(g) {
 return { makeContract: makeContract, acceptContract: acceptContract, creditContracts: creditContracts, updateContracts: updateContracts, shipById: shipById };
 },
 function(){
+const { CONFIG, SHIPS, shipById } = __m(1);
+
+
+// Flotte: gemietete Pontons arbeiten selbstständig. Jeder fährt zur nächsten Engstelle der Ausbauklasse, ankert, lässt die Automatik
+// mit dem passenden Gerät (Saugkopf, bei Fels der Löffel) auf die Solltiefe baggern und sucht danach die nächste offene Stelle.
+// Sie nutzen dieselbe Physik wie dein eigener Ponton (DredgeSim/SliceSim), nur ohne Anzeige. Das Ausbauziel ist eine Schiffsklasse
+// (Standard: die kleinste Klasse, die noch nicht fährt). Pontons ohne Arbeit warten und melden, was fehlt.
+// Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
+const createFleet = () => ({ units: [], seq: 0, goal: null });
+
+const nextHireCost = (g) => CONFIG.fleet.costs[g.fleet.units.length] ?? null;
+
+// Warum lässt sich gerade kein Ponton mieten? null = geht
+function hireBlock(g) {
+  if (g.status !== 'playing') return 'Spiel beendet';
+  if (g.fleet.units.length >= CONFIG.fleet.max) return 'Flotte ist voll';
+  if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
+  const cost = nextHireCost(g);
+  if (g.money < cost) return `Braucht ${cost.toLocaleString('de-CH')} CHF`;
+  return null;
+}
+
+function hireUnit(g) {
+  if (hireBlock(g)) return null;
+  const cost = nextHireCost(g), F = g.fleet;
+  g.money -= cost;
+  const u = { id: ++F.seq, name: `Ponton ${F.units.length + 2}`, x: 1.5, y: g.river.centerY(1), state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
+  F.units.push(u);
+  g.say(`${u.name} gemietet (−${cost.toLocaleString('de-CH')} CHF): arbeitet selbstständig.`, 'upgrade');
+  return u;
+}
+
+function dismissUnit(g, id) {
+  const F = g.fleet, i = F.units.findIndex((u) => u.id === id);
+  if (i < 0) return false;
+  F.units[i].sim?.leave();
+  F.units.splice(i, 1);
+  return true;
+}
+
+function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === clsId) ? clsId : null; }
+
+// Ausbauklasse: gewählt oder die kleinste, die noch nicht fährt (und endlich ist)
+function targetClass(g) {
+  if (g.fleet.goal && g.level.classes.includes(g.fleet.goal)) return shipById(g.fleet.goal);
+  return SHIPS.filter((s) => g.level.classes.includes(s.id)).find((s) => g.fair?.[s.id] && !g.fair[s.id].passable && g.fair[s.id].volume < Infinity) ?? null;
+}
+
+const canRock = (g) => g.stats.loeffel > 0 || g.stats.rockFirmness >= CONFIG.fleet.rockFirmnessMin;
+
+// Spalten der Rinne der Klasse, in denen noch Sohle über der nötigen Tiefe liegt (aufsteigend); rock = Fels im Weg
+function openColumns(g, cls) {
+  const f = g.fair?.[cls.id];
+  if (!f?.nodes) return [];
+  const r = g.river, needTop = g.wl - f.need + 0.06, lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo, cols = new Map();
+  for (const p of f.nodes) {
+    for (let k = p.y - lo; k <= p.y + hi; k++) {
+      const i = k * r.cols + p.x;
+      if (!r.zone[i] || r.top[i] <= needTop) continue;
+      const c = cols.get(p.x) ?? { x: p.x, rock: false, y: p.y + (hi - lo) / 2 + 0.5 };
+      if (r.rock[i] > needTop) c.rock = true;
+      cols.set(p.x, c);
+    }
+  }
+  return [...cols.values()].sort((a, b) => a.x - b.x);
+}
+
+const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
+
+function pickSite(g, u) {
+  const cls = targetClass(g);
+  if (!cls) return { none: 'Keine Engstelle: alle Klassen fahren' };
+  const open = openColumns(g, cls), res = reservedBy(g, u), B = CONFIG.box.cols;
+  if (!open.length) return { none: `${cls.name}: Rinne ist frei` };
+  let rockSkipped = 0;
+  for (const c of open) {
+    if (u.skip[c.x] && g.time < u.skip[c.x]) continue;
+    if (c.rock && !canRock(g)) { rockSkipped++; continue; }
+    const c0 = Math.min(Math.max(0, c.x), g.river.cols - B);
+    if (res.some((s) => c0 < s.c0 + B && s.c0 < c0 + B)) continue;
+    const f = g.fair[cls.id];
+    return { c0, col: c.x, y: c.y, cls: cls.id, depth: Math.min(CONFIG.echolot.maxDepth, f.need + CONFIG.fleet.margin), tool: c.rock && g.stats.loeffel > 0 ? 'loeffel' : 'pump', rock: c.rock };
+  }
+  return { none: rockSkipped ? 'Fels im Weg: braucht Felsfräse oder Löffelbagger' : 'Alle offenen Stellen sind vergeben' };
+}
+
+function makeSim(g, u) {
+  const sim = g.createSession();
+  sim.x = u.x; sim.y = u.y; sim.tool = 'pump';
+  u.state = 'idle'; u.site = null; u.idle = 0;
+  return sim;
+}
+
+// Mittelpunkt der Rinnenzelle in der Spalte x (Kartenkoordinaten), nächste vorhandene Spalte
+function laneAt(g, clsId, x) {
+  const f = g.fair?.[clsId], cls = shipById(clsId);
+  if (!f?.nodes) return null;
+  const lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo, off = (hi - lo) / 2 + 0.5;
+  let best = f.nodes[0];
+  for (const n of f.nodes) if (Math.abs(n.x - x) < Math.abs(best.x - x)) best = n;
+  return { x: best.x + 0.5, y: best.y + off, nx: best.x };
+}
+
+function stepUnit(g, u, dt) {
+  const sim = (u.sim ??= makeSim(g, u));
+  sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom;
+  let inp = { dx: 0, dy: 0, suction: false };
+  if (u.state === 'idle') {
+    u.idle -= dt;
+    if (u.idle <= 0) {
+      const s = pickSite(g, u);
+      if (s.none) { u.idle = CONFIG.fleet.idleRetry; u.note = s.none; }
+      else { u.site = s; u.state = 'travel'; u.note = `fährt zu Spalte ${s.col + 1}`; }
+    }
+  } else if (u.state === 'travel') {
+    const s = u.site, f = g.fair?.[s.cls];
+    if (!f?.nodes || sim.mode !== 'map') { u.state = 'idle'; u.idle = 0; }
+    else {
+      const targetX = Math.min(g.river.cols - 1, s.c0 + Math.floor(CONFIG.box.cols / 2)), goal = laneAt(g, s.cls, targetX);
+      // entlang der Rinne fahren: nächster Knoten Richtung Ziel (Land und Flachwasser halten den Ponton auf)
+      let near = f.nodes[0], nd = Infinity, ni = 0;
+      f.nodes.forEach((n, i) => { const d = Math.hypot(n.x + 0.5 - sim.x, n.y + 0.5 - sim.y); if (d < nd) { nd = d; near = n; ni = i; } });
+      let aim;
+      if (nd > 1.2) aim = { x: near.x + 0.5, y: near.y + 0.5 }; // erst zur Rinne
+      else {
+        const gi = f.nodes.findIndex((n) => n.x === goal.nx), step = Math.sign(gi - ni);
+        aim = step === 0 ? goal : laneAt(g, s.cls, f.nodes[Math.min(f.nodes.length - 1, Math.max(0, ni + step))].x);
+      }
+      const dx = aim.x - sim.x, dy = aim.y - sim.y, dist = Math.hypot(dx, dy);
+      if (Math.hypot(goal.x - sim.x, goal.y - sim.y) < 0.5) { // angekommen: ankern, Automatik an
+        sim.x = s.c0 + Math.floor(CONFIG.box.cols / 2); sim.y = goal.y; // ganzzahlig: der Kasten beginnt dann genau bei c0
+        sim.targetDepth = s.depth; sim.pumpSpeed = 1;
+        sim.tool = s.tool === 'loeffel' && g.stats.loeffel > 0 ? 'loeffel' : 'pump';
+        if (sim.anchor()) {
+          const sl = sim.slice;
+          sl.soundNoise = CONFIG.fleet.soundNoise; sl.sound();
+          const lane = g.fair[s.cls], cls = shipById(s.cls), lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo, B = CONFIG.box.cols;
+          let r0 = Infinity, r1 = -Infinity;
+          for (const n of lane.nodes) if (n.x >= s.c0 - 1 && n.x <= s.c0 + B) { r0 = Math.min(r0, n.y - lo); r1 = Math.max(r1, n.y + hi); }
+          if (r0 <= r1) sl.autoRange = [r0 - 1, r1 + 1]; // nur die Rinne (mit einer Zelle Böschung) ausheben
+          sl.x = sl.bounds().min; sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
+          sim.toggleAuto();
+          u.state = 'work'; u.workT = 0; u.note = `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
+        } else { u.skip[s.col] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
+      } else if (dist > 1e-6) {
+        const k = CONFIG.fleet.speedMult; inp = { dx: (dx / dist) * k, dy: (dy / dist) * k, suction: false };
+      }
+    }
+  } else if (u.state === 'work') {
+    u.workT += dt;
+    if (sim.mode === 'slice' && !sim.pumpOn && sim.slice.auto.on && sim.slice.tipped <= 0) { sim.pumpOn = true; sim.autoStartedPump = true; } // nach dem Kippen schaltet die Mannschaft die Pumpe wieder ein
+    if (sim.mode !== 'slice' || !sim.slice.auto.on || u.workT > 140) {
+      if (u.workT > 140 && u.site) u.skip[u.site.col] = g.time + 90; // hängt fest (z. B. Fels): später wieder versuchen
+      sim.leave(); u.state = 'idle'; u.idle = 0; u.note = 'sucht nächste Stelle';
+    }
+  }
+  const d = sim.update(dt, inp);
+  sim.notes.length = 0;
+  g.collect(d);
+  g.totals.fleetRemoved += d.removed; u.removed += d.removed;
+  u.x = sim.x; u.y = sim.y;
+}
+
+function updateFleet(g, dt) {
+  for (const u of g.fleet.units) stepUnit(g, u, dt);
+}
+
+// Positionen verankerter Flottenpontons (bremsen den Verkehr in der Rinne wie dein eigener Ponton)
+function fleetSites(g) {
+  return g.fleet.units.filter((u) => u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
+}
+
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, dismissUnit: dismissUnit, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+},
+function(){
 const { CONFIG } = __m(1);
 const { priceOf } = __m(8);
 
@@ -2763,6 +3048,8 @@ const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(1);
 const { upgradeCost } = __m(9);
 const { waitingByClass } = __m(11);
 const { ratioOf } = __m(8);
+const { hireBlock, nextHireCost } = __m(13);
+
 
 
 
@@ -2802,7 +3089,7 @@ class Advisor {
     if (t.bufFull > A.bufferFull) order.push('plant', 'dewater');
     if (t.turb > A.turbidity) order.push('curtain');
     if (t.tips.length >= 1) order.push('ballast');
-    if (this.rockBlocked(game)) order.push('cutter');
+    if (this.rockBlocked(game)) order.push('cutter', 'loeffel');
     if (L.auto === 0 && game.totals.removed > 400) order.push('auto');
     order.push('power', 'beacons', 'sorter', 'speed', 'radius', 'winch', 'pilot', 'vts', 'echolot', 'plant');
     for (const id of order) {
@@ -2850,7 +3137,7 @@ class Advisor {
       { id: 'grounding', prio: 88, when: () => game.totals.groundings >= 1 && game.totals.groundings > (this.shownAt._g ?? 0),
         text: () => { this.shownAt._g = game.totals.groundings; return 'Ein Schiff ist aufgelaufen und hat die Rinne versperrt, die Bergung kostet. Meist ist Niedrigwasser oder die Verlandung schuld: lieber ein Stück tiefer baggern, als nur gerade so viel wie nötig. Ein Verkehrsleitsystem macht die Bergung schneller.'; } },
       { id: 'queue', prio: 80, when: () => !!stuck && (waiting[stuck.id] ?? 0) >= 2,
-        text: () => `Am Ufer warten ${waiting[stuck.id]}× ${shipById(stuck.id).name}, sie brauchen ${(shipById(stuck.id).draught + CONFIG.clearance).toFixed(1)} m Wasser und eine ${shipById(stuck.id).beam} Zellen breite Rinne. ${game.fair[stuck.id].volume === Infinity ? 'Der Baggerkorridor ist dafür zu schmal.' : `Dir fehlen noch ca. ${Math.round(game.fair[stuck.id].volume)} m³ Baggerarbeit (Karte: Klasse wählen, rote Stellen).`} Wer nicht durchkommt, dreht ab und die Fracht geht auf die Bahn.` },
+        text: () => `Am Ufer warten ${waiting[stuck.id]}× ${shipById(stuck.id).name}, sie brauchen ${(shipById(stuck.id).draught + CONFIG.clearance).toFixed(1)} m Wasser und eine ${shipById(stuck.id).beam} Zellen breite Rinne. ${game.fair[stuck.id].volume === Infinity ? 'Der Baggerkorridor ist dafür zu schmal: mit dem Löffelbagger (V) kannst du Ufer im gelben Ausbaustreifen abtragen, dann wird der Fluss breiter.' : `Dir fehlen noch ca. ${Math.round(game.fair[stuck.id].volume)} m³ Baggerarbeit (Karte: Klasse wählen, rote Stellen).`} Wer nicht durchkommt, dreht ab und die Fracht geht auf die Bahn.` },
       { id: 'silt', prio: 76, when: () => !!game.fair && SHIPS.some((s) => game.level.classes.includes(s.id) && (game.totals.byClass[s.id] ?? 0) > 0 && !game.fair[s.id].passable && game.fair[s.id].volume < 120),
         text: () => 'Die Rinne verlandet: der Fluss lagert in langsamem Wasser Schlick ab. Kurz nachbaggern (Karte: rote Stellen), bevor die ersten Schiffe auflaufen. Etwas tiefer als nötig baggern hält länger.' },
       { id: 'flood', prio: 74, when: () => game.closed,
@@ -2858,8 +3145,8 @@ class Advisor {
       { id: 'low', prio: 72, when: () => game.wl < CONFIG.water.base - 0.25,
         text: () => `Niedrigwasser (Pegel ${game.wl.toFixed(1)} m statt ${CONFIG.water.base} m): grosse Schiffe finden zu wenig Wasser. Wer jetzt tiefer baggert, hat auch beim nächsten Tief Reserve.` },
       { id: 'rock', prio: 70, when: () => this.rockBlocked(game) && sim.mode === 'slice',
-        text: () => `Hier steckt Fels in der Rinne. Ohne Felsfräse kommst du da kaum durch.${rec && rec.id === 'cutter' ? ' Die könntest du dir leisten.' : ''}`,
-        upgrade: () => (rec && rec.id === 'cutter' ? rec : null) },
+        text: () => `Hier steckt Fels in der Rinne. Ohne Felsfräse oder Löffelbagger (Schaufel, schafft Fels besser) kommst du da kaum durch.${rec && ['cutter', 'loeffel'].includes(rec.id) ? ' Das könntest du dir leisten.' : ''}`,
+        upgrade: () => (rec && ['cutter', 'loeffel'].includes(rec.id) ? rec : null) },
       { id: 'protect', prio: 68, when: () => t.outRate > 0.02 && sim.mode === 'slice',
         text: () => 'Du baggerst in die Naturschutzzone (schraffiert, Ufer und Flachwasser): jeder m³ kostet Busse. Bleib im Korridor und lass die Böschung stehen, sonst rutscht sie ohnehin nach.' },
       { id: 'slump', prio: 66, when: () => game.river.slumpedTotal > 400 && sim.mode === 'slice',
@@ -2869,6 +3156,10 @@ class Advisor {
         upgrade: () => (rec && rec.id === 'curtain' ? rec : null) },
       { id: 'clog', prio: 60, when: () => t.clogs.length >= 3 && sim.mode === 'slice',
         text: () => 'Schon wieder verstopft? Zieh die Pumpe höher, bevor du über Fremdstoffe fährst. Und beim Freispülen: im grünen Bereich drücken, nicht hektisch hämmern. Bei einer Fliegerbombe gilt: ruhig bleiben.' },
+      { id: 'fleet', prio: 64, when: () => game.stats.autoLevel >= 1 && game.fleet.units.length === 0 && game.day > 8 && !hireBlock(game),
+        text: () => `Du hast die Automatik und ${chf(game.money)} auf dem Konto: Miete einen Ponton (${chf(nextHireCost(game))}, Panel, Flotte). Er baggert selbstständig an den Engstellen, du musst nicht mehr in den Querschnitt. Mehrere Pontons arbeiten gleichzeitig.` },
+      { id: 'fleetrock', prio: 63, when: () => game.fleet.units.some((u) => /Fels/.test(u.note)),
+        text: () => 'Ein Flottenponton steht still: Fels im Weg. Mit Felsfräse oder Löffelbagger kommt er weiter.' },
       { id: 'contract', prio: 58, when: () => game.contracts.some((c) => c.status === 'offer'),
         text: () => `Eine Reederei bietet dir einen Frachtauftrag an (Panel, Aufträge). Die Prämie gibt es nur, wenn die Schiffe rechtzeitig durchkommen, schau also, ob die Klasse schon fahren kann.` },
       { id: 'market', prio: 50, when: () => !!hot && game.day > 5,
@@ -2914,7 +3205,7 @@ const { River } = __m(3);
 // Spielstand: reine Umwandlung Game <-> JSON-Text (kein DOM, kein Speicher). Gespeichert wird der Management-Zustand (Geld, Zeit, Upgrades,
 // Markt, Schiffe, Aufträge ...) und die Flusssohle. Abgeleitetes (Fahrrinnen, Pfade, Nachrutschen) wird nach dem Laden neu berechnet.
 // Die laufende Pontonfahrt wird nicht gespeichert: nach dem Laden steht der Ponton wieder auf der Karte.
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 const SKIP = new Set(['rng', 'river', 'notes', 'flash', 'site', 'fair', '_stats']);
 const toB64 = (arr) => {
@@ -2937,7 +3228,7 @@ function serializeGame(game) {
     if (k === 'pending' || k === 'centerY' || k === 'halfW') continue;
     river[k] = ArrayBuffer.isView(v) ? { type: v.constructor.name, b64: toB64(v) } : v;
   }
-  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, river }, (k, v) => (k === 'path' ? undefined : v));
+  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, river }, (k, v) => (k === 'path' || k === 'sim' ? undefined : v));
 }
 
 // Gibt ein Game zurück oder null, wenn der Text kaputt oder von einer anderen Version ist.
@@ -2969,7 +3260,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(17);
+const { isTap } = __m(18);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -3063,7 +3354,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(17);
+const { snapStick } = __m(18);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -3118,9 +3409,9 @@ function setupTouch(input, hooks) {
   for (const el of [stick, act]) el.addEventListener('contextmenu', (e) => e.preventDefault());
 
   return {
-    setPump(on, clogged = false) {
+    setPump(on, clogged = false, bucket = false) {
       if (mode !== 'slice') return;
-      act.textContent = clogged ? '🔧 Freispülen!' : on ? '🌀 Pumpe AN' : '🌀 Pumpe AUS';
+      act.textContent = clogged ? '🔧 Freispülen!' : bucket ? (on ? '⛏ Löffel AN' : '⛏ Löffel AUS') : on ? '🌀 Pumpe AN' : '🌀 Pumpe AUS';
       act.classList.toggle('held', on && !clogged);
     },
     setMode(m) {
@@ -3160,11 +3451,11 @@ function(){
 const HINTS = {
   keys: {
     map: [['WASD / Pfeile', 'Ponton fahren'], ['Maus halten', 'zum Mauszeiger fahren'], ['E / Leertaste', 'Anker werfen'], ['1–5', 'Schiffsklasse wählen (rote Stellen = Engstellen)'], ['P', 'Pause']],
-    slice: [['A D', 'Pumpe quer zum Fluss'], ['W S', 'Kette hoch/runter'], ['Leertaste', 'Pumpe an/aus'], ['Z X', 'Tempo'], ['F G', 'Solltiefe'], ['1–5', 'Solltiefe für Klasse'], ['T', 'Automatik'], ['R', 'Automatik-Reset'], ['Q', 'zurück zur Karte'], ['P', 'Pause']],
+    slice: [['A D', 'Pumpe quer zum Fluss'], ['W S', 'Kette hoch/runter'], ['Leertaste', 'Pumpe an/aus'], ['Z X', 'Tempo'], ['F G', 'Solltiefe'], ['1–5', 'Solltiefe für Klasse'], ['T', 'Automatik'], ['V', 'Gerät: Saugkopf/Löffel'], ['R', 'Automatik-Reset'], ['Q', 'zurück zur Karte'], ['P', 'Pause']],
   },
   touch: {
     map: [['Stick', 'Ponton fahren'], ['Tipp auf die Karte', 'hinfahren und ankern'], ['Knopf', 'Anker werfen'], ['Klassen oben', 'Engstellen anzeigen']],
-    slice: [['Pfeile', 'Pumpe fahren (halten)'], ['Knopf', 'Pumpe an/aus'], ['Regler', 'Tempo und Solltiefe'], ['Klassen oben', 'Solltiefe für Klasse'], ['Knöpfe unten', 'Automatik, zurück zur Karte']],
+    slice: [['Pfeile', 'Pumpe fahren (halten)'], ['Knopf', 'Pumpe an/aus'], ['Regler', 'Tempo und Solltiefe'], ['Klassen oben', 'Solltiefe für Klasse'], ['Knöpfe unten', 'Automatik, Gerät, zurück zur Karte']],
   },
 };
 const hintsFor = (mode, touch) => HINTS[touch ? 'touch' : 'keys'][mode] ?? [];
@@ -3308,7 +3599,7 @@ const { SLICE } = __m(6);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById } = __m(1);
 const { shipPos, queuePos } = __m(11);
 const { needDepth } = __m(4);
-const { Chain, drawChain } = __m(24);
+const { Chain, drawChain } = __m(25);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 
 
@@ -3368,6 +3659,7 @@ function drawMap(ctx, game, sim, ui = {}) {
     for (let x = 0; x < cols; x++) {
       const i = y * cols + x;
       if (r.isWater(i) && !r.zone[i]) { ctx.fillStyle = 'rgba(120,200,120,.22)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); }
+      else if (!r.isWater(i) && r.ext[i] === 1) { ctx.fillStyle = 'rgba(235,200,70,.30)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } // Ausbaustreifen am Ufer (Löffelbagger)
     }
   }
   // Materialhinweise: Altlasten orange, Fels grau, harte Schichten schraffiert, Fremdstoffe weiss
@@ -3391,6 +3683,7 @@ function drawMap(ctx, game, sim, ui = {}) {
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
   if (sel) drawClassOverlay(ctx, game, sel);
   drawShips(ctx, game, ui);
+  drawFleet(ctx, game);
   if (sim) drawPontoon(ctx, game, sim, ui);
   // schwebende Beträge
   ctx.font = font(15); ctx.textAlign = 'center';
@@ -3507,6 +3800,26 @@ function drawPontoon(ctx, game, sim, ui) {
   }
 }
 
+// Gemietete Pontons der Flotte: kleiner, cyan, mit Name; beim Baggern mit gestricheltem Kasten
+function drawFleet(ctx, game) {
+  for (const u of game.fleet?.units ?? []) {
+    const px = OX + u.x * CELL, py = u.y * CELL, sim = u.sim;
+    if (sim?.mode === 'slice') {
+      const sl = sim.slice, B = CONFIG.box.cols;
+      ctx.strokeStyle = '#7fe3ff88'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+      ctx.strokeRect(OX + sl.c0 * CELL + 1, sl.x0 * CELL + 1, B * CELL - 2, SLICE.cols * CELL - 2); ctx.setLineDash([]);
+      const sy = sl.x0 * CELL + (sl.x - sl.x0) * CELL;
+      ctx.strokeStyle = sl.suctioning ? '#ffd24d' : '#7fe3ff99'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(OX + sl.c0 * CELL, sy); ctx.lineTo(OX + (sl.c0 + B) * CELL, sy); ctx.stroke();
+    }
+    ctx.save(); ctx.translate(px, py);
+    ctx.fillStyle = '#4fc3d9'; ctx.strokeStyle = '#08323c'; ctx.lineWidth = 1.5;
+    ctx.fillRect(-CELL * 1.1, -CELL * 0.7, CELL * 2.2, CELL * 1.4); ctx.strokeRect(-CELL * 1.1, -CELL * 0.7, CELL * 2.2, CELL * 1.4);
+    ctx.fillStyle = '#1b2a33'; ctx.fillRect(-CELL * 0.35, -CELL * 0.35, CELL * 0.7, CELL * 0.7);
+    ctx.restore();
+    ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillStyle = '#000b'; ctx.fillText(u.name, px + 1, py - CELL + 1); ctx.fillStyle = '#d9f7ff'; ctx.fillText(u.name, px, py - CELL); ctx.textAlign = 'start';
+  }
+}
+
 function drawMapHud(ctx, game) {
   ctx.font = font(13);
   const lines = [];
@@ -3579,12 +3892,12 @@ function drawSlice(ctx, game, sim, ui = {}) {
   ctx.restore();
   // Land über Wasser: grüne Grasnarbe
   for (let c = 0; c < n; c++) {
-    if (hi[c] > wl) { ctx.fillStyle = '#6fa05a'; ctx.fillRect(c * U, Y(hi[c]) - 3, U + 1, 8); }
+    if (hi[c] > wl) { const strip = r.ext[r.idx(sl.centerCol, sl.x0 + c)] === 1; ctx.fillStyle = strip ? '#c9b050' : '#6fa05a'; ctx.fillRect(c * U, Y(hi[c]) - 3, U + 1, 8); }
   }
   // Naturschutzzone (Ufer, Flachwasser): schraffiert
   for (let c = 0; c < n; c++) {
     const i = r.idx(sl.centerCol, sl.x0 + c);
-    if (r.zone[i]) continue;
+    if (r.zone[i] || (sl.tool === 'loeffel' && r.ext[i])) continue; // mit dem Löffel ist der Ausbaustreifen erlaubt
     const top = Math.max(SURF, Y(hi[c]));
     if (hi[c] >= wl) continue;
     ctx.fillStyle = 'rgba(120,220,120,.14)'; ctx.fillRect(c * U, SURF, U, top - SURF);
@@ -3636,6 +3949,11 @@ function drawSlice(ctx, game, sim, ui = {}) {
     }
   }
   ctx.textAlign = 'start';
+  if (sl.tool === 'loeffel') { // Hinweis auf abtragbares Land
+    ctx.font = font(12); ctx.textAlign = 'center'; ctx.fillStyle = '#e8d27a';
+    for (let c = 0; c < n; c++) { const i = r.idx(sl.centerCol, sl.x0 + c); if (r.ext[i] === 1 && hi[c] > wl && (c === 0 || r.ext[r.idx(sl.centerCol, sl.x0 + c - 1)] !== 1)) ctx.fillText('Ausbaustreifen', c * U + 40, Y(hi[c]) - 10); }
+    ctx.textAlign = 'start';
+  }
   // Fremdstoffe
   for (let c = 0; c < n; c++) for (const col of sl.cols) {
     const i = r.idx(col, sl.x0 + c);
@@ -3651,6 +3969,7 @@ function drawSlice(ctx, game, sim, ui = {}) {
 }
 
 function drawPump(ctx, game, sim, ui) {
+  if (sim.slice.tool === 'loeffel') return drawBucket(ctx, game, sim, ui);
   const sl = sim.slice, wl = game.river.wl;
   const head = sliceHeadScreen(sl), pumpX = head.x + PW * 0.2, py = head.y;
   const dt = ui.dt ?? 1 / 60;
@@ -3679,10 +3998,35 @@ function drawPump(ctx, game, sim, ui) {
     ctx.lineTo(m.x - 34, m.y + 46); ctx.lineTo(m.x + 34, m.y + 46); ctx.closePath(); ctx.fill();
   }
   // Saugradius als schwache Kontur
-  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sim.stats.radius * U, sim.stats.radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sl.toolParams().radius * U, sl.toolParams().radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
   // Schieflage und Hubhöhe
   if (sl.setH - sl.h < -0.05 || sl.h - sl.setH > 0.05) { const sy = sliceY(sl.setH, wl); ctx.strokeStyle = '#ffa94d'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(pumpX - 22, sy); ctx.lineTo(pumpX + 22, sy); ctx.stroke(); ctx.setLineDash([]); }
   if (sl.auto.on) { ctx.font = font(13); ctx.fillStyle = '#7fe3ff'; ctx.fillText(sl.auto.error ? '🤖 Fehler! (R)' : '🤖 Automatik', pumpX + 20, py - PH - 4); }
+}
+
+// Löffelbagger: Ausleger von der Laufkatze mit Knick zur Schaufel; beim Graben schwingt die Schaufel
+function drawBucket(ctx, game, sim, ui) {
+  const sl = sim.slice, m = sliceMouthScreen(sl), head = sliceHeadScreen(sl);
+  ctx.fillStyle = '#d9dee3'; ctx.fillRect(40, SURF - 22, W - 80, 26);
+  ctx.fillStyle = '#9aa4ad'; ctx.fillRect(40, SURF - 22, W - 80, 6);
+  ctx.fillStyle = '#222'; for (let i = 0; i < 24; i++) { ctx.beginPath(); ctx.arc(54 + i * ((W - 108) / 23), SURF - 6, 2.5, 0, Math.PI * 2); ctx.fill(); }
+  const bx = head.x, by = SURF - 26, tx = m.x, ty = m.y - 12;
+  ctx.fillStyle = '#e8c33a'; ctx.fillRect(bx - 18, by - 12, 36, 18); ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(bx - 9, by + 7, 3, 0, 7); ctx.arc(bx + 9, by + 7, 3, 0, 7); ctx.fill();
+  const mx = (bx + tx) / 2, my = (by + ty) / 2, dx = tx - bx, dy = ty - by, len = Math.hypot(dx, dy) || 1;
+  const bend = Math.min(60, len * 0.28) * (sl.suctioning ? 1 + 0.25 * Math.sin((ui.t ?? 0) * 7) : 1);
+  const ex = mx + (dy / len) * bend, ey = my - (dx / len) * bend; // Knick zur Seite
+  ctx.strokeStyle = '#e8c33a'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex, ey); ctx.lineTo(tx, ty); ctx.stroke();
+  ctx.strokeStyle = '#3b2f08'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex, ey); ctx.lineTo(tx, ty); ctx.stroke();
+  ctx.lineCap = 'butt';
+  const swing = sl.suctioning ? Math.sin((ui.t ?? 0) * 7) * 0.5 : 0;
+  ctx.save(); ctx.translate(tx, ty); ctx.rotate(0.3 + swing);
+  ctx.fillStyle = '#6b6f73'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-14, -2); ctx.lineTo(16, -6); ctx.lineTo(20, 14); ctx.lineTo(-10, 18); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#c9c9c9'; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(-8 + k * 8, 17); ctx.lineTo(-4 + k * 8, 17); ctx.lineTo(-6 + k * 8, 24); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sl.toolParams().radius * U, sl.toolParams().radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
+  if (sl.auto.on) { ctx.font = font(13); ctx.fillStyle = '#7fe3ff'; ctx.fillText(sl.auto.error ? '🤖 Fehler! (R)' : '🤖 Automatik', bx + 22, by - 14); }
 }
 
 function drawFreeing(ctx, sl) {

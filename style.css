@@ -292,3 +292,9 @@ body.touch #classbar { padding-right: 58px; }
 #topbar #classbar { flex: 1; min-width: 0; }
 body.touch #topbar #btn-pause2 { position: static; flex: none; width: 46px; height: 46px; margin: 0 2px 0 0; }
 body.touch #classbar { padding-right: 4px; }
+/* Flotte */
+#fleet { font-size: 13px; } #fleet small { color: var(--muted); display: block; margin: 4px 0; }
+.unit { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #ffffff0d; border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+.unit button { margin: 0; padding: 4px 8px; font-size: 12px; background: #3a2f2f; }
+.fleet-goal { display: block; margin-top: 8px; } #fleet-goal { width: 100%; margin-top: 4px; padding: 6px; border-radius: 6px; background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; font: inherit; }
+#fleet .primary { margin-top: 8px; } #fleet .warn { color: var(--bad); }

@@ -23,6 +23,7 @@ export class River {
     this.hard = new Uint8Array(n); // 0 weich, 1 verdichtet, 2 hart (mehrere Überfahrten)
     this.debris = new Uint8Array(n); // 0 nichts, sonst Index in DEBRIS + 1
     this.zone = new Uint8Array(n);
+    this.ext = new Uint8Array(n); // Ausbaustreifen am Ufer: 1 = Land, 2 = Flachwasser. Mit dem Löffelbagger abtragbar (wird dann zum Korridor), sonst Schutzgebiet
     this.pending = new Set(); // Zellen, deren Böschung noch nachrutscht (abgeleitet, wird nicht gespeichert)
     this.slumpedTotal = 0; // m³ nachgerutscht (Anzeige)
   }
@@ -54,11 +55,13 @@ export class River {
           r.top[i] = WL - depth;
           r.flow[i] = clamp(1 - rel, 0, 1);
           r.zone[i] = rel < 0.82 ? 1 : 0;
+          r.ext[i] = rel >= 0.82 ? 2 : 0; // Flachwasser am Ufer: Schutzzone für den Saugbagger, mit dem Löffel als Ausbaustreifen abtragbar
           r.rock[i] = WL - (cfg.rockDepth + 0.8 * (1 - rel) + 0.25 * noise(y, x));
         } else {
           r.top[i] = Math.min(WL + 7, WL + 0.5 + (rel - 1) * 3.2 + 0.1 * noise(x, y));
           r.rock[i] = WL - 3; // Ufer: viel Sediment, rutscht nach, wenn man zu nah baggert
           r.flow[i] = 0;
+          r.ext[i] = rel < 1.9 ? 1 : 0;
         }
         const f = r.flow[i];
         r.kind[i] = !water[i] ? KIND.sand : f + 0.12 * noise(y, x) > 0.55 ? KIND.kies : f + 0.12 * noise(y, x) > 0.25 ? KIND.sand : KIND.schlick;
@@ -191,12 +194,12 @@ export class River {
   }
 
   // Zellen [index, gewicht] einer Spalte `cx` im Saugbereich um (headY, headH). Gesaugt wird nur Sohle unter Wasser.
-  _profileCells(cx, headY, headH, radius) {
+  _profileCells(cx, headY, headH, radius, allowLand = false) {
     const cells = [];
     const y0 = Math.max(0, Math.floor(headY - radius)), y1 = Math.min(this.rows - 1, Math.ceil(headY + radius));
     for (let y = y0; y <= y1; y++) {
       const i = this.idx(cx, y), s = this.top[i];
-      if (s >= this.wl - 0.05) continue;
+      if (s >= this.wl - 0.05 && !(allowLand && s - this.rock[i] > 1e-6)) continue;
       const d = Math.hypot(y + 0.5 - headY, s - headH) / radius;
       if (d < 1) cells.push([i, 1 - d * d]);
     }
@@ -207,16 +210,16 @@ export class River {
   _adj(cells, firmness) { return cells.map(([i, w]) => [i, this.top[i] - this.rock[i] > 1e-6 ? w : w * firmness]); }
 
   // Gewichtetes Abtragen: verteilt `amount` (Höhe in m) auf die Zellen. Liefert Höhen je Material (by) und Summen.
-  _drain(cells, amount, firmness, adjusted = false) {
+  _drain(cells, amount, firmness, adjusted = false, hardFactor = CONFIG.hard.factor, allowLand = false) {
     if (!adjusted) cells = this._adj(cells, firmness);
-    const res = { by: [0, 0, 0, 0, 0], zone: 0, out: 0, hard: 0, removed: 0, touched: [] };
+    const res = { by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, removed: 0, touched: [] };
     let wSum = 0;
     for (const c of cells) wSum += c[1];
     if (wSum === 0) return res;
     amount *= Math.min(1, wSum / CONFIG.pump.fullDraw); // im freien Wasser über dem Boden ist die Saugkraft schwach
     for (const [i, w] of cells) {
       const sed = this.top[i] - this.rock[i];
-      let eff = 1 / (1 + this.hard[i] * CONFIG.hard.factor);
+      let eff = 1 / (1 + this.hard[i] * hardFactor);
       if (sed <= 1e-6) eff *= firmness;
       let take = ((amount * w) / wSum) * eff;
       if (sed > 1e-6) take = Math.min(take, sed); // erst das Sediment, dann (im nächsten Schritt) der Fels darunter
@@ -230,7 +233,9 @@ export class River {
       res.by[this.kind[i]] += fromSed + snap; res.by[KIND.fels] += fromRock;
       take += snap;
       res.removed += take;
-      if (this.zone[i]) res.zone += take; else res.out += take;
+      const strip = this.ext[i] === 1 || (this.ext[i] === 2 && allowLand);
+      if (this.zone[i]) res.zone += take; else if (strip) res.land += take; else res.out += take;
+      if (strip && !this.zone[i] && this.top[i] < this.wl - 0.1) { this.zone[i] = 1; this.flow[i] = 0.4; this.cap[i] = this.wl - 0.15; } // Land wird Wasser: neuer Korridor
       if (this.hard[i]) res.hard += fromSed;
       if (this.top[i] - this.rock[i] <= 1e-6) this.hard[i] = 0;
       res.touched.push(i);
@@ -241,20 +246,21 @@ export class River {
 
   _vol(r) {
     const a = this.area;
-    return { removed: r.removed * a, by: r.by.map((v) => v * a), zone: r.zone * a, out: r.out * a, hard: r.hard * a };
+    return { removed: r.removed * a, by: r.by.map((v) => v * a), zone: r.zone * a, out: r.out * a, land: r.land * a, hard: r.hard * a };
   }
 
   // Querschnitt: Der Kasten umfasst die Spalten `cols` (Flussrichtung); die Pumpenleistung verteilt sich nach Bedarf auf alle
   // Spalten, in denen an der Einsaugstelle etwas zu holen ist. Die Einsaugstelle folgt dem Gelände jeder Spalte
   // (gleicher Abstand zur lokalen Oberfläche wie in der Mittelspalte). amount in m³.
-  suckSwath(cols, centerCol, headY, headH, radius, amount, firmness = CONFIG_BASE_FIRMNESS) {
+  suckSwath(cols, centerCol, headY, headH, radius, amount, firmness = CONFIG_BASE_FIRMNESS, opts = {}) {
+    const { allowLand = false, hardFactor = CONFIG.hard.factor } = opts;
     const my = clamp(Math.floor(headY), 0, this.rows - 1), base = this.top[this.idx(centerCol, my)];
-    const work = cols.map((c) => this._adj(this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius), firmness)).filter((cells) => cells.length);
+    const work = cols.map((c) => this._adj(this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius, allowLand), firmness)).filter((cells) => cells.length);
     const rowW = work.map((cells) => cells.reduce((a, c) => a + c[1], 0)), total = rowW.reduce((a, b) => a + b, 0);
-    const sum = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, hard: 0 };
+    const sum = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0 };
     for (let k = 0; k < work.length; k++) {
-      const res = this._vol(this._drain(work[k], (amount * rowW[k]) / total / this.area, firmness, true));
-      sum.removed += res.removed; sum.zone += res.zone; sum.out += res.out; sum.hard += res.hard;
+      const res = this._vol(this._drain(work[k], (amount * rowW[k]) / total / this.area, firmness, true, hardFactor, allowLand));
+      sum.removed += res.removed; sum.zone += res.zone; sum.out += res.out; sum.land += res.land; sum.hard += res.hard;
       for (let m = 0; m < 5; m++) sum.by[m] += res.by[m];
     }
     return sum;

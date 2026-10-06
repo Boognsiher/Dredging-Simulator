@@ -9,6 +9,7 @@ import { createMarket, stepMarket } from './market.js';
 import { createTraffic, updateTraffic } from './traffic.js';
 import { processPlant, stockTotal } from './plant.js';
 import { updateContracts } from './contracts.js';
+import { createFleet, updateFleet } from './fleet.js';
 
 const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0 });
 
@@ -32,14 +33,17 @@ export class Game {
     this.stock = [0, 0, 0, 0, 0]; // Puffer vor der Anlage in m³ je Material
     this.targetDepth = CONFIG.echolot.defaultDepth;
     this.pumpSpeed = CONFIG.pumpSpeed.default;
+    this.tool = 'pump'; // zuletzt gewähltes Gerät des eigenen Pontons
     this.market = createMarket();
     this.traffic = createTraffic();
+    this.fleet = createFleet();
     this.contracts = [];
     this.contractSeq = 0;
     this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
     this.rejectedBy = {};
-    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
+    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
     this.today = freshDay();
+    this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
     this.fairSig = {}; // zuletzt bekannter Zustand je Klasse (für Meldungen "jetzt befahrbar")
     this.status = 'playing'; // 'playing' | 'ended'
@@ -95,6 +99,7 @@ export class Game {
     sim.pumpSpeed = this.pumpSpeed;
     sim.bufferRoom = this.bufferRoom;
     sim.turbidityMult = this.level.turbidityMult ?? 1;
+    if (this.tool === 'loeffel' && this.stats.loeffel > 0) sim.tool = 'loeffel';
     return sim;
   }
 
@@ -116,13 +121,13 @@ export class Game {
   collect(d) {
     if (this.status !== 'playing') return;
     for (let k = 0; k < 5; k++) { this.stock[k] += d.by[k]; this.totals.byKind[k] += d.by[k]; }
-    const pay = d.zone * CONFIG.pay.perM3, protect = d.out * CONFIG.pay.protectFine;
+    const pay = d.zone * CONFIG.pay.perM3, protect = d.out * CONFIG.pay.protectFine, land = (d.land ?? 0) * CONFIG.pay.landFee;
     let bomb = 0;
     if (d.bombs) { bomb = 4500 * d.bombs; this.totals.bombs += d.bombs; this.say(`Blindgänger! Der Kampfmittelräumdienst rückt aus (−${bomb} CHF).`, 'bad'); this.notify('Fliegerbombe! Kampfmittelräumdienst −4500 CHF', 'bad'); }
-    this.money += pay - protect - d.fines - d.repairs - bomb;
+    this.money += pay - protect - land - d.fines - d.repairs - bomb;
     const t = this.totals, y = this.today;
-    t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect;
-    y.pay += pay; y.costs += protect + d.fines + d.repairs + bomb;
+    t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
+    y.pay += pay; y.costs += protect + land + d.fines + d.repairs + bomb;
   }
 
   update(dt) {
@@ -149,6 +154,7 @@ export class Game {
     this.fairClock -= dt;
     if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
 
+    updateFleet(this, dt);
     updateTraffic(this, dt);
 
     const day = Math.floor(this.time / CONFIG.daySeconds) + 1;
@@ -162,13 +168,14 @@ export class Game {
   dayEnd() {
     const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
     const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
-    this.money -= cost; t.opCost += cost;
+    const wages = CONFIG.fleet.wage * this.fleet.units.length;
+    this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;
-    y.costs += cost;
+    y.costs += cost + wages;
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();
     stepMarket(this.market, this.rng);
-    for (const e of EVENTS) {
+    for (const e of this.eventsOn ? EVENTS : []) {
       if (this.rng() < e.chance && (!e.when || e.when(this))) {
         const r = e.apply(this);
         if (r) { this.say(r.text, r.kind); this.notify(r.text, r.kind); }

@@ -5,7 +5,7 @@ import { River } from './river.js';
 // Spielstand: reine Umwandlung Game <-> JSON-Text (kein DOM, kein Speicher). Gespeichert wird der Management-Zustand (Geld, Zeit, Upgrades,
 // Markt, Schiffe, Aufträge ...) und die Flusssohle. Abgeleitetes (Fahrrinnen, Pfade, Nachrutschen) wird nach dem Laden neu berechnet.
 // Die laufende Pontonfahrt wird nicht gespeichert: nach dem Laden steht der Ponton wieder auf der Karte.
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 const SKIP = new Set(['rng', 'river', 'notes', 'flash', 'site', 'fair', '_stats']);
 const toB64 = (arr) => {
@@ -28,7 +28,7 @@ export function serializeGame(game) {
     if (k === 'pending' || k === 'centerY' || k === 'halfW') continue;
     river[k] = ArrayBuffer.isView(v) ? { type: v.constructor.name, b64: toB64(v) } : v;
   }
-  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, river }, (k, v) => (k === 'path' ? undefined : v));
+  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, river }, (k, v) => (k === 'path' || k === 'sim' ? undefined : v));
 }
 
 // Gibt ein Game zurück oder null, wenn der Text kaputt oder von einer anderen Version ist.

@@ -57,6 +57,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
     for (let x = 0; x < cols; x++) {
       const i = y * cols + x;
       if (r.isWater(i) && !r.zone[i]) { ctx.fillStyle = 'rgba(120,200,120,.22)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); }
+      else if (!r.isWater(i) && r.ext[i] === 1) { ctx.fillStyle = 'rgba(235,200,70,.30)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } // Ausbaustreifen am Ufer (Löffelbagger)
     }
   }
   // Materialhinweise: Altlasten orange, Fels grau, harte Schichten schraffiert, Fremdstoffe weiss
@@ -80,6 +81,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
   if (sel) drawClassOverlay(ctx, game, sel);
   drawShips(ctx, game, ui);
+  drawFleet(ctx, game);
   if (sim) drawPontoon(ctx, game, sim, ui);
   // schwebende Beträge
   ctx.font = font(15); ctx.textAlign = 'center';
@@ -196,6 +198,26 @@ function drawPontoon(ctx, game, sim, ui) {
   }
 }
 
+// Gemietete Pontons der Flotte: kleiner, cyan, mit Name; beim Baggern mit gestricheltem Kasten
+function drawFleet(ctx, game) {
+  for (const u of game.fleet?.units ?? []) {
+    const px = OX + u.x * CELL, py = u.y * CELL, sim = u.sim;
+    if (sim?.mode === 'slice') {
+      const sl = sim.slice, B = CONFIG.box.cols;
+      ctx.strokeStyle = '#7fe3ff88'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+      ctx.strokeRect(OX + sl.c0 * CELL + 1, sl.x0 * CELL + 1, B * CELL - 2, SLICE.cols * CELL - 2); ctx.setLineDash([]);
+      const sy = sl.x0 * CELL + (sl.x - sl.x0) * CELL;
+      ctx.strokeStyle = sl.suctioning ? '#ffd24d' : '#7fe3ff99'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(OX + sl.c0 * CELL, sy); ctx.lineTo(OX + (sl.c0 + B) * CELL, sy); ctx.stroke();
+    }
+    ctx.save(); ctx.translate(px, py);
+    ctx.fillStyle = '#4fc3d9'; ctx.strokeStyle = '#08323c'; ctx.lineWidth = 1.5;
+    ctx.fillRect(-CELL * 1.1, -CELL * 0.7, CELL * 2.2, CELL * 1.4); ctx.strokeRect(-CELL * 1.1, -CELL * 0.7, CELL * 2.2, CELL * 1.4);
+    ctx.fillStyle = '#1b2a33'; ctx.fillRect(-CELL * 0.35, -CELL * 0.35, CELL * 0.7, CELL * 0.7);
+    ctx.restore();
+    ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillStyle = '#000b'; ctx.fillText(u.name, px + 1, py - CELL + 1); ctx.fillStyle = '#d9f7ff'; ctx.fillText(u.name, px, py - CELL); ctx.textAlign = 'start';
+  }
+}
+
 function drawMapHud(ctx, game) {
   ctx.font = font(13);
   const lines = [];
@@ -268,12 +290,12 @@ export function drawSlice(ctx, game, sim, ui = {}) {
   ctx.restore();
   // Land über Wasser: grüne Grasnarbe
   for (let c = 0; c < n; c++) {
-    if (hi[c] > wl) { ctx.fillStyle = '#6fa05a'; ctx.fillRect(c * U, Y(hi[c]) - 3, U + 1, 8); }
+    if (hi[c] > wl) { const strip = r.ext[r.idx(sl.centerCol, sl.x0 + c)] === 1; ctx.fillStyle = strip ? '#c9b050' : '#6fa05a'; ctx.fillRect(c * U, Y(hi[c]) - 3, U + 1, 8); }
   }
   // Naturschutzzone (Ufer, Flachwasser): schraffiert
   for (let c = 0; c < n; c++) {
     const i = r.idx(sl.centerCol, sl.x0 + c);
-    if (r.zone[i]) continue;
+    if (r.zone[i] || (sl.tool === 'loeffel' && r.ext[i])) continue; // mit dem Löffel ist der Ausbaustreifen erlaubt
     const top = Math.max(SURF, Y(hi[c]));
     if (hi[c] >= wl) continue;
     ctx.fillStyle = 'rgba(120,220,120,.14)'; ctx.fillRect(c * U, SURF, U, top - SURF);
@@ -325,6 +347,11 @@ export function drawSlice(ctx, game, sim, ui = {}) {
     }
   }
   ctx.textAlign = 'start';
+  if (sl.tool === 'loeffel') { // Hinweis auf abtragbares Land
+    ctx.font = font(12); ctx.textAlign = 'center'; ctx.fillStyle = '#e8d27a';
+    for (let c = 0; c < n; c++) { const i = r.idx(sl.centerCol, sl.x0 + c); if (r.ext[i] === 1 && hi[c] > wl && (c === 0 || r.ext[r.idx(sl.centerCol, sl.x0 + c - 1)] !== 1)) ctx.fillText('Ausbaustreifen', c * U + 40, Y(hi[c]) - 10); }
+    ctx.textAlign = 'start';
+  }
   // Fremdstoffe
   for (let c = 0; c < n; c++) for (const col of sl.cols) {
     const i = r.idx(col, sl.x0 + c);
@@ -340,6 +367,7 @@ export function drawSlice(ctx, game, sim, ui = {}) {
 }
 
 function drawPump(ctx, game, sim, ui) {
+  if (sim.slice.tool === 'loeffel') return drawBucket(ctx, game, sim, ui);
   const sl = sim.slice, wl = game.river.wl;
   const head = sliceHeadScreen(sl), pumpX = head.x + PW * 0.2, py = head.y;
   const dt = ui.dt ?? 1 / 60;
@@ -368,10 +396,35 @@ function drawPump(ctx, game, sim, ui) {
     ctx.lineTo(m.x - 34, m.y + 46); ctx.lineTo(m.x + 34, m.y + 46); ctx.closePath(); ctx.fill();
   }
   // Saugradius als schwache Kontur
-  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sim.stats.radius * U, sim.stats.radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sl.toolParams().radius * U, sl.toolParams().radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
   // Schieflage und Hubhöhe
   if (sl.setH - sl.h < -0.05 || sl.h - sl.setH > 0.05) { const sy = sliceY(sl.setH, wl); ctx.strokeStyle = '#ffa94d'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(pumpX - 22, sy); ctx.lineTo(pumpX + 22, sy); ctx.stroke(); ctx.setLineDash([]); }
   if (sl.auto.on) { ctx.font = font(13); ctx.fillStyle = '#7fe3ff'; ctx.fillText(sl.auto.error ? '🤖 Fehler! (R)' : '🤖 Automatik', pumpX + 20, py - PH - 4); }
+}
+
+// Löffelbagger: Ausleger von der Laufkatze mit Knick zur Schaufel; beim Graben schwingt die Schaufel
+function drawBucket(ctx, game, sim, ui) {
+  const sl = sim.slice, m = sliceMouthScreen(sl), head = sliceHeadScreen(sl);
+  ctx.fillStyle = '#d9dee3'; ctx.fillRect(40, SURF - 22, W - 80, 26);
+  ctx.fillStyle = '#9aa4ad'; ctx.fillRect(40, SURF - 22, W - 80, 6);
+  ctx.fillStyle = '#222'; for (let i = 0; i < 24; i++) { ctx.beginPath(); ctx.arc(54 + i * ((W - 108) / 23), SURF - 6, 2.5, 0, Math.PI * 2); ctx.fill(); }
+  const bx = head.x, by = SURF - 26, tx = m.x, ty = m.y - 12;
+  ctx.fillStyle = '#e8c33a'; ctx.fillRect(bx - 18, by - 12, 36, 18); ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(bx - 9, by + 7, 3, 0, 7); ctx.arc(bx + 9, by + 7, 3, 0, 7); ctx.fill();
+  const mx = (bx + tx) / 2, my = (by + ty) / 2, dx = tx - bx, dy = ty - by, len = Math.hypot(dx, dy) || 1;
+  const bend = Math.min(60, len * 0.28) * (sl.suctioning ? 1 + 0.25 * Math.sin((ui.t ?? 0) * 7) : 1);
+  const ex = mx + (dy / len) * bend, ey = my - (dx / len) * bend; // Knick zur Seite
+  ctx.strokeStyle = '#e8c33a'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex, ey); ctx.lineTo(tx, ty); ctx.stroke();
+  ctx.strokeStyle = '#3b2f08'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex, ey); ctx.lineTo(tx, ty); ctx.stroke();
+  ctx.lineCap = 'butt';
+  const swing = sl.suctioning ? Math.sin((ui.t ?? 0) * 7) * 0.5 : 0;
+  ctx.save(); ctx.translate(tx, ty); ctx.rotate(0.3 + swing);
+  ctx.fillStyle = '#6b6f73'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-14, -2); ctx.lineTo(16, -6); ctx.lineTo(20, 14); ctx.lineTo(-10, 18); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#c9c9c9'; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(-8 + k * 8, 17); ctx.lineTo(-4 + k * 8, 17); ctx.lineTo(-6 + k * 8, 24); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sl.toolParams().radius * U, sl.toolParams().radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
+  if (sl.auto.on) { ctx.font = font(13); ctx.fillStyle = '#7fe3ff'; ctx.fillText(sl.auto.error ? '🤖 Fehler! (R)' : '🤖 Automatik', bx + 22, by - 14); }
 }
 
 function drawFreeing(ctx, sl) {

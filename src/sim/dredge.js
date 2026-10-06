@@ -22,6 +22,7 @@ export class DredgeSim {
     this.turbidity = 0;
     this.turbidityMult = 1;
     this.autoStartedPump = false;
+    this.tool = 'pump'; // gewähltes Gerät (Saugkopf oder Löffelbagger), gilt für die nächste Verankerung
     this.removed = 0; this.clogs = 0; this.tips = 0; this.outside = 0;
   }
 
@@ -42,7 +43,7 @@ export class DredgeSim {
   anchor() {
     if (this.mode !== 'map') return false;
     if (!this.canFloat(this.x, this.y)) return false;
-    this.slice = new SliceSim(this.river, this.stats, this.x, this.y, this.rng, this.targetDepth, this.pumpSpeed);
+    this.slice = new SliceSim(this.river, this.stats, this.x, this.y, this.rng, this.targetDepth, this.pumpSpeed, this.tool);
     this.mode = 'slice';
     this.pumpOn = false;
     return true;
@@ -53,6 +54,14 @@ export class DredgeSim {
     this.slice = null;
     this.mode = 'map';
     this.pumpOn = false; this.autoStartedPump = false;
+    return true;
+  }
+
+  // Gerät wechseln: im Querschnitt sofort, auf der Karte für die nächste Verankerung
+  setTool(tool) {
+    if (tool === 'loeffel' && this.stats.loeffel <= 0) return false;
+    if (this.mode === 'slice') { if (!this.slice.setTool(tool)) return false; this.pumpOn = false; }
+    this.tool = tool;
     return true;
   }
 
@@ -81,7 +90,7 @@ export class DredgeSim {
   // input: { dx, dy in -1..1, suction: bool }
   update(dt, input) {
     const s = this.stats;
-    const d = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, hard: 0, fines: 0, repairs: 0, tips: 0, clogs: 0, clogItems: [], bombs: 0 };
+    const d = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, fines: 0, repairs: 0, tips: 0, clogs: 0, clogItems: [], bombs: 0 };
 
     if (this.mode === 'map') {
       let dx = input.dx || 0, dy = input.dy || 0;
@@ -99,12 +108,12 @@ export class DredgeSim {
         if (n.kind === 'clog') { d.clogs++; d.clogItems.push(n.item); if (n.bomb) d.bombs++; }
         if (n.kind === 'tip') { d.tips++; d.repairs += CONFIG.pump.repairCost; this.pumpOn = false; }
       }
-      d.removed = r.removed; d.by = r.by; d.zone = r.zone; d.out = r.out; d.hard = r.hard;
+      d.removed = r.removed; d.by = r.by; d.zone = r.zone; d.out = r.out; d.land = r.land; d.hard = r.hard;
       // Trübung entsteht nur, wenn die Pumpe am Boden wirklich Material saugt; Mehr Leistung, Bewegung und Altlasten = mehr Trübung.
-      const use = s.power * dt > 0 ? Math.min(1, Math.max(0, r.removed / (s.power * dt))) : 0;
+      const T = this.slice.toolParams(), use = T.power * dt > 0 ? Math.min(1, Math.max(0, r.removed / (T.power * dt))) : 0;
       if (this.slice.suctioning && use > 0) {
         const boost = (this.slice.moving ? 1.4 : 1) * (r.by[KIND.altlast] > 0 ? 1.5 : 1);
-        this.turbidity += (s.power / CONFIG.turbidityGain) * this.turbidityMult * boost * (1 - s.curtain) * use * dt;
+        this.turbidity += (T.power / CONFIG.turbidityGain) * this.turbidityMult * T.turb * boost * (1 - s.curtain) * use * dt;
       }
     }
 

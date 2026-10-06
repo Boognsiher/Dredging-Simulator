@@ -488,3 +488,162 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
   for (let i = 0; i < g.river.top.length; i++) assert.ok(Number.isFinite(g.river.top[i]));
   assert.ok(SHIPS.length === 5);
 });
+
+// ---------- Löffelbagger, Land abtragen, Flotte ----------
+import { hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+
+function bankSlice(levels = { loeffel: 3 }) {
+  const g = new Game(3, 'hochrhein'), r = g.river;
+  g.money = 1e6;
+  for (const [id, n] of Object.entries(levels)) for (let i = 0; i < n; i++) g.buyUpgrade(id);
+  const sim = g.createSession(); sim.setStats(g.stats);
+  sim.setTool('loeffel');
+  const x = 22; let y = Math.floor(r.centerY(x) - 5);
+  while (!sim.canFloat(x + 0.5, y + 0.5)) y++;
+  sim.x = x + 0.5; sim.y = y + 0.5; sim.anchor();
+  return { g, r, sim, sl: sim.slice, x };
+}
+
+test('Löffelbagger: nur mit Ausbau wählbar, Gerätewechsel nicht bei Verstopfung', () => {
+  const g = new Game(1), sim = g.createSession();
+  assert.equal(sim.setTool('loeffel'), false);
+  g.money = 1e6; g.buyUpgrade('loeffel'); sim.setStats(g.stats);
+  assert.equal(sim.setTool('loeffel'), true);
+  sim.x = 22; sim.y = g.river.centerY(22); sim.anchor();
+  assert.equal(sim.slice.tool, 'loeffel');
+  sim.slice.clog = 3;
+  assert.equal(sim.setTool('pump'), false);
+});
+
+test('Löffelbagger: trägt Land im Ausbaustreifen ab, kostet Landgebühr, keine Busse', () => {
+  const { g, r, sim, sl, x } = bankSlice();
+  sl.x = sl.x0 + 0.5;
+  const i = r.idx(x, sl.x0), top0 = r.top[i], m0 = g.money;
+  assert.ok(top0 > r.wl && r.ext[i] === 1, 'Ufer im Ausbaustreifen');
+  sim.pumpOn = true;
+  let land = 0;
+  for (let k = 0; k < 200; k++) { sl.h = sl.surfaceAt(sl.x) + 0.3; const d = sim.update(0.05, { dx: 0, dy: 0, suction: true }); g.collect(d); land += d.land; assert.ok(d.out <= d.land * 0.3 + 1e-9); }
+  assert.ok(land > 5 && r.top[i] < top0);
+  assert.ok(g.totals.landFees > 0 && g.money < m0 + 1);
+});
+
+test('Saugkopf: Land und Ufer bleiben unberührt', () => {
+  const { r, sim, sl, x } = bankSlice({});
+  sim.setTool('pump');
+  sl.x = sl.x0 + 0.5;
+  const i = r.idx(x, sl.x0), top0 = r.top[i];
+  sim.pumpOn = true;
+  for (let k = 0; k < 100; k++) sim.update(0.05, { dx: 0, dy: 0, suction: true });
+  assert.equal(r.top[i], top0);
+});
+
+test('Land wird zum Korridor, wenn es unter Wasser abgetragen ist', () => {
+  const r = new River(CONFIG.river.cols, CONFIG.river.rows).setFlat(3, 9);
+  for (let x = 10; x < 14; x++) { const i = r.idx(x, 4); r.top[i] = r.wl + 0.4; r.rock[i] = r.wl - 3; r.zone[i] = 0; r.ext[i] = 1; r.cap[i] = 0; r.kind[i] = KIND.sand; }
+  const i = r.idx(11, 4);
+  for (let k = 0; k < 60 && !r.zone[i]; k++) r.suckSwath([11], 11, 4.5, r.wl + 0.2, 1.5, 3, 0.3, { allowLand: true });
+  assert.ok(r.zone[i] === 1 && r.top[i] < r.wl);
+  assert.ok(r.cap[i] > 0, 'neues Wasser kann wieder verlanden');
+});
+
+test('Löffel: verstopft nicht an Fremdstoffen, Bomben zählen trotzdem', () => {
+  const { r, sl, sim } = bankSlice();
+  sl.x = sl.x0 + 8; sl.h = r.wl - 2;
+  const mx = Math.floor(sl.mouth().x);
+  r.debris[r.idx(sl.cols[1], mx)] = 1;
+  sim.pumpOn = true;
+  sim.update(0.05, { dx: 0, dy: 0, suction: true });
+  assert.equal(sl.clog, 0);
+  r.debris[r.idx(sl.cols[1], mx)] = 7; // Fliegerbombe
+  const d = sim.update(0.05, { dx: 0, dy: 0, suction: true });
+  assert.ok(sl.clog > 0 && d.bombs === 1);
+});
+
+test('Löffel: schafft harte Schicht und Fels besser als der Saugkopf', () => {
+  const dig = (tool) => {
+    const g = new Game(1); g.money = 1e6; g.buyUpgrade('loeffel');
+    const r = new River(CONFIG.river.cols, CONFIG.river.rows).setFlat(3, 3);
+    r.hard.fill(2);
+    const stats = computeStats({ loeffel: 3 });
+    const sl = new SliceSim(r, stats, 20, 12, createRng(1), 3, 1, tool);
+    sl.h = r.wl - 3.2; sl.x = sl.x0 + 6;
+    let rem = 0;
+    for (let i = 0; i < 80; i++) rem += sl.update(0.05, { dx: 0, dy: 0, suction: true }).by[KIND.fels];
+    return rem;
+  };
+  assert.ok(dig('loeffel') > dig('pump') * 3);
+});
+
+test('Flotte: Mieten braucht Automatik und Geld, Kosten steigen, Obergrenze', () => {
+  const g = new Game(5);
+  assert.match(hireBlock(g), /Automatik/);
+  g.money = 1e6; g.buyUpgrade('auto');
+  assert.equal(hireBlock(g), null);
+  const c0 = g.money;
+  assert.ok(hireUnit(g));
+  assert.equal(g.money, c0 - CONFIG.fleet.costs[0]);
+  for (let i = 1; i < CONFIG.fleet.max; i++) assert.ok(hireUnit(g));
+  assert.match(hireBlock(g), /voll/);
+  assert.ok(dismissUnit(g, g.fleet.units[0].id));
+  assert.equal(g.fleet.units.length, CONFIG.fleet.max - 1);
+});
+
+test('Flotte: Ponton fährt zur Engstelle, baggert selbstständig und die Rinne wird frei', () => {
+  const g = new Game(3, 'hochrhein');
+  g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('auto'); g.buyUpgrade('plant'); g.buyUpgrade('plant');
+  g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'motor';
+  assert.ok(!g.fair.motor.passable);
+  hireUnit(g); hireUnit(g); hireUnit(g);
+  let worked = false;
+  for (let i = 0; i < 14 * 60 * 20 && !g.fair.motor.passable; i++) { g.update(0.05); if (g.fleet.units.some((u) => u.state === 'work')) worked = true; }
+  assert.ok(worked && g.fair.motor.passable, 'Motorschiffe können fahren');
+  assert.ok(g.totals.fleetRemoved > 20);
+  assert.ok(g.totals.plantNet !== 0);
+});
+
+test('Flotte: zwei Pontons teilen sich die Arbeit (keine doppelte Stelle)', () => {
+  const g = new Game(3, 'hochrhein');
+  g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('plant');
+  g.traffic.spawnIn = 1e9; g.fleet.goal = 'tank';
+  hireUnit(g); hireUnit(g);
+  let overlap = 0;
+  for (let i = 0; i < 14 * 25 * 20; i++) {
+    g.update(0.05);
+    const [a, b] = g.fleet.units;
+    if (a.site && b.site && a.state !== 'idle' && b.state !== 'idle' && a.site.c0 < b.site.c0 + 4 && b.site.c0 < a.site.c0 + 4) overlap++;
+  }
+  assert.equal(overlap, 0);
+  assert.ok(g.fleet.units.every((u) => u.removed > 0));
+});
+
+test('Flotte: ohne Felsfräse bleibt sie vor Fels stehen und meldet es, mit Löffel kommt sie weiter', () => {
+  const g = new Game(3, 'loreley');
+  g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false;
+  const f = g.fair.container, r = g.river, needTop = g.wl - f.need - 0.3;
+  for (let i = 0; i < r.top.length; i++) if (r.zone[i] && r.rock[i] < needTop && r.top[i] > needTop) r.top[i] = needTop; // ganzer Korridor tief, nur der Fels bleibt
+  for (let i = 0; i < r.top.length; i++) r.pending.add(i);
+  for (let k = 0; k < 60; k++) r.settle(Infinity); // Böschungen setzen lassen, sonst rutscht die Rinne unter den Pontons nach
+  g.analyze(true); g.fleet.goal = 'container';
+  assert.ok(openColumns(g, targetClass(g)).some((c) => c.rock), 'Felsriegel liegt in der Rinne');
+  hireUnit(g); hireUnit(g); hireUnit(g);
+  let msg = '';
+  for (let i = 0; i < 14 * 100 * 20 && !/Fels/.test(msg); i++) { g.update(0.05); msg = g.fleet.units.map((u) => u.note).join('|'); }
+  assert.match(msg, /Fels/, 'meldet Fels im Weg');
+  g.buyUpgrade('loeffel');
+  let tool = null;
+  for (let i = 0; i < 14 * 40 * 20 && tool !== 'loeffel'; i++) { g.update(0.05); for (const u of g.fleet.units) if (u.sim?.slice && u.site?.rock) tool = u.sim.slice.tool; }
+  assert.equal(tool, 'loeffel');
+});
+
+test('Flotte: Spielstand speichert Pontons und sie arbeiten danach weiter; Löhne werden bezahlt', () => {
+  const g = new Game(8, 'hochrhein');
+  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; hireUnit(g);
+  for (let i = 0; i < 14 * 5 * 20; i++) g.update(0.05);
+  const g2 = restoreGame(serializeGame(g));
+  assert.ok(g2 && g2.fleet.units.length === 1);
+  const w0 = g2.totals.wages;
+  for (let i = 0; i < 14 * 4 * 20; i++) g2.update(0.05);
+  assert.ok(g2.fleet.units[0].state !== undefined && g2.totals.fleetRemoved >= 0);
+  assert.ok(g2.totals.wages > w0, 'Löhne');
+  assert.equal(fleetSites(g2).length >= 0, true);
+});

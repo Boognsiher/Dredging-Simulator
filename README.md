@@ -24,6 +24,14 @@ Steuerung, Aufbau und Oberfläche folgen dem Seesanierungs-Spiel ([Romans-Altlas
 - **Fluss lebt:** Böschungen **rutschen nach** (schmal und tief baggern füllt sich wieder auf), der Fluss **verlandet** (langsames Wasser am Rand, Hochwasser lagert Schlick ab),
   **Niedrigwasser** nimmt Tiefe (Schiffe können auflaufen: Bergung kostet, Rinne blockiert), **Hochwasser** sperrt die Schifffahrt. **Fels** (Felsriegel) lässt sich ohne Felsfräse kaum
   abtragen. Ufer und Flachwasser sind **Naturschutzzone** (Busse pro m³). Ein Ponton in der Rinne bremst den Verkehr (Baustelle).
+- **Löffelbagger (Schaufeln):** Upgrade «Löffelbagger», im Querschnitt mit `V` oder dem Knopf «Gerät» umschaltbar. Er ist langsamer als der Saugbagger, verstopft aber nie
+  (Fremdstoffe hebt er einfach aus, nur Bomben bleiben ein Problem), schafft harte Schichten und Fels besser, trübt wenig und kippt kaum.
+- **Land abtragen:** Der Löffel reicht über den Wasserspiegel. Das Ufer im **gelben Ausbaustreifen** (Karte) lässt sich abgraben, das kostet nur eine Landgebühr
+  (`pay.landFee`) statt Busse. Liegt das Land unter Wasser, wird es zum Baggerkorridor: der Fluss wird breiter (mehr Platz für grosse Schiffe und Gegenverkehr). Das Material kommt in den Puffer
+  (Aushub wird als Sand verwertet). Ausserhalb des Streifens gilt Schutzgebiet. Böschungen rutschen auch hier nach.
+- **Flotte:** Mit der Automatik (Stufe 1 und höher) kannst du bis zu vier **Pontons mieten** (Panel «Flotte», Kosten steigen, Löhne pro Tag). Sie fahren selbstständig zur nächsten Engstelle des
+  **Ausbauziels** (Klasse wählbar, Standard: die kleinste, die noch nicht fährt), ankern, baggern per Automatik auf Solltiefe (bei Fels mit dem Löffel, wenn vorhanden) und suchen danach die nächste Stelle.
+  Du musst den Querschnitt nicht mehr öffnen; dein eigener Ponton bleibt frei steuerbar. Pontons ohne Arbeit melden, was fehlt (z. B. «Fels im Weg»). Ankernde Pontons bremsen den Verkehr.
 - **Ziel:** Jedes Level hat ein Verkehrsziel in Tonnen. Erreichst du es und schliesst mit Gewinn ab (oder die Frist läuft mit Gewinn ab), schaltest du das nächste Level frei.
   Gewonnen hat, wer am Ende am meisten Geld hat. Levels: **Hochrhein** (Einstieg), **Loreley-Enge** (schmal, Felsriegel, Schubverband), **Eisernes Tor** (Fels, Altlasten, Blindgänger).
 
@@ -31,7 +39,7 @@ Steuerung, Aufbau und Oberfläche folgen dem Seesanierungs-Spiel ([Romans-Altlas
 **Computer**
 - Karte: WASD / Pfeile (oder Maus gedrückt) fahren den Ponton, `E`/Leertaste wirft den Anker, `1`–`5` wählen die Schiffsklasse, Tippen/Klicken auf die Klassenleiste auch.
 - Querschnitt: `A`/`D` Pumpe quer zum Fluss, `W`/`S` Kette hoch/runter, Leertaste Pumpe ein/aus (saugt nach rechts und im Stillstand, rückwärts nie), `Z`/`X` Tempo,
-  `F`/`G` Solltiefe, `1`–`5` Solltiefe für eine Klasse, `T` Automatik, `R` Reset, `Q` zurück zur Karte, `P` Pause, `M` Ton, `B` Flussmeister Fritz.
+  `F`/`G` Solltiefe, `V` Gerät (Saugkopf/Löffel), `1`–`5` Solltiefe für eine Klasse, `T` Automatik, `R` Reset, `Q` zurück zur Karte, `P` Pause, `M` Ton, `B` Flussmeister Fritz.
 
 **Handy:** Stick links (Karte), Pfeil-Knöpfe (Querschnitt), grosser Knopf rechts (Anker / Pumpe an-aus / Freispülen), Tempo- und Solltiefe-Regler, Tipp auf die Karte fährt hin und ankert,
 Klassenleiste oben, Shop als Fach unten (Spiel steht still, solange es offen ist).
@@ -48,6 +56,7 @@ Die **Automatik** (Upgrade) fährt auf die Solltiefe, **Echolot** macht die Peil
 | `src/sim/fairway.js` | Fahrrinnen-Analyse je Schiffsklasse (Dijkstra), Gegenverkehr, Pfade |
 | `src/sim/slice.js` | Querschnitt: Pumpe, Kette, Automatik, Fremdstoffe, Freispülen |
 | `src/sim/dredge.js` | Ponton-Sitzung: Karte und Querschnitt, Trübung |
+| `src/sim/fleet.js` | Flotte: gemietete Pontons, die selbstständig baggern |
 | `src/sim/traffic.js` | Schiffe: Spawn, Warteschlange, Einbahnrinne, Havarie, Einnahmen |
 | `src/sim/market.js` | Frachtpreise (Schwankung, Schocks, Nachfrage) |
 | `src/sim/plant.js` | Anlage an Land: Verkauf und Entsorgung des Baggerguts |
@@ -64,10 +73,10 @@ Prinzip: `src/sim/` kennt weder DOM noch Canvas und ist getestet.
 
 ## Speichern
 Das Spiel speichert automatisch im Browser (`localStorage`, Schlüssel `dredging.save`): bei jedem neuen Tag, alle 10 Sekunden, bei Käufen, beim Pausieren und beim Verlassen der Seite.
-Gespeichert werden Geld, Zeit, Upgrades, Markt, Schiffe, Aufträge und die Flusssohle; die laufende Pontonfahrt nicht. Rekorde je Level stehen unter `dredging.levels`.
+Gespeichert werden Geld, Zeit, Upgrades, Markt, Schiffe, Aufträge, Flotte und die Flusssohle (Spielstände älterer Versionen werden nicht mehr geladen); die laufende Pontonfahrt nicht. Rekorde je Level stehen unter `dredging.levels`.
 
 ## Ideen für später
-Tauchdrohne für Peilung und Abnahme, Kran-Minispiel für Wracks, Schleusen und Häfen als eigene Stationen, Kosten für Verklappung im Fluss, Jahreszeiten (Pegelkurve), weitere Flüsse.
+Land abtragen automatisieren (Ausbaustreifen per Flotte), weitere Geräte (Eimerkettenbagger, Greifer), Tauchdrohne für Peilung und Abnahme, Kran-Minispiel für Wracks, Schleusen und Häfen als eigene Stationen, Kosten für Verklappung im Fluss, Jahreszeiten (Pegelkurve), weitere Flüsse.
 
 ## Einzeldatei zum Ausprobieren
 `dist/fahrrinne-frei.html` ist eine einzelne Datei, die per Doppelklick (ohne Server) im Browser läuft. Neu bauen mit `npm run build`.

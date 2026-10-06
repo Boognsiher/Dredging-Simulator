@@ -22,7 +22,7 @@ export const CONFIG = {
   hard: { factor: 1.5 }, // harte Schicht: Leistung geteilt durch (1 + Härte * factor)
   box: { cols: 4 }, // der Ponton baggert gleichzeitig 4 Karten-Spalten (Flussrichtung) und 16 Zellen quer zum Fluss
   // Baggerentgelt der Wasserstrassenverwaltung für Material aus dem Baggerkorridor; Naturschutzzone (Ufer, Flachwasser) kostet
-  pay: { perM3: 28, protectFine: 220 },
+  pay: { perM3: 28, protectFine: 220, landFee: 14 }, // landFee: Landerwerb/Entsorgung pro m³ Aushub aus dem Ausbaustreifen am Ufer
   // Material der Flusssohle (Index = Wert in river.kind). Preis in CHF pro m³ nach der Aufbereitung: positiv = Verkauf, negativ = Entsorgung.
   // Der Kiespreis folgt dem Markt (Fracht "Kies & Sand").
   materials: [
@@ -97,6 +97,11 @@ export const CONFIG = {
   dailyCost: 450, perUpgradeLevelCost: 22, // Betrieb und Wartung pro Tag (CHF), plus je ausgebaute Stufe
   advisor: { firstAfter: 18, gap: 55, tipCooldown: 240, tau: 30, eventWindow: 120, bufferFull: 0.45, turbidity: 0.55, richMoney: 40000 },
   refundShare: 0.75,
+  // Löffelbagger (Schaufeln): langsamer als der Saugbagger, aber ohne Verstopfen, besser bei harter Schicht und Fels, wenig Trübung,
+  // und er reicht über den Wasserspiegel: damit lässt sich Ufer im Ausbaustreifen abtragen (der Fluss wird breiter)
+  bucket: { hardFactor: 0.5, turbidity: 0.3, stability: 3, reachAbove: 2.2, bombChance: 1 },
+  // Flotte: gemietete Pontons arbeiten selbstständig (Automatik), ohne dass du den Querschnitt öffnest
+  fleet: { max: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
 };
 
 // Materialindex
@@ -121,6 +126,10 @@ export const BASE_STATS = {
   trafficMult: 1, // Betonnung & Leuchtfeuer: mehr Schiffe
   vts: 0, // Verkehrsleitsystem: schnellere Bergung, kleinere Abstände
   pilot: 0, // Lotsendienst: höhere Gebühren
+  loeffel: 0, // Löffelbagger-Stufe (0 = nicht vorhanden)
+  bucketPower: 0, // m³/s Grabeleistung des Löffels
+  bucketRadius: 1.1, // Zellen
+  bucketRock: 0.3, // Anteil der Leistung im Fels
 };
 
 // Jedes Upgrade: Stufe n kostet baseCost * growth^n, wirkt über apply()
@@ -132,6 +141,7 @@ export const UPGRADES = {
   ballast: { group: 'ponton', name: 'Pumpen-Ballast', desc: 'Pumpe steht fester und kippt später', maxLevel: 4, baseCost: 6000, growth: 1.5, apply: (s, l) => { s.stability += l * 0.25; } },
   curtain: { group: 'ponton', name: 'Trübungsschutz', desc: 'Schlammvorhang: weniger Trübung, weniger Bussen', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.curtain = Math.min(0.8, l * 0.2); } },
   cutter: { group: 'ponton', name: 'Felsfräse', desc: 'Schneidkopf: Felsriegel lassen sich abtragen (ohne Fräse kaum)', maxLevel: 4, baseCost: 14000, growth: 1.7, apply: (s, l) => { s.rockFirmness += l * 0.14; } },
+  loeffel: { group: 'ponton', name: 'Löffelbagger', desc: 'Ausleger mit Schaufel (V = Gerät wechseln): verstopft nie, schafft Fels und harte Schicht, wenig Trübung, reicht über Wasser (Ufer abtragen). Höhere Stufen: mehr Leistung', maxLevel: 5, baseCost: 12000, growth: 1.6, apply: (s, l) => { s.loeffel = l; if (l > 0) { s.bucketPower = 2.4 + 1.3 * (l - 1); s.bucketRadius = 1.0 + 0.12 * l; s.bucketRock = 0.28 + 0.08 * l; } } },
   echolot: { group: 'ponton', name: 'Echolot', desc: 'Genauere Peilung: die Automatik trifft die Solltiefe besser', maxLevel: 2, baseCost: 9000, growth: 1.8, apply: (s, l) => { s.echolot = l; } },
   auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 15000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
   plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer', maxLevel: 6, baseCost: 10000, growth: 1.5, apply: (s, l) => { s.plantCapacity += l * 1.2; s.bufferCapacity += l * 45; } },

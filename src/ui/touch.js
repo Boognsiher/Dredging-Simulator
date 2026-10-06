@@ -52,9 +52,9 @@ export function setupTouch(input, hooks) {
   for (const el of [stick, act]) el.addEventListener('contextmenu', (e) => e.preventDefault());
 
   return {
-    setPump(on, clogged = false) {
+    setPump(on, clogged = false, bucket = false) {
       if (mode !== 'slice') return;
-      act.textContent = clogged ? '🔧 Freispülen!' : on ? '🌀 Pumpe AN' : '🌀 Pumpe AUS';
+      act.textContent = clogged ? '🔧 Freispülen!' : bucket ? (on ? '⛏ Löffel AN' : '⛏ Löffel AUS') : on ? '🌀 Pumpe AN' : '🌀 Pumpe AUS';
       act.classList.toggle('held', on && !clogged);
     },
     setMode(m) {

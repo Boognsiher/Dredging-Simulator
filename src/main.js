@@ -2,6 +2,7 @@ import { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, car
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass } from './sim/traffic.js';
+import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, targetClass } from './sim/fleet.js';
 import { priceOf, trend } from './sim/market.js';
 import { needDepth } from './sim/fairway.js';
 import { Advisor } from './sim/advisor.js';
@@ -190,6 +191,25 @@ function updateMarket() {
   }));
 }
 
+let fleetSig = null;
+function updateFleet() {
+  const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id]);
+  if (sig === fleetSig) return;
+  fleetSig = sig;
+  const box = $('fleet'), cls = targetClass(game);
+  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert</small></div><button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button></div>`).join('');
+  const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
+  box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
+    ${rows}
+    <label class="fleet-goal">Ausbauziel <select id="fleet-goal">${opts}</select></label>
+    <small>${cls ? `Aktuell: ${cls.icon} ${cls.name}` : 'Alle Klassen fahren'}</small>
+    <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
+  $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
+  $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
+  for (const b of box.querySelectorAll('[data-fire]')) b.onclick = () => { dismissUnit(game, +b.dataset.fire); fleetSig = null; updateFleet(); };
+}
+
 let contractSig = null;
 function updateContracts() {
   const sig = JSON.stringify(game.contracts.map((c) => [c.id, c.status, Math.floor(c.done / 50)])) + Math.floor(game.money / 500);
@@ -249,7 +269,7 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+function updatePanel() { updateToolButton(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -365,6 +385,18 @@ function togglePump() {
   if (sim.togglePump()) audio.toggle(sim.pumpOn);
 }
 function fixAuto() { sim.fixAuto(); }
+function toggleTool() {
+  const to = sim.tool === 'loeffel' ? 'pump' : 'loeffel';
+  if (to === 'loeffel' && game.stats.loeffel <= 0) { toast('Der Löffelbagger fehlt: unter Ausrüstung kaufen', 'bad', true); return; }
+  if (!sim.setTool(to)) { toast('Gerät lässt sich jetzt nicht wechseln (Verstopfung oder Kippen)', 'bad', true); return; }
+  game.tool = sim.tool; audio.toggle(true);
+  if (sim.mode === 'map') toast(`Nächste Verankerung mit ${to === 'loeffel' ? 'Löffelbagger' : 'Saugkopf'}`, 'info', true);
+}
+function updateToolButton() {
+  const b = $('btn-tool'), has = game.stats.loeffel > 0;
+  b.hidden = !has;
+  if (has) b.textContent = `🔧 Gerät: ${sim.tool === 'loeffel' ? 'Löffelbagger' : 'Saugkopf'} (V)`;
+}
 function setDepthValue(v) {
   sim.setTargetDepth(v);
   game.targetDepth = sim.targetDepth;
@@ -466,7 +498,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = [];
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -499,6 +531,7 @@ $('btn-anchor').onclick = anchor;
 $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
 $('btn-fix').onclick = fixAuto;
+$('btn-tool').onclick = toggleTool;
 $('cut').oninput = (e) => setDepthValue(parseFloat(e.target.value));
 $('spd').oninput = (e) => setSpeed(parseFloat(e.target.value));
 
@@ -531,10 +564,12 @@ function frame(now) {
         }
       }
       if (readInput.tap('Space', 'Enter', 'KeyE')) anchor();
+      if (readInput.tap('KeyV')) toggleTool();
     } else {
       if (readInput.tap('Escape', 'KeyQ')) leave();
       if (readInput.tap('KeyT')) toggleAuto();
       if (readInput.tap('KeyR')) fixAuto();
+      if (readInput.tap('KeyV')) toggleTool();
       if (readInput.tap('Space')) togglePump();
       inp.suction = sim.pumpOn;
       if (readInput.tap('KeyZ')) setSpeed(sim.pumpSpeed - 0.1);
@@ -563,9 +598,10 @@ function frame(now) {
       $('btn-auto').hidden = sim.stats.autoLevel <= 0;
       $('btn-auto').textContent = sl.auto.on ? '🤖 Automatik aus (T)' : '🤖 Automatik an (T)';
       $('btn-fix').hidden = !sl.auto.error;
-      $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';
+      const bucket = sl.tool === 'loeffel';
+      $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : bucket ? (sim.pumpOn ? '⛏ Löffel: AN (Leertaste)' : '⛏ Löffel: AUS (Leertaste)') : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';
       $('btn-pump').classList.toggle('on', sim.pumpOn);
-      touch?.setPump(sim.pumpOn, !!sl.freeing);
+      touch?.setPump(sim.pumpOn, !!sl.freeing, bucket);
       $('spd-box').hidden = false;
       if (document.activeElement !== $('spd')) { $('spd').value = sim.pumpSpeed; $('spd-val').textContent = pct(sim.pumpSpeed); }
       $('cut-box').hidden = false;

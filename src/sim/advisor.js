@@ -2,6 +2,7 @@ import { CONFIG, UPGRADES, SHIPS, shipById, cargoById } from '../config.js';
 import { upgradeCost } from './stats.js';
 import { waitingByClass } from './traffic.js';
 import { ratioOf } from './market.js';
+import { hireBlock, nextHireCost } from './fleet.js';
 
 // Flussmeister Fritz: gibt Tipps (Gag im Stil einer Büroklammer mit Kapitänsmütze). Reine Logik ohne DOM, damit testbar.
 // observe() sammelt laufend Messwerte (geglättet), pick() liefert höchstens einen Tipp, wenn Pause, Abstand und Bedingung passen.
@@ -37,7 +38,7 @@ export class Advisor {
     if (t.bufFull > A.bufferFull) order.push('plant', 'dewater');
     if (t.turb > A.turbidity) order.push('curtain');
     if (t.tips.length >= 1) order.push('ballast');
-    if (this.rockBlocked(game)) order.push('cutter');
+    if (this.rockBlocked(game)) order.push('cutter', 'loeffel');
     if (L.auto === 0 && game.totals.removed > 400) order.push('auto');
     order.push('power', 'beacons', 'sorter', 'speed', 'radius', 'winch', 'pilot', 'vts', 'echolot', 'plant');
     for (const id of order) {
@@ -85,7 +86,7 @@ export class Advisor {
       { id: 'grounding', prio: 88, when: () => game.totals.groundings >= 1 && game.totals.groundings > (this.shownAt._g ?? 0),
         text: () => { this.shownAt._g = game.totals.groundings; return 'Ein Schiff ist aufgelaufen und hat die Rinne versperrt, die Bergung kostet. Meist ist Niedrigwasser oder die Verlandung schuld: lieber ein Stück tiefer baggern, als nur gerade so viel wie nötig. Ein Verkehrsleitsystem macht die Bergung schneller.'; } },
       { id: 'queue', prio: 80, when: () => !!stuck && (waiting[stuck.id] ?? 0) >= 2,
-        text: () => `Am Ufer warten ${waiting[stuck.id]}× ${shipById(stuck.id).name}, sie brauchen ${(shipById(stuck.id).draught + CONFIG.clearance).toFixed(1)} m Wasser und eine ${shipById(stuck.id).beam} Zellen breite Rinne. ${game.fair[stuck.id].volume === Infinity ? 'Der Baggerkorridor ist dafür zu schmal.' : `Dir fehlen noch ca. ${Math.round(game.fair[stuck.id].volume)} m³ Baggerarbeit (Karte: Klasse wählen, rote Stellen).`} Wer nicht durchkommt, dreht ab und die Fracht geht auf die Bahn.` },
+        text: () => `Am Ufer warten ${waiting[stuck.id]}× ${shipById(stuck.id).name}, sie brauchen ${(shipById(stuck.id).draught + CONFIG.clearance).toFixed(1)} m Wasser und eine ${shipById(stuck.id).beam} Zellen breite Rinne. ${game.fair[stuck.id].volume === Infinity ? 'Der Baggerkorridor ist dafür zu schmal: mit dem Löffelbagger (V) kannst du Ufer im gelben Ausbaustreifen abtragen, dann wird der Fluss breiter.' : `Dir fehlen noch ca. ${Math.round(game.fair[stuck.id].volume)} m³ Baggerarbeit (Karte: Klasse wählen, rote Stellen).`} Wer nicht durchkommt, dreht ab und die Fracht geht auf die Bahn.` },
       { id: 'silt', prio: 76, when: () => !!game.fair && SHIPS.some((s) => game.level.classes.includes(s.id) && (game.totals.byClass[s.id] ?? 0) > 0 && !game.fair[s.id].passable && game.fair[s.id].volume < 120),
         text: () => 'Die Rinne verlandet: der Fluss lagert in langsamem Wasser Schlick ab. Kurz nachbaggern (Karte: rote Stellen), bevor die ersten Schiffe auflaufen. Etwas tiefer als nötig baggern hält länger.' },
       { id: 'flood', prio: 74, when: () => game.closed,
@@ -93,8 +94,8 @@ export class Advisor {
       { id: 'low', prio: 72, when: () => game.wl < CONFIG.water.base - 0.25,
         text: () => `Niedrigwasser (Pegel ${game.wl.toFixed(1)} m statt ${CONFIG.water.base} m): grosse Schiffe finden zu wenig Wasser. Wer jetzt tiefer baggert, hat auch beim nächsten Tief Reserve.` },
       { id: 'rock', prio: 70, when: () => this.rockBlocked(game) && sim.mode === 'slice',
-        text: () => `Hier steckt Fels in der Rinne. Ohne Felsfräse kommst du da kaum durch.${rec && rec.id === 'cutter' ? ' Die könntest du dir leisten.' : ''}`,
-        upgrade: () => (rec && rec.id === 'cutter' ? rec : null) },
+        text: () => `Hier steckt Fels in der Rinne. Ohne Felsfräse oder Löffelbagger (Schaufel, schafft Fels besser) kommst du da kaum durch.${rec && ['cutter', 'loeffel'].includes(rec.id) ? ' Das könntest du dir leisten.' : ''}`,
+        upgrade: () => (rec && ['cutter', 'loeffel'].includes(rec.id) ? rec : null) },
       { id: 'protect', prio: 68, when: () => t.outRate > 0.02 && sim.mode === 'slice',
         text: () => 'Du baggerst in die Naturschutzzone (schraffiert, Ufer und Flachwasser): jeder m³ kostet Busse. Bleib im Korridor und lass die Böschung stehen, sonst rutscht sie ohnehin nach.' },
       { id: 'slump', prio: 66, when: () => game.river.slumpedTotal > 400 && sim.mode === 'slice',
@@ -104,6 +105,10 @@ export class Advisor {
         upgrade: () => (rec && rec.id === 'curtain' ? rec : null) },
       { id: 'clog', prio: 60, when: () => t.clogs.length >= 3 && sim.mode === 'slice',
         text: () => 'Schon wieder verstopft? Zieh die Pumpe höher, bevor du über Fremdstoffe fährst. Und beim Freispülen: im grünen Bereich drücken, nicht hektisch hämmern. Bei einer Fliegerbombe gilt: ruhig bleiben.' },
+      { id: 'fleet', prio: 64, when: () => game.stats.autoLevel >= 1 && game.fleet.units.length === 0 && game.day > 8 && !hireBlock(game),
+        text: () => `Du hast die Automatik und ${chf(game.money)} auf dem Konto: Miete einen Ponton (${chf(nextHireCost(game))}, Panel, Flotte). Er baggert selbstständig an den Engstellen, du musst nicht mehr in den Querschnitt. Mehrere Pontons arbeiten gleichzeitig.` },
+      { id: 'fleetrock', prio: 63, when: () => game.fleet.units.some((u) => /Fels/.test(u.note)),
+        text: () => 'Ein Flottenponton steht still: Fels im Weg. Mit Felsfräse oder Löffelbagger kommt er weiter.' },
       { id: 'contract', prio: 58, when: () => game.contracts.some((c) => c.status === 'offer'),
         text: () => `Eine Reederei bietet dir einen Frachtauftrag an (Panel, Aufträge). Die Prämie gibt es nur, wenn die Schiffe rechtzeitig durchkommen, schau also, ob die Klasse schon fahren kann.` },
       { id: 'market', prio: 50, when: () => !!hot && game.day > 5,

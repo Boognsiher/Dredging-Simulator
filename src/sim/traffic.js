@@ -2,6 +2,7 @@ import { CONFIG, SHIPS, CARGOS, shipById, cargoById } from '../config.js';
 import { priceOf, ratioOf } from './market.js';
 import { minDepthAt, pointOnPath } from './fairway.js';
 import { creditContracts } from './contracts.js';
+import { fleetSites } from './fleet.js';
 
 // Schiffsverkehr. Schiffe erscheinen an beiden Enden des Abschnitts (Fracht, Richtung und Klasse nach Marktnachfrage), warten vor der Einfahrt,
 // bis für ihre Klasse eine Fahrrinne da ist (sonst drehen sie nach `patience` Sekunden ab: Fracht geht auf die Bahn), fahren die Rinne ab
@@ -58,10 +59,10 @@ export function updateTraffic(g, dt) {
   T.spawnIn -= dt;
   if (T.spawnIn <= 0) { spawnShip(g); T.spawnIn = (CONFIG.daySeconds / Math.max(0.05, rate(g))) * g.rng.range(0.5, 1.5); }
 
-  const site = g.site, near = {};
+  const sites = [g.site, ...fleetSites(g)].filter(Boolean), near = {};
   for (const cls of SHIPS) { // liegt der Ponton in dieser Rinne?
     const pts = g.fair?.[cls.id]?.path?.points;
-    near[cls.id] = !!(site && pts && pts.some((p) => Math.hypot(p.x - site.x, p.y - site.y) < C.siteRadius));
+    near[cls.id] = !!(pts && sites.some((site) => pts.some((p) => Math.hypot(p.x - site.x, p.y - site.y) < C.siteRadius)));
   }
   const sailing = () => ships.filter((s) => s.state === 'sail' || s.state === 'grounded');
 
@@ -84,7 +85,7 @@ export function updateTraffic(g, dt) {
     }
     let v = cls.speed * (ship.dir > 0 ? C.downFactor : C.upFactor);
     const p0 = shipPos(ship);
-    if (site && Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius) v *= C.siteSlow;
+    if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow;
     let gapMin = Infinity;
     for (const o of ships) {
       if (o === ship || o.dir !== ship.dir || (o.state !== 'sail' && o.state !== 'grounded') || o.s <= ship.s) continue;
