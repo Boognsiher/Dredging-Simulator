@@ -68,3 +68,6 @@ Gespeichert werden Geld, Zeit, Upgrades, Markt, Schiffe, Aufträge und die Fluss
 
 ## Ideen für später
 Tauchdrohne für Peilung und Abnahme, Kran-Minispiel für Wracks, Schleusen und Häfen als eigene Stationen, Kosten für Verklappung im Fluss, Jahreszeiten (Pegelkurve), weitere Flüsse.
+
+## Einzeldatei zum Ausprobieren
+`dist/fahrrinne-frei.html` ist eine einzelne Datei, die per Doppelklick (ohne Server) im Browser läuft. Neu bauen mit `npm run build`.
