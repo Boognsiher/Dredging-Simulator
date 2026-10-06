@@ -151,7 +151,7 @@ test('Fahrrinne: ausserhalb des Korridors darf nicht gefahren werden, zu schmal 
 test('Fahrrinne: tieferer Pegel macht Rinnen unpassierbar', () => {
   const r = flat(2.6);
   assert.ok(analyzeClass(r, r.wl, shipById('motor')).passable);
-  assert.ok(!analyzeClass(r, r.wl - 0.5, shipById('motor')).passable);
+  assert.ok(!analyzeClass(r, r.wl - 0.8, shipById('motor')).passable);
 });
 
 test('Fahrrinne: Mindestrinne am Spielstart macht die kleinste Klasse passierbar', () => {
@@ -300,6 +300,7 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
   g.money = 0; const sec2 = g.shoreSections().find((q) => q.cells.length > 0); assert.ok(g.shoreBlock(sec2.side, sec2.part));
 });
 
+const fullLane = (g, id) => { carveFairway(g.river, g.wl, shipById(id), CONFIG.partialDepth + 0.1); g.analyze(true); }; // Rinne gleich auf volle Ladetiefe
 import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
@@ -730,10 +731,11 @@ test('Flotte: zwei Pontons teilen sich die Arbeit (keine doppelte Stelle)', () =
 test('Flotte: ohne Felsfräse bleibt sie vor Fels stehen und meldet es, mit Löffel kommt sie weiter', () => {
   const g = new Game(3, 'loreley');
   g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false;
-  const f = g.fair.container, r = g.river, needTop = g.wl - f.need - 0.3;
+  const f = g.fair.container, r = g.river, needTop = g.wl - f.fullNeed - 0.3;
   for (let i = 0; i < r.top.length; i++) if (r.zone[i] && r.rock[i] < needTop && r.top[i] > needTop) r.top[i] = needTop; // ganzer Korridor tief, nur der Fels bleibt
   for (let i = 0; i < r.top.length; i++) r.pending.add(i);
   for (let k = 0; k < 60; k++) r.settle(Infinity); // Böschungen setzen lassen, sonst rutscht die Rinne unter den Pontons nach
+  for (let y = 0; y < r.rows; y++) { const i = y * r.cols + f.nodes[20].x; if (r.zone[i]) { r.rock[i] = g.wl - f.minNeed + 0.4; r.top[i] = Math.max(r.top[i], r.rock[i]); r.pending.add(i); } } // Fels in der Rinne
   g.analyze(true); g.fleet.goal = 'container';
   assert.ok(openColumns(g, targetClass(g)).some((c) => c.rock), 'Felsriegel liegt in der Rinne');
   g.fleet.mine = false; g.fleet.mine = false; hireUnit(g); g.fleet.mine = false; hireUnit(g); g.fleet.mine = false; hireUnit(g);
@@ -946,7 +948,7 @@ test('Land-Automatik: Flotte trägt Ufer im Ausbaustreifen ab und macht es zum K
 
 test('Land-Automatik: ohne Löffelbagger oder wenn ausgeschaltet bleibt das Ufer stehen', () => {
   const g = new Game(3, 'hochrhein');
-  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn';
+  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn'; fullLane(g, 'kahn');
   setWiden(g, true, 2); g.fleet.mine = false; hireUnit(g);
   for (let i = 0; i < 14 * 15 * 20; i++) g.update(0.05);
   assert.equal(g.totals.landRemoved, 0);
@@ -1099,7 +1101,7 @@ import { openPourColumns, setPour } from '../src/sim/fleet.js';
 test('Flotte betoniert die Rinne, verbraucht Beton und hört ohne Beton auf', () => {
   const g = new Game(3, 'hochrhein'), r = g.river;
   g.money = 1e6; for (const id of ['auto', 'auto', 'betonrohr', 'betonrohr', 'plant']) g.buyUpgrade(id);
-  g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn'; g.concrete = 400;
+  g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn'; g.concrete = 400; fullLane(g, 'kahn');
   const n0 = openPourColumns(g).length;
   assert.ok(n0 > 20);
   setPour(g, true); g.fleet.mine = false; hireUnit(g);
@@ -1110,7 +1112,7 @@ test('Flotte betoniert die Rinne, verbraucht Beton und hört ohne Beton auf', ()
   // ohne Beton: Pause mit Meldung
   const h = new Game(3, 'hochrhein');
   h.money = 1e6; for (const id of ['auto', 'betonrohr']) h.buyUpgrade(id);
-  h.traffic.spawnIn = 1e9; h.eventsOn = false; h.fleet.goal = 'kahn'; h.concrete = 0; setPour(h, true); h.fleet.mine = false; hireUnit(h);
+  h.traffic.spawnIn = 1e9; h.eventsOn = false; h.fleet.goal = 'kahn'; h.concrete = 0; fullLane(h, 'kahn'); setPour(h, true); h.fleet.mine = false; hireUnit(h);
   for (let i = 0; i < 14 * 10 * 20; i++) h.update(0.05);
   assert.match(h.fleet.units[0].note, /Beton/);
   assert.equal(h.totals.concreteUsed, 0);
@@ -1317,11 +1319,11 @@ test('Flotte baut Rohstoffe mit Konzession ab, ohne Konzession nicht', () => {
   hireUnit(g);
   for (let i = 0; i < 14 * 40 * 20; i++) g.update(0.05);
   assert.ok(g.totals.premium > 100, `Aufschlag ${g.totals.premium}`);
-  const h = new Game(3, 'hochrhein'); h.money = 1e6; h.buyUpgrade('auto'); h.traffic.spawnIn = 1e9; h.eventsOn = false; h.fleet.goal = 'kahn';
+  const h = new Game(3, 'hochrhein'); h.money = 1e6; h.buyUpgrade('auto'); h.traffic.spawnIn = 1e9; h.eventsOn = false; h.fleet.goal = 'kahn'; fullLane(h, 'kahn');
   h.river.deposits[0].owned = false; hireUnit(h);
   for (let i = 0; i < 14 * 30 * 20; i++) h.update(0.05);
   assert.equal(h.totals.premium, 0);
-  const k = new Game(3, 'hochrhein'); k.money = 1e6; k.buyUpgrade('auto'); k.traffic.spawnIn = 1e9; k.eventsOn = false; k.fleet.goal = 'kahn'; setMine(k, false); hireUnit(k);
+  const k = new Game(3, 'hochrhein'); k.money = 1e6; k.buyUpgrade('auto'); k.traffic.spawnIn = 1e9; k.eventsOn = false; k.fleet.goal = 'kahn'; fullLane(k, 'kahn'); setMine(k, false); hireUnit(k);
   for (let i = 0; i < 14 * 20 * 20; i++) k.update(0.05);
   assert.equal(k.totals.premium, 0);
   assert.ok(DEPOSITS.length === 3);
@@ -1343,4 +1345,21 @@ test('Hafen: Gelände von Hand planieren (Abtrag und Auffüllen), Überschuss un
   assert.ok(m0 - g.money >= 0);
   assert.equal(siteAct(g, 0, 0, 0), false, 'fertig: keine Aktion mehr');
   assert.ok(autoLevelCost(g, 1) > 0); const c = autoLevelCost(g, 1), m1 = g.money; assert.ok(autoLevel(g, 1)); assert.equal(g.money, m1 - c);
+});
+
+test('Teilbeladung: ab Mindesttiefe befahrbar, Ladung wächst mit der Tiefe, darunter gesperrt', () => {
+  const motor = shipById('motor'), full = motor.draught + CONFIG.clearance, mn = full - CONFIG.partialDepth;
+  const at = (depth) => { const r = flat(depth + 0.001); return analyzeClass(r, r.wl, motor); };
+  assert.ok(!at(mn - 0.1).passable, 'unter der Mindesttiefe gesperrt');
+  const lo = at(mn + 0.01), mid = at(mn + 0.15), hi = at(full + 0.01);
+  assert.ok(lo.passable && mid.passable && hi.passable);
+  assert.ok(lo.loadFactor < mid.loadFactor && mid.loadFactor < hi.loadFactor);
+  assert.ok(Math.abs(hi.loadFactor - 1) < 1e-6 && lo.loadFactor >= CONFIG.minLoad - 1e-6 && lo.loadFactor < CONFIG.minLoad + 0.1);
+  assert.equal(hi.fullVolume, 0);
+  assert.ok(lo.fullVolume > 0 && lo.volume === lo.fullVolume, 'nächstes Ziel: volle Tiefe');
+  // Schiffe: Ladung und Einnahmen skalieren
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false;
+  g.fair.kahn.loadFactor = 1; const a = spawnShip(g); g.traffic.ships.length = 0;
+  g.fair.kahn.loadFactor = 0.4; const b = spawnShip(g);
+  assert.ok(a && b && b.tons < a.tons && b.load === 0.4);
 });

@@ -47,7 +47,9 @@ export function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === cl
 // Ausbauklasse: gewählt oder die kleinste, die noch nicht fährt (und endlich ist)
 export function targetClass(g) {
   if (g.fleet.goal && g.level.classes.includes(g.fleet.goal)) return shipById(g.fleet.goal);
-  return SHIPS.filter((s) => g.level.classes.includes(s.id)).find((s) => g.fair?.[s.id] && !g.fair[s.id].passable && g.fair[s.id].volume < Infinity) ?? null;
+  const cl = SHIPS.filter((s) => g.level.classes.includes(s.id));
+  return cl.find((s) => g.fair?.[s.id] && !g.fair[s.id].passable && g.fair[s.id].volume < Infinity)
+    ?? cl.find((s) => g.fair?.[s.id]?.passable && g.fair[s.id].loadFrac < 0.999 && g.fair[s.id].volume < Infinity) ?? null; // sonst: Rinne für volle Ladung vertiefen
 }
 
 const canRock = (g) => g.stats.loeffel > 0 || g.stats.rockFirmness >= CONFIG.fleet.rockFirmnessMin;

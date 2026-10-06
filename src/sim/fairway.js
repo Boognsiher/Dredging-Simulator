@@ -31,7 +31,8 @@ class Heap {
   }
 }
 
-export const needDepth = (cls) => cls.draught + CONFIG.clearance;
+export const needDepth = (cls) => cls.draught + CONFIG.clearance; // Tiefe für volle Ladung
+export const minNeedDepth = (cls) => needDepth(cls) - CONFIG.partialDepth; // darunter fährt das Schiff nicht mehr (Mindestladung)
 const lanes = (beam) => { const lo = Math.floor((beam - 1) / 2); return { lo, hi: beam - 1 - lo }; };
 
 // Fehlende Tiefe je Zelle (m) für Klasse cls; Zellen ausserhalb des Korridors sind gesperrt (-1)
@@ -159,17 +160,24 @@ export function zonePlan(river, wl, cls, xc, w = 3) {
 }
 
 export function analyzeClass(river, wl, cls) {
-  const need = needDepth(cls), def = deficits(river, wl, need), beam = cls.beam;
+  const full = needDepth(cls), minN = minNeedDepth(cls), def = deficits(river, wl, minN), beam = cls.beam;
   const nodes = bestPath(river, def, beam, river.flow, null);
-  const res = { id: cls.id, need, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
+  const res = { id: cls.id, need: minN, minNeed: minN, fullNeed: full, loadFrac: 0, loadFactor: 0, fullVolume: INF, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
   if (!nodes) return res; // Baggerkorridor ist zu schmal für dieses Schiff
   const cov = covered(river, nodes, beam);
   let miss = 0, worst = 0, worstX = nodes[0].x, altlast = 0;
   const perCol = new Map();
   for (const i of cov) { const m = def[i]; miss += m; if (m > 0 && river.kind[i] === KIND.altlast) altlast += Math.min(m, river.top[i] - river.rock[i]) * river.area; if (m > 0) perCol.set(i % river.cols, (perCol.get(i % river.cols) ?? 0) + m); }
   for (const [x, m] of perCol) if (m > worst) { worst = m; worstX = x; }
-  res.volume = miss * river.area; res.altlast = altlast; // davon Altlast (m³)
+  res.volume = miss * river.area; res.altlast = altlast; // davon Altlast (m³); bis passable: fehlende Menge für die Mindesttiefe
   res.passable = miss <= 1e-6;
+  if (res.passable) { // Stufe 2: Teilbeladung. Wie tief ist die Rinne wirklich, und was fehlt noch für volle Ladung?
+    const def2 = deficits(river, wl, full); let m2 = 0, minAvail = INF;
+    for (const i of cov) { m2 += def2[i]; minAvail = Math.min(minAvail, wl - river.top[i]); }
+    res.need = full; res.fullVolume = m2 * river.area; res.volume = res.fullVolume; // nächstes Ziel: volle Tiefe
+    res.loadFrac = Math.min(1, Math.max(0, (minAvail - minN) / (full - minN)));
+    res.loadFactor = CONFIG.minLoad + (1 - CONFIG.minLoad) * res.loadFrac;
+  }
   const sp = smoothPath(river, nodes, beam);
   res.path = sp; res.length = sp.length; res.nodes = nodes;
   res.weakest = worst > 0 ? { x: worstX, miss: worst } : null;
@@ -216,10 +224,10 @@ export function pointOnPath(path, s) {
 }
 
 // Mindestrinne ausheben (Spielstart): hebt die günstigste Rinne der Klasse genau auf die nötige Tiefe aus, damit die kleinste Klasse von Anfang an fahren kann
-export function carveFairway(river, wl, cls, margin = 0.4) {
+export function carveFairway(river, wl, cls, margin = 0.15) {
   const res = analyzeClass(river, wl, cls);
   if (!res.nodes) return res;
-  const needTop = wl - needDepth(cls) - margin, { lo, hi } = lanes(cls.beam);
+  const needTop = wl - minNeedDepth(cls) - margin, { lo, hi } = lanes(cls.beam); // Start: auf Mindesttiefe, das Schiff fährt mit Teilladung
   for (const p of res.nodes) {
     for (let k = p.y - lo; k <= p.y + hi; k++) {
       const i = k * river.cols + p.x;

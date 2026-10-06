@@ -37,8 +37,9 @@ export function spawnShip(g) {
   const cls = pickWeighted(classes, (s) => s.share * demand(s), rng);
   const cargo = cargoById(pickWeighted(cls.cargo, (c) => ratioOf(g.market, c) ** 2, rng));
   const dir = rng() < 0.5 ? 1 : -1;
-  const tons = Math.round((cls.tons * rng.range(0.7, 1)) / 10) * 10;
-  const ship = { id: ++T.seq, cls: cls.id, dir, cargo: cargo.id, tons, price: priceOf(g.market, cargo.id), state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one', meets: [] };
+  const load = g.fair?.[cls.id]?.loadFactor ?? 1; // Teilbeladung je nach Rinnentiefe
+  const tons = Math.max(10, Math.round((cls.tons * rng.range(0.7, 1) * load) / 10) * 10);
+  const ship = { id: ++T.seq, cls: cls.id, dir, cargo: cargo.id, tons, price: priceOf(g.market, cargo.id), load, state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one', meets: [] };
   if (T.ships.filter((x) => x.state === 'queue' && x.dir === dir).length >= bayCapacity(g) || T.ships.length >= C.maxShips) { // Warteplatz voll: das Schiff dreht ab
     g.totals.turnedAway++; g.totals.lostValue += income(g, ship); g.today.rejected++;
     return null;
@@ -50,7 +51,7 @@ export function spawnShip(g) {
 
 function income(g, ship) {
   const cls = shipById(ship.cls), k = 1 + 0.15 * g.stats.pilot;
-  return Math.round(((cls.fee + CONFIG.traffic.levy * ship.tons * ship.price) * k) / 10) * 10;
+  return Math.round(((cls.fee * (ship.load ?? 1) + CONFIG.traffic.levy * ship.tons * ship.price) * k) / 10) * 10;
 }
 
 // Position eines fahrenden Schiffs auf seinem Pfad (Strecke s in Fahrtrichtung)

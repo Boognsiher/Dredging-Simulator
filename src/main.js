@@ -8,7 +8,7 @@ import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
 import { toolName } from './sim/dredge.js';
 import { priceOf, trend } from './sim/market.js';
-import { needDepth } from './sim/fairway.js';
+import { needDepth, minNeedDepth } from './sim/fairway.js';
 import { Advisor } from './sim/advisor.js';
 import { serializeGame, restoreGame, savedSummary } from './sim/save.js';
 import { createInput } from './ui/input.js';
@@ -89,8 +89,8 @@ function updateClassbar() {
     const id = b.dataset.id, f = game.fair?.[id], cls = shipById(id);
     b.classList.toggle('ok', !!f?.passable); b.classList.toggle('on', classSel === id);
     const small = b.querySelector('small'), w = b.querySelector('.wait');
-    const need = needDepth(cls).toFixed(1);
-    small.textContent = !f ? '' : f.passable ? `${need} m · frei${f.twoWay ? ' · ⇄' : ''}` : `${game.unlocked[id] ? '⚠ gesperrt' : '🔒'} ${need} m · ${f.volume === Infinity ? 'Korridor zu schmal' : `fehlt ${num(f.volume)} m³`}`;
+    const need = `${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)}`;
+    small.textContent = !f ? '' : f.passable ? `${Math.round(f.loadFactor * 100)} % Ladung${f.twoWay ? ' · ⇄' : ''}${f.loadFrac < 0.999 ? ` · +${num(f.fullVolume)} m³ bis voll` : ' · voll'}` : `${game.unlocked[id] ? '⚠ gesperrt' : '🔒'} ${need} m · ${f.volume === Infinity ? 'Korridor zu schmal' : `fehlt ${num(f.volume)} m³`}`;
     w.hidden = !(wait[id] > 0); w.textContent = wait[id] ?? '';
   }
 }
@@ -175,8 +175,8 @@ function updateFairway() {
   if (box.children.length !== game.level.classes.length) box.replaceChildren(...game.level.classes.map(() => { const d = document.createElement('div'); d.className = 'frow'; return d; }));
   game.level.classes.forEach((id, k) => {
     const f = game.fair?.[id], cls = shipById(id), row = box.children[k];
-    const status = !f ? '' : f.passable ? `<span class="ok">✓ frei${f.twoWay ? ' · Gegenverkehr' : ' · einspurig'}</span>` : f.volume === Infinity ? '<span class="no">Korridor zu schmal</span>' : `<span class="no">fehlt ${num(f.volume)} m³</span>`;
-    row.innerHTML = `<div>${cls.icon} <b>${cls.name}</b><br><small>Tiefe ${needDepth(cls).toFixed(1)} m · Breite ${cls.beam} · ${cls.tons} t · ${chf(cls.fee)}${(game.rejectedBy[id] ?? 0) ? ` · ${game.rejectedBy[id]} abgewiesen` : ''}</small></div><div style="text-align:right">${status}${wait[id] ? `<br><small>${wait[id]} wartend</small>` : ''}</div>`;
+    const status = !f ? '' : f.passable ? `<span class="ok">✓ ${Math.round(f.loadFactor * 100)} % Ladung${f.twoWay ? ' · Gegenverkehr' : ' · einspurig'}</span>${f.loadFrac < 0.999 ? `<br><small>für Volllast fehlen ${num(f.fullVolume)} m³</small>` : ''}` : f.volume === Infinity ? '<span class="no">Korridor zu schmal</span>' : `<span class="no">fehlt ${num(f.volume)} m³</span>`;
+    row.innerHTML = `<div>${cls.icon} <b>${cls.name}</b><br><small>Tiefe ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m · Breite ${cls.beam} · ${cls.tons} t · ${chf(cls.fee)}${(game.rejectedBy[id] ?? 0) ? ` · ${game.rejectedBy[id]} abgewiesen` : ''}</small></div><div style="text-align:right">${status}${wait[id] ? `<br><small>${wait[id]} wartend</small>` : ''}</div>`;
   });
 }
 

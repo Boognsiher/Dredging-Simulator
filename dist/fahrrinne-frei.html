@@ -447,7 +447,7 @@ const { materialPrice } = __m(15);
 const { TowSim, groundedNear } = __m(16);
 const { toolName } = __m(6);
 const { priceOf, trend } = __m(8);
-const { needDepth } = __m(5);
+const { needDepth, minNeedDepth } = __m(5);
 const { Advisor } = __m(17);
 const { serializeGame, restoreGame, savedSummary } = __m(18);
 const { createInput } = __m(19);
@@ -550,8 +550,8 @@ function updateClassbar() {
     const id = b.dataset.id, f = game.fair?.[id], cls = shipById(id);
     b.classList.toggle('ok', !!f?.passable); b.classList.toggle('on', classSel === id);
     const small = b.querySelector('small'), w = b.querySelector('.wait');
-    const need = needDepth(cls).toFixed(1);
-    small.textContent = !f ? '' : f.passable ? `${need} m · frei${f.twoWay ? ' · ⇄' : ''}` : `${game.unlocked[id] ? '⚠ gesperrt' : '🔒'} ${need} m · ${f.volume === Infinity ? 'Korridor zu schmal' : `fehlt ${num(f.volume)} m³`}`;
+    const need = `${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)}`;
+    small.textContent = !f ? '' : f.passable ? `${Math.round(f.loadFactor * 100)} % Ladung${f.twoWay ? ' · ⇄' : ''}${f.loadFrac < 0.999 ? ` · +${num(f.fullVolume)} m³ bis voll` : ' · voll'}` : `${game.unlocked[id] ? '⚠ gesperrt' : '🔒'} ${need} m · ${f.volume === Infinity ? 'Korridor zu schmal' : `fehlt ${num(f.volume)} m³`}`;
     w.hidden = !(wait[id] > 0); w.textContent = wait[id] ?? '';
   }
 }
@@ -636,8 +636,8 @@ function updateFairway() {
   if (box.children.length !== game.level.classes.length) box.replaceChildren(...game.level.classes.map(() => { const d = document.createElement('div'); d.className = 'frow'; return d; }));
   game.level.classes.forEach((id, k) => {
     const f = game.fair?.[id], cls = shipById(id), row = box.children[k];
-    const status = !f ? '' : f.passable ? `<span class="ok">✓ frei${f.twoWay ? ' · Gegenverkehr' : ' · einspurig'}</span>` : f.volume === Infinity ? '<span class="no">Korridor zu schmal</span>' : `<span class="no">fehlt ${num(f.volume)} m³</span>`;
-    row.innerHTML = `<div>${cls.icon} <b>${cls.name}</b><br><small>Tiefe ${needDepth(cls).toFixed(1)} m · Breite ${cls.beam} · ${cls.tons} t · ${chf(cls.fee)}${(game.rejectedBy[id] ?? 0) ? ` · ${game.rejectedBy[id]} abgewiesen` : ''}</small></div><div style="text-align:right">${status}${wait[id] ? `<br><small>${wait[id]} wartend</small>` : ''}</div>`;
+    const status = !f ? '' : f.passable ? `<span class="ok">✓ ${Math.round(f.loadFactor * 100)} % Ladung${f.twoWay ? ' · Gegenverkehr' : ' · einspurig'}</span>${f.loadFrac < 0.999 ? `<br><small>für Volllast fehlen ${num(f.fullVolume)} m³</small>` : ''}` : f.volume === Infinity ? '<span class="no">Korridor zu schmal</span>' : `<span class="no">fehlt ${num(f.volume)} m³</span>`;
+    row.innerHTML = `<div>${cls.icon} <b>${cls.name}</b><br><small>Tiefe ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m · Breite ${cls.beam} · ${cls.tons} t · ${chf(cls.fee)}${(game.rejectedBy[id] ?? 0) ? ` · ${game.rejectedBy[id]} abgewiesen` : ''}</small></div><div style="text-align:right">${status}${wait[id] ? `<br><small>${wait[id]} wartend</small>` : ''}</div>`;
   });
 }
 
@@ -1353,6 +1353,8 @@ const CONFIG = {
   startMoney: 50000, // CHF
   deadlineDays: 120,
   bankruptcyLimit: -40000, // darunter: Konzession entzogen
+  // Teilbeladung: Schiffe fahren schon ab (Tiefgang + Kielfreiheit − partialDepth) mit minLoad Ladung; die volle Ladung gibt es bei voller Tiefe, dazwischen linear
+  partialDepth: 0.3, minLoad: 0.3,
   clearance: 0.3, // m Wasser, die zusätzlich zum Tiefgang unter dem Kiel bleiben müssen
   water: { base: 8, floodClose: 1.0, floodMax: 1.6, followRate: 0.12 }, // Bezugspegel (m), ab +floodClose wird die Schifffahrt gesperrt
   // Flusssohle: Raster, jede Zelle hat cellArea m² (m³ = Höhe * cellArea)
@@ -2725,7 +2727,8 @@ class Heap {
   }
 }
 
-const needDepth = (cls) => cls.draught + CONFIG.clearance;
+const needDepth = (cls) => cls.draught + CONFIG.clearance; // Tiefe für volle Ladung
+const minNeedDepth = (cls) => needDepth(cls) - CONFIG.partialDepth; // darunter fährt das Schiff nicht mehr (Mindestladung)
 const lanes = (beam) => { const lo = Math.floor((beam - 1) / 2); return { lo, hi: beam - 1 - lo }; };
 
 // Fehlende Tiefe je Zelle (m) für Klasse cls; Zellen ausserhalb des Korridors sind gesperrt (-1)
@@ -2853,17 +2856,24 @@ function zonePlan(river, wl, cls, xc, w = 3) {
 }
 
 function analyzeClass(river, wl, cls) {
-  const need = needDepth(cls), def = deficits(river, wl, need), beam = cls.beam;
+  const full = needDepth(cls), minN = minNeedDepth(cls), def = deficits(river, wl, minN), beam = cls.beam;
   const nodes = bestPath(river, def, beam, river.flow, null);
-  const res = { id: cls.id, need, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
+  const res = { id: cls.id, need: minN, minNeed: minN, fullNeed: full, loadFrac: 0, loadFactor: 0, fullVolume: INF, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
   if (!nodes) return res; // Baggerkorridor ist zu schmal für dieses Schiff
   const cov = covered(river, nodes, beam);
   let miss = 0, worst = 0, worstX = nodes[0].x, altlast = 0;
   const perCol = new Map();
   for (const i of cov) { const m = def[i]; miss += m; if (m > 0 && river.kind[i] === KIND.altlast) altlast += Math.min(m, river.top[i] - river.rock[i]) * river.area; if (m > 0) perCol.set(i % river.cols, (perCol.get(i % river.cols) ?? 0) + m); }
   for (const [x, m] of perCol) if (m > worst) { worst = m; worstX = x; }
-  res.volume = miss * river.area; res.altlast = altlast; // davon Altlast (m³)
+  res.volume = miss * river.area; res.altlast = altlast; // davon Altlast (m³); bis passable: fehlende Menge für die Mindesttiefe
   res.passable = miss <= 1e-6;
+  if (res.passable) { // Stufe 2: Teilbeladung. Wie tief ist die Rinne wirklich, und was fehlt noch für volle Ladung?
+    const def2 = deficits(river, wl, full); let m2 = 0, minAvail = INF;
+    for (const i of cov) { m2 += def2[i]; minAvail = Math.min(minAvail, wl - river.top[i]); }
+    res.need = full; res.fullVolume = m2 * river.area; res.volume = res.fullVolume; // nächstes Ziel: volle Tiefe
+    res.loadFrac = Math.min(1, Math.max(0, (minAvail - minN) / (full - minN)));
+    res.loadFactor = CONFIG.minLoad + (1 - CONFIG.minLoad) * res.loadFrac;
+  }
   const sp = smoothPath(river, nodes, beam);
   res.path = sp; res.length = sp.length; res.nodes = nodes;
   res.weakest = worst > 0 ? { x: worstX, miss: worst } : null;
@@ -2910,10 +2920,10 @@ function pointOnPath(path, s) {
 }
 
 // Mindestrinne ausheben (Spielstart): hebt die günstigste Rinne der Klasse genau auf die nötige Tiefe aus, damit die kleinste Klasse von Anfang an fahren kann
-function carveFairway(river, wl, cls, margin = 0.4) {
+function carveFairway(river, wl, cls, margin = 0.15) {
   const res = analyzeClass(river, wl, cls);
   if (!res.nodes) return res;
-  const needTop = wl - needDepth(cls) - margin, { lo, hi } = lanes(cls.beam);
+  const needTop = wl - minNeedDepth(cls) - margin, { lo, hi } = lanes(cls.beam); // Start: auf Mindesttiefe, das Schiff fährt mit Teilladung
   for (const p of res.nodes) {
     for (let k = p.y - lo; k <= p.y + hi; k++) {
       const i = k * river.cols + p.x;
@@ -2924,7 +2934,7 @@ function carveFairway(river, wl, cls, margin = 0.4) {
   return analyzeClass(river, wl, cls);
 }
 
-return { needDepth: needDepth, crossColumns: crossColumns, zonePlan: zonePlan, analyzeClass: analyzeClass, analyzeFairway: analyzeFairway, minDepthAt: minDepthAt, pointOnPath: pointOnPath, carveFairway: carveFairway };
+return { needDepth: needDepth, minNeedDepth: minNeedDepth, crossColumns: crossColumns, zonePlan: zonePlan, analyzeClass: analyzeClass, analyzeFairway: analyzeFairway, minDepthAt: minDepthAt, pointOnPath: pointOnPath, carveFairway: carveFairway };
 },
 function(){
 const { CONFIG, KIND } = __m(1);
@@ -3501,8 +3511,9 @@ function spawnShip(g) {
   const cls = pickWeighted(classes, (s) => s.share * demand(s), rng);
   const cargo = cargoById(pickWeighted(cls.cargo, (c) => ratioOf(g.market, c) ** 2, rng));
   const dir = rng() < 0.5 ? 1 : -1;
-  const tons = Math.round((cls.tons * rng.range(0.7, 1)) / 10) * 10;
-  const ship = { id: ++T.seq, cls: cls.id, dir, cargo: cargo.id, tons, price: priceOf(g.market, cargo.id), state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one', meets: [] };
+  const load = g.fair?.[cls.id]?.loadFactor ?? 1; // Teilbeladung je nach Rinnentiefe
+  const tons = Math.max(10, Math.round((cls.tons * rng.range(0.7, 1) * load) / 10) * 10);
+  const ship = { id: ++T.seq, cls: cls.id, dir, cargo: cargo.id, tons, price: priceOf(g.market, cargo.id), load, state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one', meets: [] };
   if (T.ships.filter((x) => x.state === 'queue' && x.dir === dir).length >= bayCapacity(g) || T.ships.length >= C.maxShips) { // Warteplatz voll: das Schiff dreht ab
     g.totals.turnedAway++; g.totals.lostValue += income(g, ship); g.today.rejected++;
     return null;
@@ -3514,7 +3525,7 @@ function spawnShip(g) {
 
 function income(g, ship) {
   const cls = shipById(ship.cls), k = 1 + 0.15 * g.stats.pilot;
-  return Math.round(((cls.fee + CONFIG.traffic.levy * ship.tons * ship.price) * k) / 10) * 10;
+  return Math.round(((cls.fee * (ship.load ?? 1) + CONFIG.traffic.levy * ship.tons * ship.price) * k) / 10) * 10;
 }
 
 // Position eines fahrenden Schiffs auf seinem Pfad (Strecke s in Fahrtrichtung)
@@ -3831,7 +3842,9 @@ function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === clsId) ? 
 // Ausbauklasse: gewählt oder die kleinste, die noch nicht fährt (und endlich ist)
 function targetClass(g) {
   if (g.fleet.goal && g.level.classes.includes(g.fleet.goal)) return shipById(g.fleet.goal);
-  return SHIPS.filter((s) => g.level.classes.includes(s.id)).find((s) => g.fair?.[s.id] && !g.fair[s.id].passable && g.fair[s.id].volume < Infinity) ?? null;
+  const cl = SHIPS.filter((s) => g.level.classes.includes(s.id));
+  return cl.find((s) => g.fair?.[s.id] && !g.fair[s.id].passable && g.fair[s.id].volume < Infinity)
+    ?? cl.find((s) => g.fair?.[s.id]?.passable && g.fair[s.id].loadFrac < 0.999 && g.fair[s.id].volume < Infinity) ?? null; // sonst: Rinne für volle Ladung vertiefen
 }
 
 const canRock = (g) => g.stats.loeffel > 0 || g.stats.rockFirmness >= CONFIG.fleet.rockFirmnessMin;
@@ -4922,7 +4935,7 @@ function(){
 const { SLICE } = __m(3);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(1);
 const { shipPos, queuePos, bayCapacity } = __m(12);
-const { needDepth } = __m(5);
+const { needDepth, minNeedDepth } = __m(5);
 const { Chain, drawChain } = __m(28);
 const { groundedNear } = __m(16);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
@@ -5033,7 +5046,7 @@ function drawMap(ctx, game, sim, ui = {}) {
 }
 
 function drawClassOverlay(ctx, game, cls) {
-  const r = game.river, f = game.fair[cls.id], needTop = game.wl - needDepth(cls);
+  const r = game.river, f = game.fair[cls.id], needTop = game.wl - f.need, stage2 = f.passable; // bis passierbar: Mindesttiefe (rot), danach Volllast-Tiefe (gelb)
   const lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo, lane = new Set();
   for (const p of f.nodes ?? []) for (let k = p.y - lo; k <= p.y + hi; k++) lane.add(k * r.cols + p.x);
   for (let y = 0; y < r.rows; y++) {
@@ -5043,7 +5056,7 @@ function drawClassOverlay(ctx, game, cls) {
       const miss = r.top[i] - needTop;
       if (miss <= 0.02) continue;
       const strong = lane.has(i), a = strong ? Math.min(0.7, 0.3 + miss * 0.3) : 0.08; // die günstigste Rinne kräftig, der Rest nur angedeutet
-      ctx.fillStyle = r.rock[i] > needTop ? `rgba(150,90,200,${a})` : `rgba(255,70,60,${a})`; // lila = Fels im Weg
+      ctx.fillStyle = r.rock[i] > needTop ? `rgba(150,90,200,${a})` : stage2 ? `rgba(255,190,60,${a})` : `rgba(255,70,60,${a})`; // lila = Fels im Weg
       ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL);
     }
   }
@@ -5380,7 +5393,8 @@ function drawSlice(ctx, game, sim, ui = {}) {
     const y = Y(wl - needDepth(cls)), on = ui.classSel === cls.id, ok = game.fair?.[cls.id]?.passable;
     ctx.strokeStyle = cls.color; ctx.globalAlpha = on ? 0.95 : 0.4; ctx.lineWidth = on ? 2 : 1; ctx.setLineDash([2, 6]);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
-    ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const label = `${ok ? '✓ ' : ''}${cls.name} ${needDepth(cls).toFixed(1)} m`; const tw = ctx.measureText(label).width;
+    if (on) { const ym = Y(wl - minNeedDepth(cls)); ctx.globalAlpha = 0.55; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(0, ym); ctx.lineTo(W, ym); ctx.stroke(); ctx.setLineDash([]); } // Mindesttiefe
+    ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const lf = game.fair?.[cls.id]?.loadFactor, label = `${ok ? '✓ ' : ''}${cls.name} ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m${ok ? ` · ${Math.round(lf * 100)} % Ladung` : ''}`; const tw = ctx.measureText(label).width;
     ctx.fillRect(W - tw - 12, y - fs(12) + 1, tw + 8, fs(12) + 3); ctx.fillStyle = on ? '#fff' : cls.color; ctx.fillText(label, W - 6, y);
     ctx.globalAlpha = 1;
   }

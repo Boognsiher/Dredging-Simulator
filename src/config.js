@@ -10,6 +10,8 @@ export const CONFIG = {
   startMoney: 50000, // CHF
   deadlineDays: 120,
   bankruptcyLimit: -40000, // darunter: Konzession entzogen
+  // Teilbeladung: Schiffe fahren schon ab (Tiefgang + Kielfreiheit − partialDepth) mit minLoad Ladung; die volle Ladung gibt es bei voller Tiefe, dazwischen linear
+  partialDepth: 0.3, minLoad: 0.3,
   clearance: 0.3, // m Wasser, die zusätzlich zum Tiefgang unter dem Kiel bleiben müssen
   water: { base: 8, floodClose: 1.0, floodMax: 1.6, followRate: 0.12 }, // Bezugspegel (m), ab +floodClose wird die Schifffahrt gesperrt
   // Flusssohle: Raster, jede Zelle hat cellArea m² (m³ = Höhe * cellArea)

@@ -2,7 +2,7 @@
 import { SLICE } from '../sim/slice.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
 import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
-import { needDepth } from '../sim/fairway.js';
+import { needDepth, minNeedDepth } from '../sim/fairway.js';
 import { Chain, drawChain } from './chain.js';
 import { groundedNear } from '../sim/tow.js';
 
@@ -106,7 +106,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
 }
 
 function drawClassOverlay(ctx, game, cls) {
-  const r = game.river, f = game.fair[cls.id], needTop = game.wl - needDepth(cls);
+  const r = game.river, f = game.fair[cls.id], needTop = game.wl - f.need, stage2 = f.passable; // bis passierbar: Mindesttiefe (rot), danach Volllast-Tiefe (gelb)
   const lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo, lane = new Set();
   for (const p of f.nodes ?? []) for (let k = p.y - lo; k <= p.y + hi; k++) lane.add(k * r.cols + p.x);
   for (let y = 0; y < r.rows; y++) {
@@ -116,7 +116,7 @@ function drawClassOverlay(ctx, game, cls) {
       const miss = r.top[i] - needTop;
       if (miss <= 0.02) continue;
       const strong = lane.has(i), a = strong ? Math.min(0.7, 0.3 + miss * 0.3) : 0.08; // die günstigste Rinne kräftig, der Rest nur angedeutet
-      ctx.fillStyle = r.rock[i] > needTop ? `rgba(150,90,200,${a})` : `rgba(255,70,60,${a})`; // lila = Fels im Weg
+      ctx.fillStyle = r.rock[i] > needTop ? `rgba(150,90,200,${a})` : stage2 ? `rgba(255,190,60,${a})` : `rgba(255,70,60,${a})`; // lila = Fels im Weg
       ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL);
     }
   }
@@ -453,7 +453,8 @@ export function drawSlice(ctx, game, sim, ui = {}) {
     const y = Y(wl - needDepth(cls)), on = ui.classSel === cls.id, ok = game.fair?.[cls.id]?.passable;
     ctx.strokeStyle = cls.color; ctx.globalAlpha = on ? 0.95 : 0.4; ctx.lineWidth = on ? 2 : 1; ctx.setLineDash([2, 6]);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
-    ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const label = `${ok ? '✓ ' : ''}${cls.name} ${needDepth(cls).toFixed(1)} m`; const tw = ctx.measureText(label).width;
+    if (on) { const ym = Y(wl - minNeedDepth(cls)); ctx.globalAlpha = 0.55; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(0, ym); ctx.lineTo(W, ym); ctx.stroke(); ctx.setLineDash([]); } // Mindesttiefe
+    ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const lf = game.fair?.[cls.id]?.loadFactor, label = `${ok ? '✓ ' : ''}${cls.name} ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m${ok ? ` · ${Math.round(lf * 100)} % Ladung` : ''}`; const tw = ctx.measureText(label).width;
     ctx.fillRect(W - tw - 12, y - fs(12) + 1, tw + 8, fs(12) + 3); ctx.fillStyle = on ? '#fff' : cls.color; ctx.fillText(label, W - 6, y);
     ctx.globalAlpha = 1;
   }
