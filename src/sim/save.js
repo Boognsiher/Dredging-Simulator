@@ -5,7 +5,7 @@ import { River } from './river.js';
 // Spielstand: reine Umwandlung Game <-> JSON-Text (kein DOM, kein Speicher). Gespeichert wird der Management-Zustand (Geld, Zeit, Upgrades,
 // Markt, Schiffe, Aufträge ...) und die Flusssohle. Abgeleitetes (Fahrrinnen, Pfade, Nachrutschen) wird nach dem Laden neu berechnet.
 // Die laufende Pontonfahrt wird nicht gespeichert: nach dem Laden steht der Ponton wieder auf der Karte.
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 const SKIP = new Set(['rng', 'river', 'notes', 'flash', 'site', 'fair', '_stats']);
 const toB64 = (arr) => {

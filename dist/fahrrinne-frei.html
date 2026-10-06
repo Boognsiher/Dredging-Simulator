@@ -342,6 +342,7 @@ body.touch #classbar { padding-right: 4px; }
         <span><i style="background:#fff;border:1px solid #222"></i>Fremdstoff</span>
         <span><i style="background:rgba(235,200,70,.6)"></i>Ausbaustreifen (Löffel)</span>
         <span><i style="background:rgba(205,208,214,.85)"></i>Beton</span>
+        <span><i style="background:rgba(160,230,90,.6)"></i>Kreuzungsstelle</span>
         <span><i style="background:rgba(255,70,60,.7)"></i>zu flach (Klasse)</span>
         <span><i style="background:rgba(150,90,200,.7)"></i>Fels im Weg</span>
       </div>
@@ -356,6 +357,7 @@ body.touch #classbar { padding-right: 4px; }
         <button id="btn-leave">↩ Zurück zur Karte (Q)</button>
         <button id="btn-auto">🤖 Automatik an (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
+        <button id="btn-zone">↔ Kreuzungsstelle setzen (K)</button>
         <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
         <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
         <button id="btn-pump">🌀 Pumpe: AUS (Leertaste)</button>
@@ -384,6 +386,8 @@ body.touch #classbar { padding-right: 4px; }
       <div id="goal"></div>
       <h2>Wasserstrasse</h2>
       <div id="fairway"></div>
+      <h2>Verkehr</h2>
+      <div id="trafficpanel"></div>
       <h2>Flotte</h2>
       <div id="fleet"></div>
       <h2>Frachtmarkt</h2>
@@ -413,7 +417,8 @@ const { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, carg
 const { Game } = __m(2);
 const { acceptContract } = __m(12);
 const { waitingByClass } = __m(11);
-const { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, targetClass } = __m(13);
+const { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, targetClass } = __m(13);
+const { bayCapacity, maxZones, zoneClasses } = __m(11);
 const { TowSim, groundedNear } = __m(15);
 const { toolName } = __m(6);
 const { priceOf, trend } = __m(8);
@@ -428,6 +433,7 @@ const { hintsFor } = __m(22);
 const { Fx } = __m(23);
 const { createAudio } = __m(24);
 const { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(25);
+
 
 
 
@@ -485,6 +491,7 @@ sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false;
+let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
 const curMode = () => (tow ? 'tow' : sim.mode);
 const narrow = () => matchMedia('(max-width: 860px)').matches;
@@ -516,7 +523,7 @@ function updateClassbar() {
     b.classList.toggle('ok', !!f?.passable); b.classList.toggle('on', classSel === id);
     const small = b.querySelector('small'), w = b.querySelector('.wait');
     const need = needDepth(cls).toFixed(1);
-    small.textContent = !f ? '' : f.passable ? `${need} m · frei${f.twoWay ? ' · ⇄' : ''}` : f.volume === Infinity ? `${need} m · Korridor zu schmal` : `${need} m · fehlt ${num(f.volume)} m³`;
+    small.textContent = !f ? '' : f.passable ? `${need} m · frei${f.twoWay ? ' · ⇄' : ''}` : `${game.unlocked[id] ? '⚠ gesperrt' : '🔒'} ${need} m · ${f.volume === Infinity ? 'Korridor zu schmal' : `fehlt ${num(f.volume)} m³`}`;
     w.hidden = !(wait[id] > 0); w.textContent = wait[id] ?? '';
   }
 }
@@ -625,6 +632,35 @@ function updateMarket() {
   }));
 }
 
+let trafficSig = null;
+function updateTrafficPanel() {
+  const st = game.stats, cap = bayCapacity(game), mz = maxZones(game);
+  const sig = JSON.stringify([cap, mz, game.zones.map((z) => [z.id, z.x, zoneClasses(game, z).length]), zoneMode, game.totals.turnedAway, st.signals, st.tugs, Math.floor(game.money / 500)]);
+  if (sig === trafficSig) return;
+  trafficSig = sig;
+  const box = $('trafficpanel');
+  const rows = game.zones.map((z) => { const cl = zoneClasses(game, z); return `<div class="unit"><div><b>Kreuzung bei Spalte ${z.x + 1}</b> <small>${cl.length ? cl.map((c) => c.icon).join(' ') + ' können sich hier begegnen' : 'kein Platz mehr für zwei Rinnen'}</small></div><button data-zone="${z.id}">Entfernen</button></div>`; }).join('');
+  box.innerHTML = `<div>Warteplatz: <b>${cap}</b> Schiff${cap > 1 ? 'e' : ''} je Seite · Kreuzungsstellen <b>${game.zones.length}/${mz}</b></div>
+    <small>Wer keinen Platz im Warteplatz findet, dreht ab (bisher ${game.totals.turnedAway}). Rotlichter (Signalanlage) und Schlepper bauen den Warteplatz aus, Rotlichter erlauben weitere Kreuzungsstellen, Schlepper machen grosse Schiffe schneller. In einer Kreuzungsstelle (genug Platz für zwei Rinnen) warten Schiffe aufeinander und fahren dann aneinander vorbei, auch in einer Einbahnrinne.</small>
+    ${rows}<button id="btn-zone2" class="primary">${zoneMode ? '✔ Fertig (K)' : `↔ Kreuzungsstelle setzen oder entfernen (${chf(CONFIG.zones.cost)}, K)`}</button>`;
+  $('btn-zone2').onclick = toggleZoneMode;
+  for (const b of box.querySelectorAll('[data-zone]')) b.onclick = () => { game.removeZone(+b.dataset.zone); trafficSig = null; updateTrafficPanel(); };
+}
+function toggleZoneMode() {
+  if (tow || sim.mode !== 'map') { toast('Kreuzungsstellen setzt du auf der Karte', 'info', true); return; }
+  zoneMode = !zoneMode; ui.zoneMode = zoneMode; trafficSig = null; mapTarget = null;
+  $('btn-zone').textContent = zoneMode ? '✔ Kreuzungsstellen: fertig (K)' : '↔ Kreuzungsstelle setzen (K)';
+  updateTrafficPanel();
+  if (zoneMode) toast('Spalte antippen: grün = genug Platz für zwei Rinnen', 'info', true);
+}
+function zoneClick(px, py) {
+  void py;
+  const x = Math.floor((px - OX) / CELL), near = game.zones.find((z) => Math.abs(z.x - x) <= 1);
+  if (near) { game.removeZone(near.id); toast('Kreuzungsstelle entfernt', 'info', true); }
+  else { const why = game.zoneBlock(x); if (why) toast(why, 'bad', true); else if (game.placeZone(x)) toast('Kreuzungsstelle ausgewiesen', 'good', true); }
+  trafficSig = null; updateTrafficPanel();
+}
+
 let concreteSig = null;
 function updateConcrete() {
   const C = CONFIG.concrete, st = game.stats;
@@ -645,7 +681,7 @@ function updateConcrete() {
 let fleetSig = null;
 function updateFleet() {
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, game.stats.betonrohr, Math.round(game.concrete / 10)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
@@ -654,9 +690,11 @@ function updateFleet() {
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
     <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
+    <label class="fleet-widen"><input type="checkbox" id="fleet-pour" ${F.pour ? 'checked' : ''} ${game.stats.betonrohr > 0 ? '' : 'disabled'}> Rinne betonieren (Betoniergerät und Beton nötig): freie Pontons verhärten Rinne und Böschung</label>
     <label class="fleet-goal">Ausbauziel <select id="fleet-goal">${opts}</select></label>
     <small>${cls ? `Aktuell: ${cls.icon} ${cls.name}` : 'Alle Klassen fahren'}</small>
     <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
+  $('fleet-pour').onchange = (e) => { setPour(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-widen').onchange = (e) => { setWiden(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-widthsel').onchange = (e) => { setWiden(game, F.widen, +e.target.value); fleetSig = null; updateFleet(); };
   $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
@@ -723,7 +761,7 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateToolButton(); updateTowButton(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+function updatePanel() { updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -818,6 +856,7 @@ function syncMode() {
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
+  $('btn-zone').hidden = mode !== 'map';
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
   if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
@@ -967,7 +1006,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; tow = null;
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; zoneMode = false; ui.zoneMode = false; tow = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -993,10 +1032,17 @@ addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); 
 
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
 readInput.onTap((px, py) => {
+  if (zoneMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { zoneClick(px, py); return; }
   if (sim.mode !== 'map' || paused || sheetOpen || overlayOpen()) return;
   mapTarget = { x: Math.min(game.river.cols, Math.max(0, (px - OX) / CELL)), y: Math.min(game.river.rows, Math.max(0, py / CELL)) };
 });
 $('btn-anchor').onclick = anchor;
+$('btn-zone').onclick = toggleZoneMode;
+canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfernt eine Kreuzungsstelle (Touch läuft über onTap)
+  if (!zoneMode || e.pointerType === 'touch' || sim.mode !== 'map' || tow) return;
+  const r = canvas.getBoundingClientRect();
+  zoneClick(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH);
+});
 $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
 $('btn-fix').onclick = fixAuto;
@@ -1023,7 +1069,7 @@ function frame(now) {
     const inMap = sim.mode === 'map';
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
-    if (tow) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    if (tow || zoneMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
     ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {
@@ -1038,6 +1084,7 @@ function frame(now) {
       if (!tow && readInput.tap('Space', 'Enter', 'KeyE')) anchor();
       if (!tow && readInput.tap('KeyV')) toggleTool();
       if (!tow && readInput.tap('KeyT')) startTow();
+      if (!tow && readInput.tap('KeyK')) toggleZoneMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
       if (readInput.tap('Escape', 'KeyQ')) leave();
@@ -1251,10 +1298,12 @@ const CONFIG = {
   pumpSpeed: { min: 0.2, max: 1, default: 1 },
   // Verkehr: Schiffe erscheinen an beiden Enden, fahren die Fahrrinne ab und zahlen beim Verlassen des Abschnitts
   traffic: {
-    shipsPerDay: 2.0, // Grundrate, mal Level-Faktor, Marktnachfrage und Betonnung
+    shipsPerDay: 2.4, // Grundrate, mal Level-Faktor, Marktnachfrage und Betonnung
     levy: 0.015, // Anteil am Frachtwert, der als Abgabe an die Verwaltung (also an dich) geht
     patience: 75, // Sekunden, die ein Schiff vor der Einfahrt wartet, bevor es abdreht und die Fracht auf die Bahn geht
-    maxQueue: 7, // so viele Schiffe warten je Ende; weitere drehen sofort ab
+    bay: 1, // Warteplatz an jedem Ende: so viele Schiffe warten anfangs (Rotlichter und Schlepper bauen ihn aus); weitere drehen sofort ab
+    tugSpeed: 0.12, // Schlepper: Tempo-Zuwachs je Stufe für grosse Schiffe (Tiefgang ab 2,6 m)
+    holdTimeout: 45, // Sekunden, die ein Schiff in einer Kreuzungsstelle höchstens wartet
     downFactor: 1.15, upFactor: 0.85, // talwärts schneller als bergwärts
     gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
     enterGap: 3.0,
@@ -1265,6 +1314,8 @@ const CONFIG = {
     maxShips: 28,
     marketSpread: 0.2,
   },
+  // Kreuzungsstellen: Zonen in der Rinne, in denen zwei Schiffe aneinander vorbeikommen (genug Platz für zwei Rinnen). baseMax + Rotlichter = so viele dürfen ausgewiesen werden
+  zones: { baseMax: 1, width: 3, cost: 3000 },
   // Markt: Frachtpreise schwanken (Mean-Reversion + Ereignisse); hohe Preise locken mehr Schiffe dieser Fracht an
   market: { sigma: 0.07, revert: 0.1, minRatio: 0.45, maxRatio: 2.2, history: 24 },
   // Frachtaufträge der Reedereien: X Tonnen einer Fracht bis zu einem Termin durchbringen = Prämie
@@ -1312,6 +1363,8 @@ const BASE_STATS = {
   trafficMult: 1, // Betonnung & Leuchtfeuer: mehr Schiffe
   vts: 0, // Verkehrsleitsystem: schnellere Bergung, kleinere Abstände
   pilot: 0, // Lotsendienst: höhere Gebühren
+  signals: 0, // Rotlichter: mehr Kreuzungsstellen und Warteplatz
+  tugs: 0, // Schlepper: Warteplatz und schnellere grosse Schiffe
   loeffel: 0, // Löffelbagger-Stufe (0 = nicht vorhanden)
   betonrohr: 0, // Betoniergerät-Stufe
   pourPower: 0, // m³/s Beton, die das Gerät ausbringt
@@ -1340,6 +1393,8 @@ const UPGRADES = {
   dewater: { group: 'plant', name: 'Entwässerung', desc: 'Trockeneres Material: Entsorgung wird günstiger', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.disposalFactor = Math.max(0.4, 1 - l * 0.15); } },
   sorter: { group: 'plant', name: 'Sortieranlage', desc: 'Kies und Sand besser verkaufen', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.sortBonus = 1 + l * 0.2; } },
   beacons: { group: 'traffic', name: 'Betonnung & Leuchtfeuer', desc: 'Sicher auch bei Nacht: mehr Schiffe pro Tag', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.trafficMult = 1 + l * 0.18; } },
+  signals: { group: 'traffic', name: 'Rotlichter (Signalanlage)', desc: 'Regeln den Gegenverkehr: eine Kreuzungsstelle mehr und ein Schiff mehr im Warteplatz je Stufe', maxLevel: 3, baseCost: 9000, growth: 1.7, apply: (s, l) => { s.signals = l; } },
+  tugs: { group: 'traffic', name: 'Schlepper', desc: 'Halten Schiffe im Warteplatz (ein Platz mehr je Stufe) und beschleunigen grosse Schiffe (Tiefgang ab 2,6 m)', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.tugs = l; } },
   vts: { group: 'traffic', name: 'Verkehrsleitsystem', desc: 'Kürzere Abstände, schnellere Bergung bei Havarien', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.vts = l; } },
   pilot: { group: 'traffic', name: 'Lotsendienst', desc: 'Höhere Gebühren pro Schiff', maxLevel: 3, baseCost: 10000, growth: 1.7, apply: (s, l) => { s.pilot = l; } },
 };
@@ -1378,21 +1433,21 @@ const LEVELS = [
     id: 'hochrhein', name: 'Hochrhein: Basel–Birsfelden', short: 'Hochrhein',
     blurb: 'Der Klassiker: breiter Fluss, ein paar Barren, ein harmloser Felsriegel. Erst kommen nur Kähne durch, mit Baggern kommen Tanker und Containerschiffe.',
     river: { halfWidth: 6.8, depthMax: 2.4, rockDepth: 6.4, meander: 2.4, bars: [{ x: 9, w: 3.5, raise: 0.5 }, { x: 22, w: 4, raise: 0.55 }, { x: 36, w: 3.5, raise: 0.45 }], ridges: [{ x: 30, w: 4, depth: 4.3 }], shoals: 5, altlast: 2, hardBlobs: 3, debris: 14 },
-    classes: ['kahn', 'motor', 'tank', 'container'], traffic: 1, goalTons: 80000, startMoney: 50000, deadlineDays: 120, turbidityMult: 1,
+    classes: ['kahn', 'motor', 'tank', 'container'], traffic: 1, goalTons: 70000, startMoney: 50000, deadlineDays: 120, turbidityMult: 1,
     palette: { water: [38, 120, 160], land: [96, 130, 78] },
   },
   {
     id: 'loreley', name: 'Mittelrhein: Loreley-Enge', short: 'Loreley',
     blurb: 'Schmal, felsig und viel Verkehr. Zwei Felsriegel sperren die Grossen aus: ohne Felsfräse kommt kein Schubverband durch, und an der Enge ist Gegenverkehr ein Thema.',
     river: { halfWidth: 5.6, depthMax: 2.3, rockDepth: 5.2, meander: 2.8, bars: [{ x: 7, w: 3, raise: 0.5 }, { x: 18, w: 3.5, raise: 0.5 }, { x: 38, w: 3, raise: 0.5 }], ridges: [{ x: 13, w: 4.5, depth: 3.6 }, { x: 30, w: 4, depth: 3.3 }], shoals: 4, altlast: 3, hardBlobs: 7, debris: 18 },
-    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.3, goalTons: 160000, startMoney: 55000, deadlineDays: 120, turbidityMult: 1.1,
+    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.3, goalTons: 110000, startMoney: 55000, deadlineDays: 120, turbidityMult: 1.1,
     palette: { water: [44, 104, 124], land: [92, 100, 84] },
   },
   {
     id: 'donau', name: 'Donau: Eisernes Tor', short: 'Eisernes Tor',
     blurb: 'Breiter Strom, harter Fels und alte Industrie am Ufer: viele Altlasten, viele Blindgänger. Wer hier den Schubverbänden die Rinne öffnet, verdient richtig.',
     river: { halfWidth: 7.4, depthMax: 2.6, rockDepth: 5.0, meander: 2.2, bars: [{ x: 8, w: 3.5, raise: 0.6 }, { x: 20, w: 4, raise: 0.6 }, { x: 33, w: 3.5, raise: 0.6 }], ridges: [{ x: 14, w: 4, depth: 3.5 }, { x: 27, w: 5, depth: 3.2 }, { x: 40, w: 3, depth: 3.6 }], shoals: 6, altlast: 6, hardBlobs: 8, debris: 22 },
-    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.5, goalTons: 260000, startMoney: 60000, deadlineDays: 130, turbidityMult: 1,
+    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.5, goalTons: 160000, startMoney: 60000, deadlineDays: 130, turbidityMult: 1,
     palette: { water: [56, 110, 110], land: [108, 112, 80] },
   },
 ];
@@ -1410,7 +1465,7 @@ const { EVENTS } = __m(7);
 const { computeStats, upgradeCost } = __m(9);
 const { createRng } = __m(10);
 const { createMarket, stepMarket } = __m(8);
-const { createTraffic, updateTraffic } = __m(11);
+const { createTraffic, updateTraffic, maxZones, zoneClasses } = __m(11);
 const { processPlant, stockTotal } = __m(14);
 const { updateContracts } = __m(12);
 const { createFleet, updateFleet } = __m(13);
@@ -1457,6 +1512,9 @@ class Game {
     this.market = createMarket();
     this.traffic = createTraffic();
     this.fleet = createFleet();
+    this.zones = []; // Kreuzungsstellen: { id, x (Spalte der Mitte), w }
+    this.zoneSeq = 0;
+    this.unlocked = {}; // Schiffsklassen, die schon einmal fahren konnten
     this.contracts = [];
     this.contractSeq = 0;
     this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
@@ -1530,12 +1588,40 @@ class Game {
     for (const cls of SHIPS) {
       if (!this.level.classes.includes(cls.id)) continue;
       const f = this.fair[cls.id], was = this.fairSig[cls.id];
-      if (was !== undefined && !silent && f.passable !== was) {
-        if (f.passable) { this.say(`Fahrrinne frei für ${cls.name}!`, 'good'); this.notify(`${cls.icon} Fahrrinne frei für ${cls.name}!`, 'good'); }
+      if (f.passable && !this.unlocked[cls.id]) {
+        this.unlocked[cls.id] = true;
+        if (!silent && was !== undefined) { this.say(`Neue Schiffsklasse freigeschaltet: ${cls.name}! Reedereien schicken ab jetzt solche Schiffe.`, 'good'); this.notify(`${cls.icon} ${cls.name} freigeschaltet: ab jetzt kommen solche Schiffe`, 'good'); }
+      } else if (was !== undefined && !silent && f.passable !== was) {
+        if (f.passable) { this.say(`Fahrrinne wieder frei für ${cls.name}.`, 'good'); }
         else if (!this.closed) this.say(`Rinne für ${cls.name} ist zu flach geworden (Pegel oder Verlandung).`, 'bad');
       }
       this.fairSig[cls.id] = f.passable;
     }
+  }
+
+  // Kreuzungsstelle ausweisen (Mitte in Spalte x): nur wo zwei Rinnen nebeneinander Platz haben; Anzahl begrenzt (Rotlichter erhöhen sie)
+  zoneBlock(x) {
+    const Z = CONFIG.zones;
+    if (this.status !== 'playing') return 'Spiel beendet';
+    if (x < 2 || x > this.river.cols - 3) return 'Zu nah am Rand';
+    if (this.zones.some((z) => Math.abs(z.x - x) < Z.width + 1)) return 'Zu nah an einer anderen Kreuzungsstelle';
+    if (this.zones.length >= maxZones(this)) return 'Mehr Kreuzungsstellen brauchen Rotlichter (Wasserstrasse ausbauen)';
+    if (!zoneClasses(this, { x, w: Z.width }).length) return 'Zu wenig Platz: hier passen keine zwei Rinnen nebeneinander (breiter oder tiefer baggern)';
+    if (this.money < Z.cost) return `Braucht ${Z.cost.toLocaleString('de-CH')} CHF`;
+    return null;
+  }
+  placeZone(x) {
+    if (this.zoneBlock(x)) return false;
+    this.money -= CONFIG.zones.cost;
+    this.zones.push({ id: ++this.zoneSeq, x, w: CONFIG.zones.width });
+    this.say(`Kreuzungsstelle bei Spalte ${x + 1} ausgewiesen (−${CONFIG.zones.cost} CHF)`, 'upgrade');
+    return true;
+  }
+  removeZone(id) {
+    const i = this.zones.findIndex((z) => z.id === id);
+    if (i < 0) return false;
+    this.zones.splice(i, 1);
+    return true;
   }
 
   // Beton zukaufen (m³): kostet CONFIG.concrete.price pro m³, Lager hat eine Obergrenze
@@ -1717,6 +1803,7 @@ class SliceSim {
     this.clog = 0;
     this.freeing = null;
     this.auto = { on: false, dir: 'sweep', error: null, errLeft: 0, startX: this.x, didWork: false };
+    this.autoPour = false; // Betonier-Automatik (Flotte, Betoniergerät)
     this.autoLand = false; // Land-Automatik: auch Zellen im Ausbaustreifen zählen als offen (Flotte, Löffelbagger)
     this.soundNoise = null; // überschreibt die Messungenauigkeit (Flottenpontons haben ein Peilgerät an Bord)
     this.autoRange = null; // [erste, letzte Zeile quer zum Fluss], auf die sich die Automatik beschränkt (Flotte: nur die Rinne), sonst null = alles im Korridor
@@ -1814,7 +1901,12 @@ class SliceSim {
   // Ist die Spalte c des Fensters nach Peilung auf Solltiefe (oder gehört nicht zum Korridor)?
   _inZone(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)]); }
   _inLand(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)] || r.ext[r.idx(k, this.x0 + c)]); } // Korridor oder Ausbaustreifen (Land-Automatik)
-  _colOpen(c) { if (this.autoRange && (this.x0 + c < this.autoRange[0] || this.x0 + c > this.autoRange[1])) return false; return (this.autoLand ? this._inLand(c) : this._inZone(c)) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
+  // Betonier-Automatik: offen ist eine Querzeile, solange in einer Zelle des Kastens (Korridor oder Ausbaustreifen) die Betonschicht noch fehlt
+  _needsPour(c) {
+    const r = this.river, T = CONFIG.concrete.thickness;
+    return this.cols.some((k) => { const i = r.idx(k, this.x0 + c); return (r.zone[i] || r.ext[i]) && r.armor[i] < T * 0.9 && r.top[i] - r.rock[i] > T * 0.5; });
+  }
+  _colOpen(c) { if (this.autoRange && (this.x0 + c < this.autoRange[0] || this.x0 + c > this.autoRange[1])) return false; if (this.autoPour) return this._needsPour(c); return (this.autoLand ? this._inLand(c) : this._inZone(c)) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
   colDone(c) { return !this._colOpen(c); }
   allDone() { for (let c = this.auto.on ? this.autoFromCol() : 0; c < SLICE.cols; c++) if (this._colOpen(c)) return false; return true; }
   _openLeft() { for (let c = 0; c < this.autoFromCol(); c++) if (this._colOpen(c)) return c; return -1; }
@@ -2421,10 +2513,25 @@ function smoothPath(river, nodes, beam) {
   return { points: out, length: len };
 }
 
+// Spalten, in denen zwei Rinnen nebeneinander Platz haben (Tiefe stimmt, im Korridor, Breite für zwei Schiffe plus Abstand): dort können sich Schiffe kreuzen
+function crossColumns(river, def, beam) {
+  const out = new Uint8Array(river.cols);
+  for (let x = 0; x < river.cols; x++) {
+    let lanes = 0, run = 0;
+    for (let y = 0; y <= river.rows; y++) {
+      const ok = y < river.rows && def[y * river.cols + x] === 0;
+      if (ok) run++;
+      else { lanes += Math.floor((run + 1) / (beam + 1)); run = 0; }
+    }
+    out[x] = lanes >= 2 ? 1 : 0;
+  }
+  return out;
+}
+
 function analyzeClass(river, wl, cls) {
   const need = needDepth(cls), def = deficits(river, wl, need), beam = cls.beam;
   const nodes = bestPath(river, def, beam, river.flow, null);
-  const res = { id: cls.id, need, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null };
+  const res = { id: cls.id, need, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
   if (!nodes) return res; // Baggerkorridor ist zu schmal für dieses Schiff
   const cov = covered(river, nodes, beam);
   let miss = 0, worst = 0, worstX = nodes[0].x;
@@ -2493,7 +2600,7 @@ function carveFairway(river, wl, cls, margin = 0.4) {
   return analyzeClass(river, wl, cls);
 }
 
-return { needDepth: needDepth, analyzeClass: analyzeClass, analyzeFairway: analyzeFairway, minDepthAt: minDepthAt, pointOnPath: pointOnPath, carveFairway: carveFairway };
+return { needDepth: needDepth, crossColumns: crossColumns, analyzeClass: analyzeClass, analyzeFairway: analyzeFairway, minDepthAt: minDepthAt, pointOnPath: pointOnPath, carveFairway: carveFairway };
 },
 function(){
 const { CONFIG, KIND } = __m(1);
@@ -2801,7 +2908,13 @@ const { fleetSites } = __m(13);
 // bis für ihre Klasse eine Fahrrinne da ist (sonst drehen sie nach `patience` Sekunden ab: Fracht geht auf die Bahn), fahren die Rinne ab
 // und zahlen beim Verlassen Gebühr + Anteil am Frachtwert. Reine Daten in g.traffic (speicherbar); Pfade sind abgeleitet und werden nicht gespeichert.
 // Zustände: 'queue' (wartet), 'sail' (fährt), 'grounded' (aufgelaufen), 'done' / 'left' (fertig, wird entfernt).
+// Neu: Es kommen nur Klassen, für die gerade eine Rinne frei ist (so schalten sich neue Klassen von selbst frei). Der Warteplatz an jedem Ende fasst
+// anfangs ein Schiff (Rotlichter und Schlepper bauen ihn aus). In einer Einbahnrinne dürfen sich Schiffe nur an ausgewiesenen Kreuzungsstellen
+// (g.zones, genug Platz für zwei Rinnen) begegnen: eines wartet dort, bis das andere in der Zone ist. Schlepper machen grosse Schiffe schneller.
 const createTraffic = () => ({ ships: [], seq: 0, spawnIn: 5 });
+
+const bayCapacity = (g) => CONFIG.traffic.bay + g.stats.signals + g.stats.tugs;
+const maxZones = (g) => CONFIG.zones.baseMax + g.stats.signals;
 
 const rate = (g) => CONFIG.traffic.shipsPerDay * g.level.traffic * g.stats.trafficMult * (g.time < (g.strikeUntil ?? 0) ? 0.3 : 1);
 
@@ -2812,25 +2925,32 @@ function pickWeighted(items, weightOf, rng) {
   return items[items.length - 1];
 }
 
+// Klassen, die gerade fahren können (nur diese schicken Reedereien Schiffe)
+const activeClasses = (g) => SHIPS.filter((s) => g.level.classes.includes(s.id) && (!g.fair || g.fair[s.id]?.passable));
+
 function spawnShip(g) {
   const T = g.traffic, C = CONFIG.traffic, rng = g.rng;
-  const classes = SHIPS.filter((s) => g.level.classes.includes(s.id));
+  const classes = activeClasses(g);
+  if (!classes.length) return null;
   const demand = (s) => s.cargo.reduce((a, c) => a + Math.min(1.8, Math.max(0.5, ratioOf(g.market, c))), 0) / s.cargo.length;
   const cls = pickWeighted(classes, (s) => s.share * demand(s), rng);
   const cargo = cargoById(pickWeighted(cls.cargo, (c) => ratioOf(g.market, c) ** 2, rng));
   const dir = rng() < 0.5 ? 1 : -1;
-  if (T.ships.filter((s) => s.state === 'queue' && s.dir === dir).length >= C.maxQueue || T.ships.length >= C.maxShips) { g.totals.turnedAway++; return null; }
   const tons = Math.round((cls.tons * rng.range(0.7, 1)) / 10) * 10;
-  const ship = { id: ++T.seq, cls: cls.id, dir, cargo: cargo.id, tons, price: priceOf(g.market, cargo.id), state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one' };
+  const ship = { id: ++T.seq, cls: cls.id, dir, cargo: cargo.id, tons, price: priceOf(g.market, cargo.id), state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one', meets: [] };
+  if (T.ships.filter((x) => x.state === 'queue' && x.dir === dir).length >= bayCapacity(g) || T.ships.length >= C.maxShips) { // Warteplatz voll: das Schiff dreht ab
+    g.totals.turnedAway++; g.totals.lostValue += income(g, ship); g.today.rejected++;
+    return null;
+  }
   T.ships.push(ship);
   g.totals.spawned++;
   return ship;
 }
 
-const income = (g, ship) => {
+function income(g, ship) {
   const cls = shipById(ship.cls), k = 1 + 0.15 * g.stats.pilot;
   return Math.round(((cls.fee + CONFIG.traffic.levy * ship.tons * ship.price) * k) / 10) * 10;
-};
+}
 
 // Position eines fahrenden Schiffs auf seinem Pfad (Strecke s in Fahrtrichtung)
 function shipPos(ship) {
@@ -2847,6 +2967,45 @@ function queuePos(g, ship, rank) {
   return ship.dir > 0 ? { x: -0.3 - back, y, angle: 0 } : { x: g.river.cols + 0.3 + back, y, angle: Math.PI };
 }
 
+// Kreuzungsstellen: eine Zone (Mitte x, Breite CONFIG.zones.width) gilt für ein Schiffspaar, wenn beide Klassen dort Platz für zwei Rinnen haben
+function zoneSupports(g, z, clsId) {
+  const cross = g.fair?.[clsId]?.cross;
+  if (!cross) return false;
+  for (let x = z.x - 1; x <= z.x + 1; x++) if (x < 0 || x >= g.river.cols || !cross[x]) return false;
+  return true;
+}
+const zoneClasses = (g, z) => SHIPS.filter((s) => g.level.classes.includes(s.id) && zoneSupports(g, z, s.id));
+
+// Strecke s (in Fahrtrichtung gemessen), bei der ein Schiff auf seinem Pfad die Karten-Spalte x erreicht
+function sAtX(path, x, dir) {
+  const pts = path.points;
+  let sx = pts[pts.length - 1].s;
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].x >= x) { const a = pts[i - 1], b = pts[i], t = b.x > a.x ? (x - a.x) / (b.x - a.x) : 0; sx = a.s + t * (b.s - a.s); break; }
+  }
+  return dir > 0 ? sx : path.length - sx;
+}
+
+// Für ein einfahrendes Schiff und die Gegenverkehr-Schiffe in der Rinne je eine freie Kreuzungsstelle dazwischen suchen (sonst null = Einfahrt gesperrt)
+function assignMeets(g, ship, opposing, ships) {
+  const reserved = new Set(), used = new Set(), res = [], cls = shipById(ship.cls), entryX = ship.dir > 0 ? 0 : g.river.cols;
+  for (const s of ships) for (const m of s.meets ?? []) reserved.add(m.zone);
+  for (const o of opposing) {
+    if (o.state !== 'sail') return null; // aufgelaufene Schiffe versperren die Rinne
+    const xo = shipPos(o).x, oc = shipById(o.cls);
+    let best = null, bs = Infinity;
+    for (const z of g.zones) {
+      if (reserved.has(z.id) || used.has(z.id) || !zoneSupports(g, z, ship.cls) || !zoneSupports(g, z, o.cls)) continue;
+      if (!(ship.dir > 0 ? z.x < xo - 1 : z.x > xo + 1)) continue; // die Stelle muss zwischen Einfahrt und Gegenverkehr liegen
+      const score = Math.max(Math.abs(z.x - entryX) / cls.speed, Math.abs(xo - z.x) / oc.speed);
+      if (score < bs) { bs = score; best = z; }
+    }
+    if (!best) return null;
+    used.add(best.id); res.push({ zone: best.id, with: o.id });
+  }
+  return res;
+}
+
 function updateTraffic(g, dt) {
   const T = g.traffic, C = CONFIG.traffic, ships = T.ships, vts = g.stats.vts;
   T.spawnIn -= dt;
@@ -2858,6 +3017,7 @@ function updateTraffic(g, dt) {
     near[cls.id] = !!(pts && sites.some((site) => pts.some((p) => Math.hypot(p.x - site.x, p.y - site.y) < C.siteRadius)));
   }
   const sailing = () => ships.filter((s) => s.state === 'sail' || s.state === 'grounded');
+  const byId = new Map(ships.map((s) => [s.id, s]));
 
   for (const ship of ships) {
     if (ship.state !== 'sail' && ship.state !== 'grounded') continue;
@@ -2876,7 +3036,7 @@ function updateTraffic(g, dt) {
       }
       continue;
     }
-    let v = cls.speed * (ship.dir > 0 ? C.downFactor : C.upFactor);
+    let v = cls.speed * (ship.dir > 0 ? C.downFactor : C.upFactor) * (cls.draught >= 2.6 ? 1 + C.tugSpeed * g.stats.tugs : 1); // Schlepper beschleunigen grosse Schiffe
     const p0 = shipPos(ship);
     if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow;
     let gapMin = Infinity;
@@ -2887,6 +3047,19 @@ function updateTraffic(g, dt) {
     }
     const safe = C.gap * (1 - 0.15 * vts);
     if (gapMin < safe) v = 0; else if (gapMin < safe + 1.5) v *= (gapMin - safe) / 1.5;
+    if (ship.meets?.length) { // Begegnung an einer Kreuzungsstelle: wer zuerst da ist, wartet in der Zone, bis das andere Schiff eintrifft
+      for (const m of ship.meets) {
+        const z = g.zones.find((zz) => zz.id === m.zone), P = byId.get(m.with);
+        if (!z || !P || (P.state !== 'sail' && P.state !== 'grounded')) { m.done = true; continue; }
+        if (ship.dir > 0 ? p0.x > z.x + 0.2 : p0.x < z.x - 0.2) { m.done = true; continue; } // Zone durchfahren
+        const pp = P.path ? shipPos(P) : null;
+        if (!pp || Math.abs(pp.x - z.x) <= z.w / 2 + 0.5 || (P.dir > 0 ? pp.x > z.x : pp.x < z.x)) continue; // Gegner schon in oder hinter der Zone
+        const room = sAtX(ship.path, z.x, ship.dir) - ship.s;
+        v = Math.max(0, Math.min(v, (room - 0.05) / Math.max(dt, 1e-6)));
+        if (room < 0.4) { m.holdT = (m.holdT ?? 0) + dt; if (m.holdT > C.holdTimeout) { m.done = true; g.say('Lotse drängelt: ein Schiff fährt ohne Begegnung weiter (Chaos)', 'bad'); } }
+      }
+      ship.meets = ship.meets.filter((m) => !m.done);
+    }
     ship.s += v * dt;
     if (ship.s >= ship.path.length) {
       ship.state = 'done';
@@ -2924,17 +3097,20 @@ function updateTraffic(g, dt) {
     }
     if (!open || !f?.passable || !f.path) continue;
     const lane = f.twoWay && !near[ship.cls] ? 'two' : 'one';
-    let ok = true;
+    let ok = true, meets = [];
     const sl = sailing();
-    for (const o of sl) {
-      if (o.dir === ship.dir && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2) { ok = false; break; }
-      if (lane === 'one' && o.dir !== ship.dir && o.lane === 'one') { ok = false; break; }
+    for (const o of sl) if (o.dir === ship.dir && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2) { ok = false; break; }
+    if (ok && lane === 'one') { // Einbahnrinne: Gegenverkehr nur mit freier Kreuzungsstelle dazwischen
+      const opposing = sl.filter((o) => o.dir !== ship.dir && o.lane === 'one');
+      if (opposing.length) { const a = assignMeets(g, ship, opposing, ships); if (a) meets = a; else ok = false; }
     }
     if (ok && lane === 'one' && sl.some((o) => o.dir === ship.dir && o.lane === 'one')) { // Gegenseite wartet schon lange: keine neuen Schiffe mehr nachschieben
       const oppWait = Math.max(0, ...queue.filter((o) => o.dir !== ship.dir && o.wait > 0 && g.fair?.[o.cls]?.passable).map((o) => o.wait));
       if (oppWait > C.switchAfter && oppWait > ship.wait) ok = false;
     }
     if (!ok) continue;
+    ship.meets = meets;
+    for (const m of meets) byId.get(m.with)?.meets?.push({ zone: m.zone, with: ship.id });
     ship.state = 'sail'; ship.s = 0; ship.lane = lane; ship.path = f.path;
   }
   T.ships = ships.filter((s) => s.state !== 'done' && s.state !== 'left');
@@ -2949,11 +3125,13 @@ function waitingByClass(g) {
 
 
 
-return { createTraffic: createTraffic, spawnShip: spawnShip, shipPos: shipPos, queuePos: queuePos, updateTraffic: updateTraffic, waitingByClass: waitingByClass, CARGOS: CARGOS };
+return { createTraffic: createTraffic, bayCapacity: bayCapacity, maxZones: maxZones, activeClasses: activeClasses, spawnShip: spawnShip, shipPos: shipPos, queuePos: queuePos, zoneSupports: zoneSupports, zoneClasses: zoneClasses, updateTraffic: updateTraffic, waitingByClass: waitingByClass, CARGOS: CARGOS };
 },
 function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(1);
 const { priceOf } = __m(8);
+const { activeClasses } = __m(11);
+
 
 
 
@@ -2961,9 +3139,8 @@ const { priceOf } = __m(8);
 // zählt jedes Schiff mit dieser Fracht; geschafft = Prämie, verpasst = Konventionalstrafe.
 // status: 'offer' | 'active'
 function makeContract(g) {
-  const C = CONFIG.contracts, classes = SHIPS.filter((s) => g.level.classes.includes(s.id));
-  // gern eine Klasse, die noch nicht fahren kann: der Auftrag ist dann der Grund, die Rinne zu vertiefen
-  const weights = classes.map((s) => (g.fair?.[s.id]?.passable ? 1 : 2));
+  const C = CONFIG.contracts, active = activeClasses(g), classes = active.length ? active : [SHIPS.find((s) => s.id === g.level.classes[0])]; // nur Klassen, die fahren können
+  const weights = classes.map(() => 1);
   let pick = g.rng() * weights.reduce((a, b) => a + b, 0), cls = classes[0];
   for (let i = 0; i < classes.length; i++) { pick -= weights[i]; if (pick <= 0) { cls = classes[i]; break; } }
   const cargo = cargoById(cls.cargo[Math.floor(g.rng() * cls.cargo.length)]);
@@ -3021,6 +3198,8 @@ return { makeContract: makeContract, acceptContract: acceptContract, creditContr
 },
 function(){
 const { CONFIG, SHIPS, shipById } = __m(1);
+const { toolAvailable } = __m(3);
+
 
 
 // Flotte: gemietete Pontons arbeiten selbstständig. Jeder fährt zur nächsten Engstelle der Ausbauklasse, ankert, lässt die Automatik
@@ -3028,7 +3207,7 @@ const { CONFIG, SHIPS, shipById } = __m(1);
 // Sie nutzen dieselbe Physik wie dein eigener Ponton (DredgeSim/SliceSim), nur ohne Anzeige. Das Ausbauziel ist eine Schiffsklasse
 // (Standard: die kleinste Klasse, die noch nicht fährt). Pontons ohne Arbeit warten und melden, was fehlt.
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
-const createFleet = () => ({ units: [], seq: 0, goal: null, widen: false, widenW: CONFIG.fleet.widenRows });
+const createFleet = () => ({ units: [], seq: 0, goal: null, pour: false, widen: false, widenW: CONFIG.fleet.widenRows });
 
 const nextHireCost = (g) => CONFIG.fleet.costs[g.fleet.units.length] ?? null;
 
@@ -3060,6 +3239,7 @@ function dismissUnit(g, id) {
   return true;
 }
 
+function setPour(g, on) { g.fleet.pour = !!on; }
 function setWiden(g, on, w) { g.fleet.widen = !!on; if (w) g.fleet.widenW = Math.max(1, Math.min(5, Math.round(w))); }
 function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === clsId) ? clsId : null; }
 
@@ -3091,7 +3271,7 @@ function openColumns(g, cls) {
 
 const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
 const overlaps = (res, c0) => res.some((s) => c0 < s.c0 + CONFIG.box.cols && s.c0 < c0 + CONFIG.box.cols);
-const skipKey = (s) => (s.land ? `L${s.col}${s.side}` : s.col);
+const skipKey = (s) => (s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
 
 // Land-Automatik: Spalten, in denen im Ausbaustreifen neben dem ursprünglichen Korridor noch Land über der Tiefe der Ausbauklasse liegt.
 // Pro Spalte und Ufer die ersten `widenW` Zeilen des Streifens (ext > 0); ursprünglicher Korridor = zone && !ext (umgewandeltes Land zählt nicht dazu).
@@ -3151,12 +3331,45 @@ function pickLand(g, u) {
   return { none: 'Alle Uferstellen sind vergeben' };
 }
 
+// Betonier-Automatik: Spalten der Rinne (höchste Klasse, die fährt) samt zwei Zeilen Böschung beiderseits, in denen die Betonschicht noch fehlt
+function openPourColumns(g) {
+  const base = [...SHIPS.filter((s) => g.level.classes.includes(s.id) && g.fair?.[s.id]?.passable)].pop();
+  if (!base) return [];
+  const f = g.fair[base.id], r = g.river, T = CONFIG.concrete.thickness, lo = Math.floor((base.beam - 1) / 2), hi = base.beam - 1 - lo, out = [];
+  for (const p of f.nodes) {
+    let open = false; const rows = [];
+    for (let k = p.y - lo - 2; k <= p.y + hi + 2; k++) {
+      if (k < 0 || k >= r.rows) continue;
+      rows.push(k);
+      const i = k * r.cols + p.x;
+      if ((r.zone[i] || r.ext[i]) && r.armor[i] < T * 0.9 && r.top[i] - r.rock[i] > T * 0.5) open = true;
+    }
+    if (open) out.push({ x: p.x, y: p.y + (hi - lo) / 2 + 0.5, rows, cls: base.id });
+  }
+  return out;
+}
+
+function pickPour(g, u) {
+  if (!g.fleet.pour) return { none: 'Betonieren ist aus' };
+  if (g.stats.betonrohr <= 0) return { none: 'Betonieren braucht das Betoniergerät' };
+  if (g.concrete < 8) return { none: 'Kein Beton im Lager (kaufen oder Betonwerk)' };
+  const open = openPourColumns(g), res = reservedBy(g, u), B = CONFIG.box.cols;
+  if (!open.length) return { none: 'Rinne ist betoniert' };
+  for (const c of open) {
+    if (u.skip[`P${c.x}`] && g.time < u.skip[`P${c.x}`]) continue;
+    const c0 = Math.min(Math.max(0, c.x), g.river.cols - B);
+    if (overlaps(res, c0)) continue;
+    return { pour: true, c0, col: c.x, y: c.y, rows: c.rows, cls: c.cls, depth: CONFIG.echolot.defaultDepth, tool: 'beton', rock: false };
+  }
+  return { none: 'Alle Betonierstellen sind vergeben' };
+}
+
 function pickSite(g, u) {
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
-  const order = landRole ? [pickLand, pickLane] : [pickLane, pickLand];
-  let first = null;
-  for (const f of order) { const s = f(g, u); if (!s.none) return s; first ??= s; }
-  return first;
+  const order = [...(landRole ? [pickLand, pickLane] : [pickLane, pickLand]), pickPour];
+  const msgs = [];
+  for (const f of order) { const s = f(g, u); if (!s.none) return s; msgs.push(s); }
+  return msgs.filter((m) => !/ist aus$/.test(m.none)).pop() ?? msgs[0]; // zuletzt aktive Meldung (zeigt, woran es hängt)
 }
 
 function makeSim(g, u) {
@@ -3168,7 +3381,7 @@ function makeSim(g, u) {
 
 function stepUnit(g, u, dt) {
   const sim = (u.sim ??= makeSim(g, u));
-  sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom;
+  sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom; sim.concreteAvail = g.concrete;
   let inp = { dx: 0, dy: 0, suction: false };
   if (u.state === 'idle') {
     u.idle -= dt;
@@ -3197,11 +3410,12 @@ function stepUnit(g, u, dt) {
         else {
           sim.x = goal.x; sim.y = goal.y; // ganzzahlig: der Kasten beginnt dann genau bei c0
           sim.targetDepth = s.depth; sim.pumpSpeed = 1;
-          sim.tool = s.tool === 'loeffel' && g.stats.loeffel > 0 ? 'loeffel' : 'pump';
+          sim.tool = toolAvailable(g.stats, s.tool) ? s.tool : 'pump';
           if (sim.anchor()) {
             const sl = sim.slice;
             sl.soundNoise = CONFIG.fleet.soundNoise; sl.sound();
-            if (s.land) { sl.autoLand = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; } // nur der Uferstreifen
+            if (s.pour) { sl.autoPour = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; }
+            else if (s.land) { sl.autoLand = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; } // nur der Uferstreifen
             else {
               const lane = g.fair[s.cls], cls = shipById(s.cls), lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo;
               let r0 = Infinity, r1 = -Infinity;
@@ -3210,7 +3424,7 @@ function stepUnit(g, u, dt) {
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();
-            u.state = 'work'; u.workT = 0; u.note = s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
+            u.state = 'work'; u.workT = 0; u.note = s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
           } else { u.skip[skipKey(s)] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         }
       } else if (dist > 1e-6) {
@@ -3220,10 +3434,12 @@ function stepUnit(g, u, dt) {
   } else if (u.state === 'work') {
     u.workT += dt;
     if (sim.mode === 'slice' && !sim.pumpOn && sim.slice.auto.on && sim.slice.tipped <= 0) { sim.pumpOn = true; sim.autoStartedPump = true; } // nach dem Kippen schaltet die Mannschaft die Pumpe wieder ein
-    const limit = u.site?.land ? 420 : 140; // Landabtrag ist viel Material
-    if (sim.mode !== 'slice' || !sim.slice.auto.on || u.workT > limit) {
+    const limit = u.site?.land ? 420 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
+    const noConcrete = u.site?.pour && g.concrete <= 0.05;
+    if (noConcrete) u.note = 'Kein Beton mehr im Lager';
+    if (sim.mode !== 'slice' || !sim.slice.auto.on || u.workT > limit || noConcrete) {
       if (u.workT > limit && u.site) u.skip[skipKey(u.site)] = g.time + 90; // hängt fest (z. B. Fels): später wieder versuchen
-      sim.leave(); u.state = 'idle'; u.idle = 0; u.note = 'sucht nächste Stelle';
+      sim.leave(); u.state = 'idle'; u.idle = noConcrete ? CONFIG.fleet.idleRetry : 0; if (!noConcrete) u.note = 'sucht nächste Stelle';
     }
   }
   const d = sim.update(dt, inp);
@@ -3242,7 +3458,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, dismissUnit: dismissUnit, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, dismissUnit: dismissUnit, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(1);
@@ -3352,7 +3568,7 @@ return { TowSim: TowSim, groundedNear: groundedNear };
 function(){
 const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(1);
 const { upgradeCost } = __m(9);
-const { waitingByClass } = __m(11);
+const { waitingByClass, bayCapacity, activeClasses } = __m(11);
 const { ratioOf } = __m(8);
 const { hireBlock, nextHireCost } = __m(13);
 
@@ -3472,6 +3688,10 @@ class Advisor {
         text: () => 'Die Rinne verlandet immer wieder. Mit dem Betoniergerät (Ausrüstung) kannst du Boden und Ufer verhärten: weniger Schlick bei Hochwasser, die Böschung hält. Beton gibt es zum Kaufen, später mischt ihn das Betonwerk aus Kies und Sand.' },
       { id: 'mixer', prio: 47, when: () => game.stats.betonrohr > 0 && game.stats.mixer === 0 && game.totals.concreteBought >= 40,
         text: () => `Du kaufst viel Beton zu (${Math.round(game.totals.concreteSpend).toLocaleString('de-CH')} CHF bisher). Das Betonwerk mischt ihn aus eurem Kies und Sand für einen Bruchteil.` },
+      { id: 'bay', prio: 79, when: () => game.totals.turnedAway >= 6,
+        text: () => `Dein Warteplatz fasst nur ${bayCapacity(game)} Schiff${bayCapacity(game) > 1 ? 'e' : ''} je Seite: schon ${game.totals.turnedAway} Schiffe sind abgedreht. Rotlichter und Schlepper bauen ihn aus (Wasserstrasse ausbauen), die Schlepper machen grosse Schiffe auch schneller.` },
+      { id: 'zone', prio: 77, when: () => game.zones.length === 0 && game.day > 5 && game.totals.turnedAway + game.totals.rejected >= 4 && activeClasses(game).some((c) => !game.fair[c.id].twoWay && game.fair[c.id].cross?.some((v) => v)),
+        text: () => 'In der Einbahnrinne muss immer die Gegenseite warten. Weise eine Kreuzungsstelle aus (Knopf auf der Karte oder K): Dort, wo die Rinne breit und tief genug für zwei Schiffe ist, wartet eines und das andere fährt vorbei. Das bringt deutlich mehr Verkehr.' },
       { id: 'contract', prio: 58, when: () => game.contracts.some((c) => c.status === 'offer'),
         text: () => `Eine Reederei bietet dir einen Frachtauftrag an (Panel, Aufträge). Die Prämie gibt es nur, wenn die Schiffe rechtzeitig durchkommen, schau also, ob die Klasse schon fahren kann.` },
       { id: 'market', prio: 50, when: () => !!hot && game.day > 5,
@@ -3517,7 +3737,7 @@ const { River } = __m(4);
 // Spielstand: reine Umwandlung Game <-> JSON-Text (kein DOM, kein Speicher). Gespeichert wird der Management-Zustand (Geld, Zeit, Upgrades,
 // Markt, Schiffe, Aufträge ...) und die Flusssohle. Abgeleitetes (Fahrrinnen, Pfade, Nachrutschen) wird nach dem Laden neu berechnet.
 // Die laufende Pontonfahrt wird nicht gespeichert: nach dem Laden steht der Ponton wieder auf der Karte.
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 
 const SKIP = new Set(['rng', 'river', 'notes', 'flash', 'site', 'fair', '_stats']);
 const toB64 = (arr) => {
@@ -3766,7 +3986,7 @@ function(){
 // Steuerungsanzeige je Ansicht und Gerät: [Taste oder Geste, Wirkung]
 const HINTS = {
   keys: {
-    map: [['WASD / Pfeile', 'Ponton fahren'], ['Maus halten', 'zum Mauszeiger fahren'], ['E / Leertaste', 'Anker werfen'], ['T', 'Aufläufer freischleppen'], ['V', 'Gerät wählen'], ['1–5', 'Schiffsklasse wählen (rote Stellen = Engstellen)'], ['P', 'Pause']],
+    map: [['WASD / Pfeile', 'Ponton fahren'], ['Maus halten', 'zum Mauszeiger fahren'], ['E / Leertaste', 'Anker werfen'], ['T', 'Aufläufer freischleppen'], ['K', 'Kreuzungsstellen setzen'], ['V', 'Gerät wählen'], ['1–5', 'Schiffsklasse wählen (rote Stellen = Engstellen)'], ['P', 'Pause']],
     slice: [['A D', 'Pumpe quer zum Fluss'], ['W S', 'Kette hoch/runter'], ['Leertaste', 'Pumpe an/aus'], ['Z X', 'Tempo'], ['F G', 'Solltiefe'], ['1–5', 'Solltiefe für Klasse'], ['T', 'Automatik'], ['V', 'Gerät: Saugkopf/Löffel/Beton'], ['R', 'Automatik-Reset'], ['Q', 'zurück zur Karte'], ['P', 'Pause']],
     tow: [['Leertaste halten', 'Zug aufbauen'], ['loslassen', 'Zug sinkt'], ['grüner Bereich', 'Schiff kommt frei'], ['Q', 'abbrechen']],
   },
@@ -3915,7 +4135,7 @@ return { createAudio: createAudio };
 function(){
 const { SLICE } = __m(3);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById } = __m(1);
-const { shipPos, queuePos } = __m(11);
+const { shipPos, queuePos, bayCapacity, zoneClasses } = __m(11);
 const { needDepth } = __m(5);
 const { Chain, drawChain } = __m(26);
 const { groundedNear } = __m(15);
@@ -4006,6 +4226,7 @@ function drawMap(ctx, game, sim, ui = {}) {
   // Auswahl einer Schiffsklasse: wo fehlt Tiefe, wo läuft die günstigste Rinne
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
   if (sel) drawClassOverlay(ctx, game, sel);
+  drawZones(ctx, game, ui);
   drawShips(ctx, game, ui);
   drawFleet(ctx, game);
   if (sim) drawPontoon(ctx, game, sim, ui);
@@ -4125,6 +4346,27 @@ function drawPontoon(ctx, game, sim, ui) {
     const t = mapPx(ui.mapTarget.x, ui.mapTarget.y);
     ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
     ctx.moveTo(t.x - 14, t.y); ctx.lineTo(t.x + 14, t.y); ctx.moveTo(t.x, t.y - 14); ctx.lineTo(t.x, t.y + 14); ctx.stroke();
+  }
+}
+
+// Kreuzungsstellen (gelbgrün gestrichelt, rot wenn der Platz fehlt) und im Setz-Modus die Spalten, in denen eine möglich ist
+function drawZones(ctx, game, ui) {
+  const r = game.river, B = CONFIG.zones.width;
+  if (ui.zoneMode) {
+    for (let x = 2; x <= r.cols - 3; x++) {
+      if (!zoneClasses(game, { x, w: B }).length) continue;
+      ctx.fillStyle = 'rgba(160,230,90,.10)'; ctx.fillRect(OX + x * CELL, 0, CELL, H);
+      ctx.fillStyle = 'rgba(160,230,90,.8)'; ctx.fillRect(OX + x * CELL + 3, 0, CELL - 6, 7);
+    }
+    ctx.font = font(13); const t = 'Kreuzungsstelle: Spalte antippen (grün = genug Platz), bestehende antippen = entfernen', w = ctx.measureText(t).width + 16;
+    ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H - fs(13) - 14, w, fs(13) + 8); ctx.fillStyle = '#d6f5a8'; ctx.fillText(t, OX + 14, H - 12);
+  }
+  for (const z of game.zones ?? []) {
+    const cl = zoneClasses(game, z), ok = cl.length > 0, x0 = OX + (z.x - z.w / 2 + 0.5) * CELL;
+    ctx.fillStyle = ok ? 'rgba(160,230,90,.13)' : 'rgba(255,90,80,.16)'; ctx.fillRect(x0, 0, z.w * CELL, H);
+    ctx.strokeStyle = ok ? '#a6e65a' : '#ff7a6b'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+    ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.moveTo(x0 + z.w * CELL, 0); ctx.lineTo(x0 + z.w * CELL, H); ctx.stroke(); ctx.setLineDash([]);
+    ctx.font = font(12); ctx.textAlign = 'center'; const label = ok ? `Kreuzung ${cl.map((c) => c.icon).join('')}` : 'kein Platz mehr'; ctx.fillStyle = '#000b'; ctx.fillText(label, x0 + z.w * CELL / 2 + 1, 15); ctx.fillStyle = ok ? '#d6f5a8' : '#ffb4a8'; ctx.fillText(label, x0 + z.w * CELL / 2, 14); ctx.textAlign = 'start';
   }
 }
 

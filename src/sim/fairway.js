@@ -114,10 +114,25 @@ function smoothPath(river, nodes, beam) {
   return { points: out, length: len };
 }
 
+// Spalten, in denen zwei Rinnen nebeneinander Platz haben (Tiefe stimmt, im Korridor, Breite für zwei Schiffe plus Abstand): dort können sich Schiffe kreuzen
+export function crossColumns(river, def, beam) {
+  const out = new Uint8Array(river.cols);
+  for (let x = 0; x < river.cols; x++) {
+    let lanes = 0, run = 0;
+    for (let y = 0; y <= river.rows; y++) {
+      const ok = y < river.rows && def[y * river.cols + x] === 0;
+      if (ok) run++;
+      else { lanes += Math.floor((run + 1) / (beam + 1)); run = 0; }
+    }
+    out[x] = lanes >= 2 ? 1 : 0;
+  }
+  return out;
+}
+
 export function analyzeClass(river, wl, cls) {
   const need = needDepth(cls), def = deficits(river, wl, need), beam = cls.beam;
   const nodes = bestPath(river, def, beam, river.flow, null);
-  const res = { id: cls.id, need, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null };
+  const res = { id: cls.id, need, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
   if (!nodes) return res; // Baggerkorridor ist zu schmal für dieses Schiff
   const cov = covered(river, nodes, beam);
   let miss = 0, worst = 0, worstX = nodes[0].x;

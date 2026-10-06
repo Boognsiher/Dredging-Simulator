@@ -71,10 +71,12 @@ export const CONFIG = {
   pumpSpeed: { min: 0.2, max: 1, default: 1 },
   // Verkehr: Schiffe erscheinen an beiden Enden, fahren die Fahrrinne ab und zahlen beim Verlassen des Abschnitts
   traffic: {
-    shipsPerDay: 2.0, // Grundrate, mal Level-Faktor, Marktnachfrage und Betonnung
+    shipsPerDay: 2.4, // Grundrate, mal Level-Faktor, Marktnachfrage und Betonnung
     levy: 0.015, // Anteil am Frachtwert, der als Abgabe an die Verwaltung (also an dich) geht
     patience: 75, // Sekunden, die ein Schiff vor der Einfahrt wartet, bevor es abdreht und die Fracht auf die Bahn geht
-    maxQueue: 7, // so viele Schiffe warten je Ende; weitere drehen sofort ab
+    bay: 1, // Warteplatz an jedem Ende: so viele Schiffe warten anfangs (Rotlichter und Schlepper bauen ihn aus); weitere drehen sofort ab
+    tugSpeed: 0.12, // Schlepper: Tempo-Zuwachs je Stufe für grosse Schiffe (Tiefgang ab 2,6 m)
+    holdTimeout: 45, // Sekunden, die ein Schiff in einer Kreuzungsstelle höchstens wartet
     downFactor: 1.15, upFactor: 0.85, // talwärts schneller als bergwärts
     gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
     enterGap: 3.0,
@@ -85,6 +87,8 @@ export const CONFIG = {
     maxShips: 28,
     marketSpread: 0.2,
   },
+  // Kreuzungsstellen: Zonen in der Rinne, in denen zwei Schiffe aneinander vorbeikommen (genug Platz für zwei Rinnen). baseMax + Rotlichter = so viele dürfen ausgewiesen werden
+  zones: { baseMax: 1, width: 3, cost: 3000 },
   // Markt: Frachtpreise schwanken (Mean-Reversion + Ereignisse); hohe Preise locken mehr Schiffe dieser Fracht an
   market: { sigma: 0.07, revert: 0.1, minRatio: 0.45, maxRatio: 2.2, history: 24 },
   // Frachtaufträge der Reedereien: X Tonnen einer Fracht bis zu einem Termin durchbringen = Prämie
@@ -132,6 +136,8 @@ export const BASE_STATS = {
   trafficMult: 1, // Betonnung & Leuchtfeuer: mehr Schiffe
   vts: 0, // Verkehrsleitsystem: schnellere Bergung, kleinere Abstände
   pilot: 0, // Lotsendienst: höhere Gebühren
+  signals: 0, // Rotlichter: mehr Kreuzungsstellen und Warteplatz
+  tugs: 0, // Schlepper: Warteplatz und schnellere grosse Schiffe
   loeffel: 0, // Löffelbagger-Stufe (0 = nicht vorhanden)
   betonrohr: 0, // Betoniergerät-Stufe
   pourPower: 0, // m³/s Beton, die das Gerät ausbringt
@@ -160,6 +166,8 @@ export const UPGRADES = {
   dewater: { group: 'plant', name: 'Entwässerung', desc: 'Trockeneres Material: Entsorgung wird günstiger', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.disposalFactor = Math.max(0.4, 1 - l * 0.15); } },
   sorter: { group: 'plant', name: 'Sortieranlage', desc: 'Kies und Sand besser verkaufen', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.sortBonus = 1 + l * 0.2; } },
   beacons: { group: 'traffic', name: 'Betonnung & Leuchtfeuer', desc: 'Sicher auch bei Nacht: mehr Schiffe pro Tag', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.trafficMult = 1 + l * 0.18; } },
+  signals: { group: 'traffic', name: 'Rotlichter (Signalanlage)', desc: 'Regeln den Gegenverkehr: eine Kreuzungsstelle mehr und ein Schiff mehr im Warteplatz je Stufe', maxLevel: 3, baseCost: 9000, growth: 1.7, apply: (s, l) => { s.signals = l; } },
+  tugs: { group: 'traffic', name: 'Schlepper', desc: 'Halten Schiffe im Warteplatz (ein Platz mehr je Stufe) und beschleunigen grosse Schiffe (Tiefgang ab 2,6 m)', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.tugs = l; } },
   vts: { group: 'traffic', name: 'Verkehrsleitsystem', desc: 'Kürzere Abstände, schnellere Bergung bei Havarien', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.vts = l; } },
   pilot: { group: 'traffic', name: 'Lotsendienst', desc: 'Höhere Gebühren pro Schiff', maxLevel: 3, baseCost: 10000, growth: 1.7, apply: (s, l) => { s.pilot = l; } },
 };
@@ -198,21 +206,21 @@ export const LEVELS = [
     id: 'hochrhein', name: 'Hochrhein: Basel–Birsfelden', short: 'Hochrhein',
     blurb: 'Der Klassiker: breiter Fluss, ein paar Barren, ein harmloser Felsriegel. Erst kommen nur Kähne durch, mit Baggern kommen Tanker und Containerschiffe.',
     river: { halfWidth: 6.8, depthMax: 2.4, rockDepth: 6.4, meander: 2.4, bars: [{ x: 9, w: 3.5, raise: 0.5 }, { x: 22, w: 4, raise: 0.55 }, { x: 36, w: 3.5, raise: 0.45 }], ridges: [{ x: 30, w: 4, depth: 4.3 }], shoals: 5, altlast: 2, hardBlobs: 3, debris: 14 },
-    classes: ['kahn', 'motor', 'tank', 'container'], traffic: 1, goalTons: 80000, startMoney: 50000, deadlineDays: 120, turbidityMult: 1,
+    classes: ['kahn', 'motor', 'tank', 'container'], traffic: 1, goalTons: 70000, startMoney: 50000, deadlineDays: 120, turbidityMult: 1,
     palette: { water: [38, 120, 160], land: [96, 130, 78] },
   },
   {
     id: 'loreley', name: 'Mittelrhein: Loreley-Enge', short: 'Loreley',
     blurb: 'Schmal, felsig und viel Verkehr. Zwei Felsriegel sperren die Grossen aus: ohne Felsfräse kommt kein Schubverband durch, und an der Enge ist Gegenverkehr ein Thema.',
     river: { halfWidth: 5.6, depthMax: 2.3, rockDepth: 5.2, meander: 2.8, bars: [{ x: 7, w: 3, raise: 0.5 }, { x: 18, w: 3.5, raise: 0.5 }, { x: 38, w: 3, raise: 0.5 }], ridges: [{ x: 13, w: 4.5, depth: 3.6 }, { x: 30, w: 4, depth: 3.3 }], shoals: 4, altlast: 3, hardBlobs: 7, debris: 18 },
-    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.3, goalTons: 160000, startMoney: 55000, deadlineDays: 120, turbidityMult: 1.1,
+    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.3, goalTons: 110000, startMoney: 55000, deadlineDays: 120, turbidityMult: 1.1,
     palette: { water: [44, 104, 124], land: [92, 100, 84] },
   },
   {
     id: 'donau', name: 'Donau: Eisernes Tor', short: 'Eisernes Tor',
     blurb: 'Breiter Strom, harter Fels und alte Industrie am Ufer: viele Altlasten, viele Blindgänger. Wer hier den Schubverbänden die Rinne öffnet, verdient richtig.',
     river: { halfWidth: 7.4, depthMax: 2.6, rockDepth: 5.0, meander: 2.2, bars: [{ x: 8, w: 3.5, raise: 0.6 }, { x: 20, w: 4, raise: 0.6 }, { x: 33, w: 3.5, raise: 0.6 }], ridges: [{ x: 14, w: 4, depth: 3.5 }, { x: 27, w: 5, depth: 3.2 }, { x: 40, w: 3, depth: 3.6 }], shoals: 6, altlast: 6, hardBlobs: 8, debris: 22 },
-    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.5, goalTons: 260000, startMoney: 60000, deadlineDays: 130, turbidityMult: 1,
+    classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.5, goalTons: 160000, startMoney: 60000, deadlineDays: 130, turbidityMult: 1,
     palette: { water: [56, 110, 110], land: [108, 112, 80] },
   },
 ];

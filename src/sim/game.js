@@ -7,7 +7,7 @@ import { EVENTS } from './events.js';
 import { computeStats, upgradeCost } from './stats.js';
 import { createRng } from './rng.js';
 import { createMarket, stepMarket } from './market.js';
-import { createTraffic, updateTraffic } from './traffic.js';
+import { createTraffic, updateTraffic, maxZones, zoneClasses } from './traffic.js';
 import { processPlant, stockTotal } from './plant.js';
 import { updateContracts } from './contracts.js';
 import { createFleet, updateFleet } from './fleet.js';
@@ -41,6 +41,9 @@ export class Game {
     this.market = createMarket();
     this.traffic = createTraffic();
     this.fleet = createFleet();
+    this.zones = []; // Kreuzungsstellen: { id, x (Spalte der Mitte), w }
+    this.zoneSeq = 0;
+    this.unlocked = {}; // Schiffsklassen, die schon einmal fahren konnten
     this.contracts = [];
     this.contractSeq = 0;
     this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
@@ -114,12 +117,40 @@ export class Game {
     for (const cls of SHIPS) {
       if (!this.level.classes.includes(cls.id)) continue;
       const f = this.fair[cls.id], was = this.fairSig[cls.id];
-      if (was !== undefined && !silent && f.passable !== was) {
-        if (f.passable) { this.say(`Fahrrinne frei für ${cls.name}!`, 'good'); this.notify(`${cls.icon} Fahrrinne frei für ${cls.name}!`, 'good'); }
+      if (f.passable && !this.unlocked[cls.id]) {
+        this.unlocked[cls.id] = true;
+        if (!silent && was !== undefined) { this.say(`Neue Schiffsklasse freigeschaltet: ${cls.name}! Reedereien schicken ab jetzt solche Schiffe.`, 'good'); this.notify(`${cls.icon} ${cls.name} freigeschaltet: ab jetzt kommen solche Schiffe`, 'good'); }
+      } else if (was !== undefined && !silent && f.passable !== was) {
+        if (f.passable) { this.say(`Fahrrinne wieder frei für ${cls.name}.`, 'good'); }
         else if (!this.closed) this.say(`Rinne für ${cls.name} ist zu flach geworden (Pegel oder Verlandung).`, 'bad');
       }
       this.fairSig[cls.id] = f.passable;
     }
+  }
+
+  // Kreuzungsstelle ausweisen (Mitte in Spalte x): nur wo zwei Rinnen nebeneinander Platz haben; Anzahl begrenzt (Rotlichter erhöhen sie)
+  zoneBlock(x) {
+    const Z = CONFIG.zones;
+    if (this.status !== 'playing') return 'Spiel beendet';
+    if (x < 2 || x > this.river.cols - 3) return 'Zu nah am Rand';
+    if (this.zones.some((z) => Math.abs(z.x - x) < Z.width + 1)) return 'Zu nah an einer anderen Kreuzungsstelle';
+    if (this.zones.length >= maxZones(this)) return 'Mehr Kreuzungsstellen brauchen Rotlichter (Wasserstrasse ausbauen)';
+    if (!zoneClasses(this, { x, w: Z.width }).length) return 'Zu wenig Platz: hier passen keine zwei Rinnen nebeneinander (breiter oder tiefer baggern)';
+    if (this.money < Z.cost) return `Braucht ${Z.cost.toLocaleString('de-CH')} CHF`;
+    return null;
+  }
+  placeZone(x) {
+    if (this.zoneBlock(x)) return false;
+    this.money -= CONFIG.zones.cost;
+    this.zones.push({ id: ++this.zoneSeq, x, w: CONFIG.zones.width });
+    this.say(`Kreuzungsstelle bei Spalte ${x + 1} ausgewiesen (−${CONFIG.zones.cost} CHF)`, 'upgrade');
+    return true;
+  }
+  removeZone(id) {
+    const i = this.zones.findIndex((z) => z.id === id);
+    if (i < 0) return false;
+    this.zones.splice(i, 1);
+    return true;
   }
 
   // Beton zukaufen (m³): kostet CONFIG.concrete.price pro m³, Lager hat eine Obergrenze

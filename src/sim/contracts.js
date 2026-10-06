@@ -1,13 +1,13 @@
 import { CONFIG, SHIPS, cargoById, shipById } from '../config.js';
 import { priceOf } from './market.js';
+import { activeClasses } from './traffic.js';
 
 // Frachtaufträge: Eine Reederei will bis zu einem Termin X Tonnen einer Fracht durch deine Strecke bringen. Angenommen
 // zählt jedes Schiff mit dieser Fracht; geschafft = Prämie, verpasst = Konventionalstrafe.
 // status: 'offer' | 'active'
 export function makeContract(g) {
-  const C = CONFIG.contracts, classes = SHIPS.filter((s) => g.level.classes.includes(s.id));
-  // gern eine Klasse, die noch nicht fahren kann: der Auftrag ist dann der Grund, die Rinne zu vertiefen
-  const weights = classes.map((s) => (g.fair?.[s.id]?.passable ? 1 : 2));
+  const C = CONFIG.contracts, active = activeClasses(g), classes = active.length ? active : [SHIPS.find((s) => s.id === g.level.classes[0])]; // nur Klassen, die fahren können
+  const weights = classes.map(() => 1);
   let pick = g.rng() * weights.reduce((a, b) => a + b, 0), cls = classes[0];
   for (let i = 0; i < classes.length; i++) { pick -= weights[i]; if (pick <= 0) { cls = classes[i]; break; } }
   const cargo = cargoById(cls.cargo[Math.floor(g.rng() * cls.cargo.length)]);

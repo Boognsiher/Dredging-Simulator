@@ -1,6 +1,6 @@
 import { CONFIG, UPGRADES, SHIPS, shipById, cargoById } from '../config.js';
 import { upgradeCost } from './stats.js';
-import { waitingByClass } from './traffic.js';
+import { waitingByClass, bayCapacity, activeClasses } from './traffic.js';
 import { ratioOf } from './market.js';
 import { hireBlock, nextHireCost } from './fleet.js';
 
@@ -115,6 +115,10 @@ export class Advisor {
         text: () => 'Die Rinne verlandet immer wieder. Mit dem Betoniergerät (Ausrüstung) kannst du Boden und Ufer verhärten: weniger Schlick bei Hochwasser, die Böschung hält. Beton gibt es zum Kaufen, später mischt ihn das Betonwerk aus Kies und Sand.' },
       { id: 'mixer', prio: 47, when: () => game.stats.betonrohr > 0 && game.stats.mixer === 0 && game.totals.concreteBought >= 40,
         text: () => `Du kaufst viel Beton zu (${Math.round(game.totals.concreteSpend).toLocaleString('de-CH')} CHF bisher). Das Betonwerk mischt ihn aus eurem Kies und Sand für einen Bruchteil.` },
+      { id: 'bay', prio: 79, when: () => game.totals.turnedAway >= 6,
+        text: () => `Dein Warteplatz fasst nur ${bayCapacity(game)} Schiff${bayCapacity(game) > 1 ? 'e' : ''} je Seite: schon ${game.totals.turnedAway} Schiffe sind abgedreht. Rotlichter und Schlepper bauen ihn aus (Wasserstrasse ausbauen), die Schlepper machen grosse Schiffe auch schneller.` },
+      { id: 'zone', prio: 77, when: () => game.zones.length === 0 && game.day > 5 && game.totals.turnedAway + game.totals.rejected >= 4 && activeClasses(game).some((c) => !game.fair[c.id].twoWay && game.fair[c.id].cross?.some((v) => v)),
+        text: () => 'In der Einbahnrinne muss immer die Gegenseite warten. Weise eine Kreuzungsstelle aus (Knopf auf der Karte oder K): Dort, wo die Rinne breit und tief genug für zwei Schiffe ist, wartet eines und das andere fährt vorbei. Das bringt deutlich mehr Verkehr.' },
       { id: 'contract', prio: 58, when: () => game.contracts.some((c) => c.status === 'offer'),
         text: () => `Eine Reederei bietet dir einen Frachtauftrag an (Panel, Aufträge). Die Prämie gibt es nur, wenn die Schiffe rechtzeitig durchkommen, schau also, ob die Klasse schon fahren kann.` },
       { id: 'market', prio: 50, when: () => !!hot && game.day > 5,

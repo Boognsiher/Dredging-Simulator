@@ -8,7 +8,13 @@ import { fleetSites } from './fleet.js';
 // bis für ihre Klasse eine Fahrrinne da ist (sonst drehen sie nach `patience` Sekunden ab: Fracht geht auf die Bahn), fahren die Rinne ab
 // und zahlen beim Verlassen Gebühr + Anteil am Frachtwert. Reine Daten in g.traffic (speicherbar); Pfade sind abgeleitet und werden nicht gespeichert.
 // Zustände: 'queue' (wartet), 'sail' (fährt), 'grounded' (aufgelaufen), 'done' / 'left' (fertig, wird entfernt).
+// Neu: Es kommen nur Klassen, für die gerade eine Rinne frei ist (so schalten sich neue Klassen von selbst frei). Der Warteplatz an jedem Ende fasst
+// anfangs ein Schiff (Rotlichter und Schlepper bauen ihn aus). In einer Einbahnrinne dürfen sich Schiffe nur an ausgewiesenen Kreuzungsstellen
+// (g.zones, genug Platz für zwei Rinnen) begegnen: eines wartet dort, bis das andere in der Zone ist. Schlepper machen grosse Schiffe schneller.
 export const createTraffic = () => ({ ships: [], seq: 0, spawnIn: 5 });
+
+export const bayCapacity = (g) => CONFIG.traffic.bay + g.stats.signals + g.stats.tugs;
+export const maxZones = (g) => CONFIG.zones.baseMax + g.stats.signals;
 
 const rate = (g) => CONFIG.traffic.shipsPerDay * g.level.traffic * g.stats.trafficMult * (g.time < (g.strikeUntil ?? 0) ? 0.3 : 1);
 
@@ -19,25 +25,32 @@ function pickWeighted(items, weightOf, rng) {
   return items[items.length - 1];
 }
 
+// Klassen, die gerade fahren können (nur diese schicken Reedereien Schiffe)
+export const activeClasses = (g) => SHIPS.filter((s) => g.level.classes.includes(s.id) && (!g.fair || g.fair[s.id]?.passable));
+
 export function spawnShip(g) {
   const T = g.traffic, C = CONFIG.traffic, rng = g.rng;
-  const classes = SHIPS.filter((s) => g.level.classes.includes(s.id));
+  const classes = activeClasses(g);
+  if (!classes.length) return null;
   const demand = (s) => s.cargo.reduce((a, c) => a + Math.min(1.8, Math.max(0.5, ratioOf(g.market, c))), 0) / s.cargo.length;
   const cls = pickWeighted(classes, (s) => s.share * demand(s), rng);
   const cargo = cargoById(pickWeighted(cls.cargo, (c) => ratioOf(g.market, c) ** 2, rng));
   const dir = rng() < 0.5 ? 1 : -1;
-  if (T.ships.filter((s) => s.state === 'queue' && s.dir === dir).length >= C.maxQueue || T.ships.length >= C.maxShips) { g.totals.turnedAway++; return null; }
   const tons = Math.round((cls.tons * rng.range(0.7, 1)) / 10) * 10;
-  const ship = { id: ++T.seq, cls: cls.id, dir, cargo: cargo.id, tons, price: priceOf(g.market, cargo.id), state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one' };
+  const ship = { id: ++T.seq, cls: cls.id, dir, cargo: cargo.id, tons, price: priceOf(g.market, cargo.id), state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one', meets: [] };
+  if (T.ships.filter((x) => x.state === 'queue' && x.dir === dir).length >= bayCapacity(g) || T.ships.length >= C.maxShips) { // Warteplatz voll: das Schiff dreht ab
+    g.totals.turnedAway++; g.totals.lostValue += income(g, ship); g.today.rejected++;
+    return null;
+  }
   T.ships.push(ship);
   g.totals.spawned++;
   return ship;
 }
 
-const income = (g, ship) => {
+function income(g, ship) {
   const cls = shipById(ship.cls), k = 1 + 0.15 * g.stats.pilot;
   return Math.round(((cls.fee + CONFIG.traffic.levy * ship.tons * ship.price) * k) / 10) * 10;
-};
+}
 
 // Position eines fahrenden Schiffs auf seinem Pfad (Strecke s in Fahrtrichtung)
 export function shipPos(ship) {
@@ -54,6 +67,45 @@ export function queuePos(g, ship, rank) {
   return ship.dir > 0 ? { x: -0.3 - back, y, angle: 0 } : { x: g.river.cols + 0.3 + back, y, angle: Math.PI };
 }
 
+// Kreuzungsstellen: eine Zone (Mitte x, Breite CONFIG.zones.width) gilt für ein Schiffspaar, wenn beide Klassen dort Platz für zwei Rinnen haben
+export function zoneSupports(g, z, clsId) {
+  const cross = g.fair?.[clsId]?.cross;
+  if (!cross) return false;
+  for (let x = z.x - 1; x <= z.x + 1; x++) if (x < 0 || x >= g.river.cols || !cross[x]) return false;
+  return true;
+}
+export const zoneClasses = (g, z) => SHIPS.filter((s) => g.level.classes.includes(s.id) && zoneSupports(g, z, s.id));
+
+// Strecke s (in Fahrtrichtung gemessen), bei der ein Schiff auf seinem Pfad die Karten-Spalte x erreicht
+function sAtX(path, x, dir) {
+  const pts = path.points;
+  let sx = pts[pts.length - 1].s;
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].x >= x) { const a = pts[i - 1], b = pts[i], t = b.x > a.x ? (x - a.x) / (b.x - a.x) : 0; sx = a.s + t * (b.s - a.s); break; }
+  }
+  return dir > 0 ? sx : path.length - sx;
+}
+
+// Für ein einfahrendes Schiff und die Gegenverkehr-Schiffe in der Rinne je eine freie Kreuzungsstelle dazwischen suchen (sonst null = Einfahrt gesperrt)
+function assignMeets(g, ship, opposing, ships) {
+  const reserved = new Set(), used = new Set(), res = [], cls = shipById(ship.cls), entryX = ship.dir > 0 ? 0 : g.river.cols;
+  for (const s of ships) for (const m of s.meets ?? []) reserved.add(m.zone);
+  for (const o of opposing) {
+    if (o.state !== 'sail') return null; // aufgelaufene Schiffe versperren die Rinne
+    const xo = shipPos(o).x, oc = shipById(o.cls);
+    let best = null, bs = Infinity;
+    for (const z of g.zones) {
+      if (reserved.has(z.id) || used.has(z.id) || !zoneSupports(g, z, ship.cls) || !zoneSupports(g, z, o.cls)) continue;
+      if (!(ship.dir > 0 ? z.x < xo - 1 : z.x > xo + 1)) continue; // die Stelle muss zwischen Einfahrt und Gegenverkehr liegen
+      const score = Math.max(Math.abs(z.x - entryX) / cls.speed, Math.abs(xo - z.x) / oc.speed);
+      if (score < bs) { bs = score; best = z; }
+    }
+    if (!best) return null;
+    used.add(best.id); res.push({ zone: best.id, with: o.id });
+  }
+  return res;
+}
+
 export function updateTraffic(g, dt) {
   const T = g.traffic, C = CONFIG.traffic, ships = T.ships, vts = g.stats.vts;
   T.spawnIn -= dt;
@@ -65,6 +117,7 @@ export function updateTraffic(g, dt) {
     near[cls.id] = !!(pts && sites.some((site) => pts.some((p) => Math.hypot(p.x - site.x, p.y - site.y) < C.siteRadius)));
   }
   const sailing = () => ships.filter((s) => s.state === 'sail' || s.state === 'grounded');
+  const byId = new Map(ships.map((s) => [s.id, s]));
 
   for (const ship of ships) {
     if (ship.state !== 'sail' && ship.state !== 'grounded') continue;
@@ -83,7 +136,7 @@ export function updateTraffic(g, dt) {
       }
       continue;
     }
-    let v = cls.speed * (ship.dir > 0 ? C.downFactor : C.upFactor);
+    let v = cls.speed * (ship.dir > 0 ? C.downFactor : C.upFactor) * (cls.draught >= 2.6 ? 1 + C.tugSpeed * g.stats.tugs : 1); // Schlepper beschleunigen grosse Schiffe
     const p0 = shipPos(ship);
     if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow;
     let gapMin = Infinity;
@@ -94,6 +147,19 @@ export function updateTraffic(g, dt) {
     }
     const safe = C.gap * (1 - 0.15 * vts);
     if (gapMin < safe) v = 0; else if (gapMin < safe + 1.5) v *= (gapMin - safe) / 1.5;
+    if (ship.meets?.length) { // Begegnung an einer Kreuzungsstelle: wer zuerst da ist, wartet in der Zone, bis das andere Schiff eintrifft
+      for (const m of ship.meets) {
+        const z = g.zones.find((zz) => zz.id === m.zone), P = byId.get(m.with);
+        if (!z || !P || (P.state !== 'sail' && P.state !== 'grounded')) { m.done = true; continue; }
+        if (ship.dir > 0 ? p0.x > z.x + 0.2 : p0.x < z.x - 0.2) { m.done = true; continue; } // Zone durchfahren
+        const pp = P.path ? shipPos(P) : null;
+        if (!pp || Math.abs(pp.x - z.x) <= z.w / 2 + 0.5 || (P.dir > 0 ? pp.x > z.x : pp.x < z.x)) continue; // Gegner schon in oder hinter der Zone
+        const room = sAtX(ship.path, z.x, ship.dir) - ship.s;
+        v = Math.max(0, Math.min(v, (room - 0.05) / Math.max(dt, 1e-6)));
+        if (room < 0.4) { m.holdT = (m.holdT ?? 0) + dt; if (m.holdT > C.holdTimeout) { m.done = true; g.say('Lotse drängelt: ein Schiff fährt ohne Begegnung weiter (Chaos)', 'bad'); } }
+      }
+      ship.meets = ship.meets.filter((m) => !m.done);
+    }
     ship.s += v * dt;
     if (ship.s >= ship.path.length) {
       ship.state = 'done';
@@ -131,17 +197,20 @@ export function updateTraffic(g, dt) {
     }
     if (!open || !f?.passable || !f.path) continue;
     const lane = f.twoWay && !near[ship.cls] ? 'two' : 'one';
-    let ok = true;
+    let ok = true, meets = [];
     const sl = sailing();
-    for (const o of sl) {
-      if (o.dir === ship.dir && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2) { ok = false; break; }
-      if (lane === 'one' && o.dir !== ship.dir && o.lane === 'one') { ok = false; break; }
+    for (const o of sl) if (o.dir === ship.dir && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2) { ok = false; break; }
+    if (ok && lane === 'one') { // Einbahnrinne: Gegenverkehr nur mit freier Kreuzungsstelle dazwischen
+      const opposing = sl.filter((o) => o.dir !== ship.dir && o.lane === 'one');
+      if (opposing.length) { const a = assignMeets(g, ship, opposing, ships); if (a) meets = a; else ok = false; }
     }
     if (ok && lane === 'one' && sl.some((o) => o.dir === ship.dir && o.lane === 'one')) { // Gegenseite wartet schon lange: keine neuen Schiffe mehr nachschieben
       const oppWait = Math.max(0, ...queue.filter((o) => o.dir !== ship.dir && o.wait > 0 && g.fair?.[o.cls]?.passable).map((o) => o.wait));
       if (oppWait > C.switchAfter && oppWait > ship.wait) ok = false;
     }
     if (!ok) continue;
+    ship.meets = meets;
+    for (const m of meets) byId.get(m.with)?.meets?.push({ zone: m.zone, with: ship.id });
     ship.state = 'sail'; ship.s = 0; ship.lane = lane; ship.path = f.path;
   }
   T.ships = ships.filter((s) => s.state !== 'done' && s.state !== 'left');

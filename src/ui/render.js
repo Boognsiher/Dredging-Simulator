@@ -1,7 +1,7 @@
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 import { SLICE } from '../sim/slice.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById } from '../config.js';
-import { shipPos, queuePos } from '../sim/traffic.js';
+import { shipPos, queuePos, bayCapacity, zoneClasses } from '../sim/traffic.js';
 import { needDepth } from '../sim/fairway.js';
 import { Chain, drawChain } from './chain.js';
 import { groundedNear } from '../sim/tow.js';
@@ -85,6 +85,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   // Auswahl einer Schiffsklasse: wo fehlt Tiefe, wo läuft die günstigste Rinne
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
   if (sel) drawClassOverlay(ctx, game, sel);
+  drawZones(ctx, game, ui);
   drawShips(ctx, game, ui);
   drawFleet(ctx, game);
   if (sim) drawPontoon(ctx, game, sim, ui);
@@ -204,6 +205,27 @@ function drawPontoon(ctx, game, sim, ui) {
     const t = mapPx(ui.mapTarget.x, ui.mapTarget.y);
     ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
     ctx.moveTo(t.x - 14, t.y); ctx.lineTo(t.x + 14, t.y); ctx.moveTo(t.x, t.y - 14); ctx.lineTo(t.x, t.y + 14); ctx.stroke();
+  }
+}
+
+// Kreuzungsstellen (gelbgrün gestrichelt, rot wenn der Platz fehlt) und im Setz-Modus die Spalten, in denen eine möglich ist
+function drawZones(ctx, game, ui) {
+  const r = game.river, B = CONFIG.zones.width;
+  if (ui.zoneMode) {
+    for (let x = 2; x <= r.cols - 3; x++) {
+      if (!zoneClasses(game, { x, w: B }).length) continue;
+      ctx.fillStyle = 'rgba(160,230,90,.10)'; ctx.fillRect(OX + x * CELL, 0, CELL, H);
+      ctx.fillStyle = 'rgba(160,230,90,.8)'; ctx.fillRect(OX + x * CELL + 3, 0, CELL - 6, 7);
+    }
+    ctx.font = font(13); const t = 'Kreuzungsstelle: Spalte antippen (grün = genug Platz), bestehende antippen = entfernen', w = ctx.measureText(t).width + 16;
+    ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H - fs(13) - 14, w, fs(13) + 8); ctx.fillStyle = '#d6f5a8'; ctx.fillText(t, OX + 14, H - 12);
+  }
+  for (const z of game.zones ?? []) {
+    const cl = zoneClasses(game, z), ok = cl.length > 0, x0 = OX + (z.x - z.w / 2 + 0.5) * CELL;
+    ctx.fillStyle = ok ? 'rgba(160,230,90,.13)' : 'rgba(255,90,80,.16)'; ctx.fillRect(x0, 0, z.w * CELL, H);
+    ctx.strokeStyle = ok ? '#a6e65a' : '#ff7a6b'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+    ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.moveTo(x0 + z.w * CELL, 0); ctx.lineTo(x0 + z.w * CELL, H); ctx.stroke(); ctx.setLineDash([]);
+    ctx.font = font(12); ctx.textAlign = 'center'; const label = ok ? `Kreuzung ${cl.map((c) => c.icon).join('')}` : 'kein Platz mehr'; ctx.fillStyle = '#000b'; ctx.fillText(label, x0 + z.w * CELL / 2 + 1, 15); ctx.fillStyle = ok ? '#d6f5a8' : '#ffb4a8'; ctx.fillText(label, x0 + z.w * CELL / 2, 14); ctx.textAlign = 'start';
   }
 }
 

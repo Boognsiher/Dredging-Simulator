@@ -49,6 +49,7 @@ export class SliceSim {
     this.clog = 0;
     this.freeing = null;
     this.auto = { on: false, dir: 'sweep', error: null, errLeft: 0, startX: this.x, didWork: false };
+    this.autoPour = false; // Betonier-Automatik (Flotte, Betoniergerät)
     this.autoLand = false; // Land-Automatik: auch Zellen im Ausbaustreifen zählen als offen (Flotte, Löffelbagger)
     this.soundNoise = null; // überschreibt die Messungenauigkeit (Flottenpontons haben ein Peilgerät an Bord)
     this.autoRange = null; // [erste, letzte Zeile quer zum Fluss], auf die sich die Automatik beschränkt (Flotte: nur die Rinne), sonst null = alles im Korridor
@@ -146,7 +147,12 @@ export class SliceSim {
   // Ist die Spalte c des Fensters nach Peilung auf Solltiefe (oder gehört nicht zum Korridor)?
   _inZone(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)]); }
   _inLand(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)] || r.ext[r.idx(k, this.x0 + c)]); } // Korridor oder Ausbaustreifen (Land-Automatik)
-  _colOpen(c) { if (this.autoRange && (this.x0 + c < this.autoRange[0] || this.x0 + c > this.autoRange[1])) return false; return (this.autoLand ? this._inLand(c) : this._inZone(c)) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
+  // Betonier-Automatik: offen ist eine Querzeile, solange in einer Zelle des Kastens (Korridor oder Ausbaustreifen) die Betonschicht noch fehlt
+  _needsPour(c) {
+    const r = this.river, T = CONFIG.concrete.thickness;
+    return this.cols.some((k) => { const i = r.idx(k, this.x0 + c); return (r.zone[i] || r.ext[i]) && r.armor[i] < T * 0.9 && r.top[i] - r.rock[i] > T * 0.5; });
+  }
+  _colOpen(c) { if (this.autoRange && (this.x0 + c < this.autoRange[0] || this.x0 + c > this.autoRange[1])) return false; if (this.autoPour) return this._needsPour(c); return (this.autoLand ? this._inLand(c) : this._inZone(c)) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
   colDone(c) { return !this._colOpen(c); }
   allDone() { for (let c = this.auto.on ? this.autoFromCol() : 0; c < SLICE.cols; c++) if (this._colOpen(c)) return false; return true; }
   _openLeft() { for (let c = 0; c < this.autoFromCol(); c++) if (this._colOpen(c)) return c; return -1; }

@@ -1,11 +1,12 @@
 import { CONFIG, SHIPS, shipById } from '../config.js';
+import { toolAvailable } from './slice.js';
 
 // Flotte: gemietete Pontons arbeiten selbstständig. Jeder fährt zur nächsten Engstelle der Ausbauklasse, ankert, lässt die Automatik
 // mit dem passenden Gerät (Saugkopf, bei Fels der Löffel) auf die Solltiefe baggern und sucht danach die nächste offene Stelle.
 // Sie nutzen dieselbe Physik wie dein eigener Ponton (DredgeSim/SliceSim), nur ohne Anzeige. Das Ausbauziel ist eine Schiffsklasse
 // (Standard: die kleinste Klasse, die noch nicht fährt). Pontons ohne Arbeit warten und melden, was fehlt.
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
-export const createFleet = () => ({ units: [], seq: 0, goal: null, widen: false, widenW: CONFIG.fleet.widenRows });
+export const createFleet = () => ({ units: [], seq: 0, goal: null, pour: false, widen: false, widenW: CONFIG.fleet.widenRows });
 
 export const nextHireCost = (g) => CONFIG.fleet.costs[g.fleet.units.length] ?? null;
 
@@ -37,6 +38,7 @@ export function dismissUnit(g, id) {
   return true;
 }
 
+export function setPour(g, on) { g.fleet.pour = !!on; }
 export function setWiden(g, on, w) { g.fleet.widen = !!on; if (w) g.fleet.widenW = Math.max(1, Math.min(5, Math.round(w))); }
 export function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === clsId) ? clsId : null; }
 
@@ -68,7 +70,7 @@ export function openColumns(g, cls) {
 
 const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
 const overlaps = (res, c0) => res.some((s) => c0 < s.c0 + CONFIG.box.cols && s.c0 < c0 + CONFIG.box.cols);
-const skipKey = (s) => (s.land ? `L${s.col}${s.side}` : s.col);
+const skipKey = (s) => (s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
 
 // Land-Automatik: Spalten, in denen im Ausbaustreifen neben dem ursprünglichen Korridor noch Land über der Tiefe der Ausbauklasse liegt.
 // Pro Spalte und Ufer die ersten `widenW` Zeilen des Streifens (ext > 0); ursprünglicher Korridor = zone && !ext (umgewandeltes Land zählt nicht dazu).
@@ -128,12 +130,45 @@ function pickLand(g, u) {
   return { none: 'Alle Uferstellen sind vergeben' };
 }
 
+// Betonier-Automatik: Spalten der Rinne (höchste Klasse, die fährt) samt zwei Zeilen Böschung beiderseits, in denen die Betonschicht noch fehlt
+export function openPourColumns(g) {
+  const base = [...SHIPS.filter((s) => g.level.classes.includes(s.id) && g.fair?.[s.id]?.passable)].pop();
+  if (!base) return [];
+  const f = g.fair[base.id], r = g.river, T = CONFIG.concrete.thickness, lo = Math.floor((base.beam - 1) / 2), hi = base.beam - 1 - lo, out = [];
+  for (const p of f.nodes) {
+    let open = false; const rows = [];
+    for (let k = p.y - lo - 2; k <= p.y + hi + 2; k++) {
+      if (k < 0 || k >= r.rows) continue;
+      rows.push(k);
+      const i = k * r.cols + p.x;
+      if ((r.zone[i] || r.ext[i]) && r.armor[i] < T * 0.9 && r.top[i] - r.rock[i] > T * 0.5) open = true;
+    }
+    if (open) out.push({ x: p.x, y: p.y + (hi - lo) / 2 + 0.5, rows, cls: base.id });
+  }
+  return out;
+}
+
+function pickPour(g, u) {
+  if (!g.fleet.pour) return { none: 'Betonieren ist aus' };
+  if (g.stats.betonrohr <= 0) return { none: 'Betonieren braucht das Betoniergerät' };
+  if (g.concrete < 8) return { none: 'Kein Beton im Lager (kaufen oder Betonwerk)' };
+  const open = openPourColumns(g), res = reservedBy(g, u), B = CONFIG.box.cols;
+  if (!open.length) return { none: 'Rinne ist betoniert' };
+  for (const c of open) {
+    if (u.skip[`P${c.x}`] && g.time < u.skip[`P${c.x}`]) continue;
+    const c0 = Math.min(Math.max(0, c.x), g.river.cols - B);
+    if (overlaps(res, c0)) continue;
+    return { pour: true, c0, col: c.x, y: c.y, rows: c.rows, cls: c.cls, depth: CONFIG.echolot.defaultDepth, tool: 'beton', rock: false };
+  }
+  return { none: 'Alle Betonierstellen sind vergeben' };
+}
+
 function pickSite(g, u) {
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
-  const order = landRole ? [pickLand, pickLane] : [pickLane, pickLand];
-  let first = null;
-  for (const f of order) { const s = f(g, u); if (!s.none) return s; first ??= s; }
-  return first;
+  const order = [...(landRole ? [pickLand, pickLane] : [pickLane, pickLand]), pickPour];
+  const msgs = [];
+  for (const f of order) { const s = f(g, u); if (!s.none) return s; msgs.push(s); }
+  return msgs.filter((m) => !/ist aus$/.test(m.none)).pop() ?? msgs[0]; // zuletzt aktive Meldung (zeigt, woran es hängt)
 }
 
 function makeSim(g, u) {
@@ -145,7 +180,7 @@ function makeSim(g, u) {
 
 function stepUnit(g, u, dt) {
   const sim = (u.sim ??= makeSim(g, u));
-  sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom;
+  sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom; sim.concreteAvail = g.concrete;
   let inp = { dx: 0, dy: 0, suction: false };
   if (u.state === 'idle') {
     u.idle -= dt;
@@ -174,11 +209,12 @@ function stepUnit(g, u, dt) {
         else {
           sim.x = goal.x; sim.y = goal.y; // ganzzahlig: der Kasten beginnt dann genau bei c0
           sim.targetDepth = s.depth; sim.pumpSpeed = 1;
-          sim.tool = s.tool === 'loeffel' && g.stats.loeffel > 0 ? 'loeffel' : 'pump';
+          sim.tool = toolAvailable(g.stats, s.tool) ? s.tool : 'pump';
           if (sim.anchor()) {
             const sl = sim.slice;
             sl.soundNoise = CONFIG.fleet.soundNoise; sl.sound();
-            if (s.land) { sl.autoLand = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; } // nur der Uferstreifen
+            if (s.pour) { sl.autoPour = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; }
+            else if (s.land) { sl.autoLand = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; } // nur der Uferstreifen
             else {
               const lane = g.fair[s.cls], cls = shipById(s.cls), lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo;
               let r0 = Infinity, r1 = -Infinity;
@@ -187,7 +223,7 @@ function stepUnit(g, u, dt) {
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();
-            u.state = 'work'; u.workT = 0; u.note = s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
+            u.state = 'work'; u.workT = 0; u.note = s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
           } else { u.skip[skipKey(s)] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         }
       } else if (dist > 1e-6) {
@@ -197,10 +233,12 @@ function stepUnit(g, u, dt) {
   } else if (u.state === 'work') {
     u.workT += dt;
     if (sim.mode === 'slice' && !sim.pumpOn && sim.slice.auto.on && sim.slice.tipped <= 0) { sim.pumpOn = true; sim.autoStartedPump = true; } // nach dem Kippen schaltet die Mannschaft die Pumpe wieder ein
-    const limit = u.site?.land ? 420 : 140; // Landabtrag ist viel Material
-    if (sim.mode !== 'slice' || !sim.slice.auto.on || u.workT > limit) {
+    const limit = u.site?.land ? 420 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
+    const noConcrete = u.site?.pour && g.concrete <= 0.05;
+    if (noConcrete) u.note = 'Kein Beton mehr im Lager';
+    if (sim.mode !== 'slice' || !sim.slice.auto.on || u.workT > limit || noConcrete) {
       if (u.workT > limit && u.site) u.skip[skipKey(u.site)] = g.time + 90; // hängt fest (z. B. Fels): später wieder versuchen
-      sim.leave(); u.state = 'idle'; u.idle = 0; u.note = 'sucht nächste Stelle';
+      sim.leave(); u.state = 'idle'; u.idle = noConcrete ? CONFIG.fleet.idleRetry : 0; if (!noConcrete) u.note = 'sucht nächste Stelle';
     }
   }
   const d = sim.update(dt, inp);

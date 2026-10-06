@@ -2,7 +2,8 @@ import { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, car
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass } from './sim/traffic.js';
-import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, targetClass } from './sim/fleet.js';
+import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, targetClass } from './sim/fleet.js';
+import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { TowSim, groundedNear } from './sim/tow.js';
 import { toolName } from './sim/dredge.js';
 import { priceOf, trend } from './sim/market.js';
@@ -55,6 +56,7 @@ sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false;
+let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
 const curMode = () => (tow ? 'tow' : sim.mode);
 const narrow = () => matchMedia('(max-width: 860px)').matches;
@@ -86,7 +88,7 @@ function updateClassbar() {
     b.classList.toggle('ok', !!f?.passable); b.classList.toggle('on', classSel === id);
     const small = b.querySelector('small'), w = b.querySelector('.wait');
     const need = needDepth(cls).toFixed(1);
-    small.textContent = !f ? '' : f.passable ? `${need} m · frei${f.twoWay ? ' · ⇄' : ''}` : f.volume === Infinity ? `${need} m · Korridor zu schmal` : `${need} m · fehlt ${num(f.volume)} m³`;
+    small.textContent = !f ? '' : f.passable ? `${need} m · frei${f.twoWay ? ' · ⇄' : ''}` : `${game.unlocked[id] ? '⚠ gesperrt' : '🔒'} ${need} m · ${f.volume === Infinity ? 'Korridor zu schmal' : `fehlt ${num(f.volume)} m³`}`;
     w.hidden = !(wait[id] > 0); w.textContent = wait[id] ?? '';
   }
 }
@@ -195,6 +197,35 @@ function updateMarket() {
   }));
 }
 
+let trafficSig = null;
+function updateTrafficPanel() {
+  const st = game.stats, cap = bayCapacity(game), mz = maxZones(game);
+  const sig = JSON.stringify([cap, mz, game.zones.map((z) => [z.id, z.x, zoneClasses(game, z).length]), zoneMode, game.totals.turnedAway, st.signals, st.tugs, Math.floor(game.money / 500)]);
+  if (sig === trafficSig) return;
+  trafficSig = sig;
+  const box = $('trafficpanel');
+  const rows = game.zones.map((z) => { const cl = zoneClasses(game, z); return `<div class="unit"><div><b>Kreuzung bei Spalte ${z.x + 1}</b> <small>${cl.length ? cl.map((c) => c.icon).join(' ') + ' können sich hier begegnen' : 'kein Platz mehr für zwei Rinnen'}</small></div><button data-zone="${z.id}">Entfernen</button></div>`; }).join('');
+  box.innerHTML = `<div>Warteplatz: <b>${cap}</b> Schiff${cap > 1 ? 'e' : ''} je Seite · Kreuzungsstellen <b>${game.zones.length}/${mz}</b></div>
+    <small>Wer keinen Platz im Warteplatz findet, dreht ab (bisher ${game.totals.turnedAway}). Rotlichter (Signalanlage) und Schlepper bauen den Warteplatz aus, Rotlichter erlauben weitere Kreuzungsstellen, Schlepper machen grosse Schiffe schneller. In einer Kreuzungsstelle (genug Platz für zwei Rinnen) warten Schiffe aufeinander und fahren dann aneinander vorbei, auch in einer Einbahnrinne.</small>
+    ${rows}<button id="btn-zone2" class="primary">${zoneMode ? '✔ Fertig (K)' : `↔ Kreuzungsstelle setzen oder entfernen (${chf(CONFIG.zones.cost)}, K)`}</button>`;
+  $('btn-zone2').onclick = toggleZoneMode;
+  for (const b of box.querySelectorAll('[data-zone]')) b.onclick = () => { game.removeZone(+b.dataset.zone); trafficSig = null; updateTrafficPanel(); };
+}
+function toggleZoneMode() {
+  if (tow || sim.mode !== 'map') { toast('Kreuzungsstellen setzt du auf der Karte', 'info', true); return; }
+  zoneMode = !zoneMode; ui.zoneMode = zoneMode; trafficSig = null; mapTarget = null;
+  $('btn-zone').textContent = zoneMode ? '✔ Kreuzungsstellen: fertig (K)' : '↔ Kreuzungsstelle setzen (K)';
+  updateTrafficPanel();
+  if (zoneMode) toast('Spalte antippen: grün = genug Platz für zwei Rinnen', 'info', true);
+}
+function zoneClick(px, py) {
+  void py;
+  const x = Math.floor((px - OX) / CELL), near = game.zones.find((z) => Math.abs(z.x - x) <= 1);
+  if (near) { game.removeZone(near.id); toast('Kreuzungsstelle entfernt', 'info', true); }
+  else { const why = game.zoneBlock(x); if (why) toast(why, 'bad', true); else if (game.placeZone(x)) toast('Kreuzungsstelle ausgewiesen', 'good', true); }
+  trafficSig = null; updateTrafficPanel();
+}
+
 let concreteSig = null;
 function updateConcrete() {
   const C = CONFIG.concrete, st = game.stats;
@@ -215,7 +246,7 @@ function updateConcrete() {
 let fleetSig = null;
 function updateFleet() {
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, game.stats.betonrohr, Math.round(game.concrete / 10)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
@@ -224,9 +255,11 @@ function updateFleet() {
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
     <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
+    <label class="fleet-widen"><input type="checkbox" id="fleet-pour" ${F.pour ? 'checked' : ''} ${game.stats.betonrohr > 0 ? '' : 'disabled'}> Rinne betonieren (Betoniergerät und Beton nötig): freie Pontons verhärten Rinne und Böschung</label>
     <label class="fleet-goal">Ausbauziel <select id="fleet-goal">${opts}</select></label>
     <small>${cls ? `Aktuell: ${cls.icon} ${cls.name}` : 'Alle Klassen fahren'}</small>
     <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
+  $('fleet-pour').onchange = (e) => { setPour(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-widen').onchange = (e) => { setWiden(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-widthsel').onchange = (e) => { setWiden(game, F.widen, +e.target.value); fleetSig = null; updateFleet(); };
   $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
@@ -293,7 +326,7 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateToolButton(); updateTowButton(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+function updatePanel() { updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -388,6 +421,7 @@ function syncMode() {
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
+  $('btn-zone').hidden = mode !== 'map';
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
   if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
@@ -537,7 +571,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; tow = null;
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; zoneMode = false; ui.zoneMode = false; tow = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -563,10 +597,17 @@ addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); 
 
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
 readInput.onTap((px, py) => {
+  if (zoneMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { zoneClick(px, py); return; }
   if (sim.mode !== 'map' || paused || sheetOpen || overlayOpen()) return;
   mapTarget = { x: Math.min(game.river.cols, Math.max(0, (px - OX) / CELL)), y: Math.min(game.river.rows, Math.max(0, py / CELL)) };
 });
 $('btn-anchor').onclick = anchor;
+$('btn-zone').onclick = toggleZoneMode;
+canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfernt eine Kreuzungsstelle (Touch läuft über onTap)
+  if (!zoneMode || e.pointerType === 'touch' || sim.mode !== 'map' || tow) return;
+  const r = canvas.getBoundingClientRect();
+  zoneClick(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH);
+});
 $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
 $('btn-fix').onclick = fixAuto;
@@ -593,7 +634,7 @@ function frame(now) {
     const inMap = sim.mode === 'map';
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
-    if (tow) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    if (tow || zoneMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
     ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {
@@ -608,6 +649,7 @@ function frame(now) {
       if (!tow && readInput.tap('Space', 'Enter', 'KeyE')) anchor();
       if (!tow && readInput.tap('KeyV')) toggleTool();
       if (!tow && readInput.tap('KeyT')) startTow();
+      if (!tow && readInput.tap('KeyK')) toggleZoneMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
       if (readInput.tap('Escape', 'KeyQ')) leave();

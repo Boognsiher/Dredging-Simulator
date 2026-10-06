@@ -9,7 +9,7 @@ import { DredgeSim } from '../src/sim/dredge.js';
 import { createMarket, stepMarket, shockMarket, priceOf } from '../src/sim/market.js';
 import { processPlant, materialPrice } from '../src/sim/plant.js';
 import { Game } from '../src/sim/game.js';
-import { updateTraffic, spawnShip } from '../src/sim/traffic.js';
+import { updateTraffic, spawnShip, shipPos } from '../src/sim/traffic.js';
 import { computeStats, upgradeCost } from '../src/sim/stats.js';
 import { serializeGame, restoreGame } from '../src/sim/save.js';
 import { Advisor } from '../src/sim/advisor.js';
@@ -309,12 +309,15 @@ test('Verkehr: bei freier Rinne fahren Schiffe durch und zahlen', () => {
   assert.ok(g.money > m0 - 30 * 600, 'Verkehr deckt mindestens die Betriebskosten');
 });
 
-test('Verkehr: ohne Rinne warten Schiffe, drehen ab und das Geschäft geht verloren', () => {
+test('Verkehr: ohne befahrbare Rinne kommen gar keine Schiffe, ein Warteplatz mit Gegenverkehr wird knapp', () => {
   const g = emptyGame(3);
   g.river.setFlat(1.0, 9); g.analyze(true);
-  for (let i = 0; i < 12 * 20 * 20; i++) g.update(0.05);
+  for (let i = 0; i < 14 * 20 * 20; i++) g.update(0.05);
   assert.equal(g.totals.ships, 0);
-  assert.ok(g.totals.rejected > 3 && g.totals.lostValue > 0);
+  assert.equal(g.totals.spawned, 0, 'Reedereien schicken nur Klassen, die fahren können');
+  const h = emptyGame(3); h.traffic.spawnIn = 1e9;
+  for (let i = 0; i < 40; i++) spawnShip(h);
+  assert.ok(h.totals.turnedAway > 10 && h.totals.lostValue > 0, 'Warteplatz voll: Schiffe drehen ab');
 });
 
 test('Verkehr: Gegenverkehr in einer Einbahnrinne fährt nie gleichzeitig', () => {
@@ -859,4 +862,160 @@ test('Spielstand: Beton, Lager und Betonschicht überleben Speichern und Laden',
   const g2 = restoreGame(serializeGame(g));
   assert.ok(g2);
   assert.equal(g2.concrete, 12); assert.equal(g2.agg.kies, 5); assert.ok(Math.abs(g2.river.armor[100] - 0.2) < 1e-6); assert.equal(g2.fleet.widen, true);
+});
+
+// ---------- Freischaltung, Warteplatz, Kreuzungsstellen, Rotlichter, Schlepper ----------
+import { bayCapacity, maxZones, activeClasses, zoneClasses, queuePos } from '../src/sim/traffic.js';
+
+test('Freischaltung: nur befahrbare Klassen kommen, neue Klassen schalten sich mit der Rinne frei', () => {
+  const g = new Game(7, 'hochrhein'); g.traffic.spawnIn = 1e9; g.eventsOn = false;
+  assert.deepEqual(activeClasses(g).map((s) => s.id), ['kahn']);
+  const cls = new Set();
+  for (let i = 0; i < 150; i++) { const sh = spawnShip(g); if (sh) cls.add(sh.cls); g.traffic.ships.length = 0; }
+  assert.deepEqual([...cls], ['kahn']);
+  const r = g.river; r.setFlat(3.6, 9); g.analyze();
+  assert.ok(g.unlocked.tank && g.unlocked.container);
+  assert.ok(g.log.some((e) => /freigeschaltet/.test(e.text)));
+  const after = new Set();
+  for (let i = 0; i < 300; i++) { const sh = spawnShip(g); if (sh) after.add(sh.cls); g.traffic.ships.length = 0; }
+  assert.ok(after.has('tank') && after.has('container') && !after.has('schub'));
+});
+
+test('Warteplatz: fasst anfangs ein Schiff je Seite, Rotlichter und Schlepper bauen ihn aus', () => {
+  const g = emptyGame(8); g.traffic.spawnIn = 1e9;
+  assert.equal(bayCapacity(g), 1);
+  const count = () => g.traffic.ships.filter((s) => s.state === 'queue' && s.dir === 1).length;
+  for (let i = 0; i < 60; i++) spawnShip(g);
+  assert.ok(count() <= 1);
+  g.money = 1e6; g.buyUpgrade('signals'); g.buyUpgrade('tugs'); g.buyUpgrade('tugs');
+  assert.equal(bayCapacity(g), 4);
+  g.traffic.ships.length = 0;
+  for (let i = 0; i < 100; i++) spawnShip(g);
+  assert.ok(count() <= 4 && count() >= 2);
+  const q = g.traffic.ships.filter((s) => s.state === 'queue' && s.dir === 1);
+  assert.ok(queuePos(g, q[0], 0).x > queuePos(g, q[0], 1).x, 'Schiffe reihen sich auf');
+});
+
+function crossingGame(withZone, seed = 5) {
+  const g = new Game(seed, 'hochrhein'); g.eventsOn = false;
+  const r = g.river; r.setFlat(3, 9);
+  for (let x = 0; x < r.cols; x++) for (let y = 0; y < r.rows; y++) r.zone[r.idx(x, y)] = (x >= 18 && x <= 24 ? y >= 6 && y <= 17 : y >= 10 && y <= 13) ? 1 : 0; // einspurig, in der Mitte breit
+  g.fair = null; g.analyze(true);
+  if (withZone) { g.money = 1e6; g.buyUpgrade('signals'); g.zones = [{ id: 1, x: 21, w: 3 }]; }
+  return g;
+}
+
+test('Kreuzungsstelle: nur wo zwei Rinnen Platz haben, Kosten, Abstand und Höchstzahl', () => {
+  const g = crossingGame(false);
+  assert.ok(g.fair.kahn.cross[21] && !g.fair.kahn.cross[5]);
+  assert.match(g.zoneBlock(5), /Platz/);
+  assert.equal(g.zoneBlock(21), null);
+  const m0 = g.money;
+  assert.ok(g.placeZone(21));
+  assert.equal(g.money, m0 - CONFIG.zones.cost);
+  assert.match(g.zoneBlock(22), /nah/);
+  g.money = 1e6; g.river.zone.fill(1); g.analyze(true);
+  assert.match(g.zoneBlock(35), /Rotlichter/);
+  g.buyUpgrade('signals');
+  assert.equal(maxZones(g), 2);
+  assert.equal(g.zoneBlock(35), null);
+  assert.ok(g.removeZone(1) && g.zones.length === 0);
+  assert.deepEqual(zoneClasses(g, { x: 21, w: 3 }).map((s) => s.id), ['kahn', 'motor', 'tank', 'container'].filter((id) => g.fair[id].cross[20] && g.fair[id].cross[21] && g.fair[id].cross[22]));
+});
+
+test('Kreuzungsstelle: Gegenverkehr in der Einbahnrinne wird möglich, nie begegnen sich Schiffe ausserhalb der Zone', () => {
+  const run = (withZone) => {
+    const g = crossingGame(withZone);
+    let bad = 0;
+    for (let i = 0; i < 14 * 50 * 20; i++) {
+      g.update(0.05);
+      const sl = g.traffic.ships.filter((s) => s.state === 'sail' && s.lane === 'one' && s.path);
+      for (const a of sl) for (const b of sl) {
+        if (a.id >= b.id || a.dir === b.dir) continue;
+        const pa = shipPos(a), pb = shipPos(b);
+        if (Math.abs(pa.x - pb.x) < 1.2 && !(Math.abs(pa.x - 21) <= 2.6 && Math.abs(pb.x - 21) <= 2.6)) bad++;
+      }
+    }
+    return { ships: g.totals.ships, bad, rejected: g.totals.rejected + g.totals.turnedAway };
+  };
+  const off = run(false), on = run(true);
+  assert.equal(on.bad, 0, 'keine Begegnung ausserhalb der Zone');
+  assert.ok(on.ships > off.ships, `mit Zone mehr Schiffe: ${on.ships} vs ${off.ships}`);
+  assert.equal(off.bad, 0);
+});
+
+test('Kreuzungsstelle: Schiffe warten in der Zone auf den Gegner und fahren dann weiter', () => {
+  const g = crossingGame(true); g.traffic.spawnIn = 1e9;
+  const mk = (id, dir, s) => ({ id, cls: 'kahn', dir, cargo: 'kies', tons: 200, price: 18, state: 'sail', wait: 0, s, ground: 0, lane: 'one', path: g.fair.kahn.path, meets: [] });
+  const a = mk(1, 1, 0), b = mk(2, -1, 0);
+  a.meets = [{ zone: 1, with: 2 }]; b.meets = [{ zone: 1, with: 1 }];
+  g.traffic.ships.push(a, b);
+  let held = false, done = 0;
+  for (let i = 0; i < 20 * 120 && g.traffic.ships.length; i++) { g.update(0.05); g.traffic.spawnIn = 1e9; if (a.state === 'sail' && b.state === 'sail') { const pa = shipPos(a), pb = shipPos(b); if (Math.abs(pa.x - pb.x) < 1) { assert.ok(Math.abs(pa.x - 21) <= 2.6, 'Begegnung nur in der Zone'); held = true; } } }
+  assert.ok(held && g.totals.ships === 2);
+  void done;
+});
+
+test('Kreuzungsstelle: Einfahrt wird gesperrt, wenn keine freie Stelle zwischen Einfahrt und Gegner liegt', () => {
+  const g = crossingGame(false); g.traffic.spawnIn = 1e9;
+  const o = { id: 1, cls: 'kahn', dir: -1, cargo: 'kies', tons: 200, price: 18, state: 'sail', wait: 0, s: 5, ground: 0, lane: 'one', path: g.fair.kahn.path, meets: [] };
+  g.traffic.ships.push(o);
+  g.traffic.ships.push({ id: 2, cls: 'kahn', dir: 1, cargo: 'kies', tons: 200, price: 18, state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one', meets: [] });
+  g.update(0.05);
+  assert.equal(g.traffic.ships.find((s) => s.id === 2).state, 'queue', 'ohne Zone bleibt der Gegner draussen');
+  g.zones = [{ id: 1, x: 21, w: 3 }];
+  g.update(0.05);
+  assert.equal(g.traffic.ships.find((s) => s.id === 2).state, 'sail');
+  assert.equal(o.meets.length, 1);
+});
+
+test('Schlepper: grosse Schiffe fahren schneller, kleine nicht', () => {
+  const trip = (cls, tugs) => {
+    const g = emptyGame(9); g.river.setFlat(4.5, 9); g.analyze(true); g.traffic.spawnIn = 1e9; g.stats.tugs = tugs; g._stats = { ...g.stats, tugs };
+    g.traffic.ships.push({ id: 1, cls, dir: 1, cargo: 'kies', tons: 100, price: 18, state: 'sail', wait: 0, s: 0, ground: 0, lane: 'two', path: g.fair[cls].path, meets: [] });
+    let n = 0;
+    while (g.traffic.ships.length && n++ < 20000) { g.traffic.spawnIn = 1e9; g.update(0.05); }
+    return n;
+  };
+  assert.ok(trip('container', 3) < trip('container', 0) * 0.9);
+  assert.equal(trip('kahn', 3), trip('kahn', 0));
+});
+
+test('Spielstand: Kreuzungsstellen und Freischaltungen bleiben erhalten', () => {
+  const g = crossingGame(true);
+  const g2 = restoreGame(serializeGame(g));
+  assert.ok(g2 && g2.zones.length === 1 && g2.unlocked.kahn);
+});
+
+import { openPourColumns, setPour } from '../src/sim/fleet.js';
+test('Flotte betoniert die Rinne, verbraucht Beton und hört ohne Beton auf', () => {
+  const g = new Game(3, 'hochrhein'), r = g.river;
+  g.money = 1e6; for (const id of ['auto', 'auto', 'betonrohr', 'betonrohr', 'plant']) g.buyUpgrade(id);
+  g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn'; g.concrete = 400;
+  const n0 = openPourColumns(g).length;
+  assert.ok(n0 > 20);
+  setPour(g, true); hireUnit(g);
+  for (let i = 0; i < 14 * 40 * 20; i++) g.update(0.05);
+  let armored = 0; for (let i = 0; i < r.armor.length; i++) if (r.armor[i] > 0) armored++;
+  assert.ok(armored > 20 && g.totals.concreteUsed > 20 && g.concrete < 400);
+  assert.ok(openPourColumns(g).length < n0);
+  // ohne Beton: Pause mit Meldung
+  const h = new Game(3, 'hochrhein');
+  h.money = 1e6; for (const id of ['auto', 'betonrohr']) h.buyUpgrade(id);
+  h.traffic.spawnIn = 1e9; h.eventsOn = false; h.fleet.goal = 'kahn'; h.concrete = 0; setPour(h, true); hireUnit(h);
+  for (let i = 0; i < 14 * 10 * 20; i++) h.update(0.05);
+  assert.match(h.fleet.units[0].note, /Beton/);
+  assert.equal(h.totals.concreteUsed, 0);
+});
+
+test('Flotte betoniert nur mit Betoniergerät und wenn eingeschaltet', () => {
+  const g = new Game(3, 'hochrhein');
+  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn'; g.concrete = 100;
+  hireUnit(g);
+  for (let i = 0; i < 14 * 8 * 20; i++) g.update(0.05);
+  assert.equal(g.totals.concreteUsed, 0);
+  setPour(g, true);
+  for (let i = 0; i < 14 * 8 * 20; i++) g.update(0.05);
+  assert.match(g.fleet.units[0].note, /Betoniergerät|Engstelle|Rinne|Beton/);
+  assert.equal(g.totals.concreteUsed, 0, 'ohne Betoniergerät bleibt es beim Hinweis');
 });

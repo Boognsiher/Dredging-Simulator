@@ -32,6 +32,11 @@ Steuerung, Aufbau und Oberfläche folgen dem Seesanierungs-Spiel ([Romans-Altlas
 - **Flotte:** Mit der Automatik (Stufe 1 und höher) kannst du bis zu vier **Pontons mieten** (Panel «Flotte», Kosten steigen, Löhne pro Tag). Sie fahren selbstständig zur nächsten Engstelle des
   **Ausbauziels** (Klasse wählbar, Standard: die kleinste, die noch nicht fährt), ankern, baggern per Automatik auf Solltiefe (bei Fels mit dem Löffel, wenn vorhanden) und suchen danach die nächste Stelle.
   Du musst den Querschnitt nicht mehr öffnen; dein eigener Ponton bleibt frei steuerbar. Pontons ohne Arbeit melden, was fehlt (z. B. «Fels im Weg»). Ankernde Pontons bremsen den Verkehr.
+- **Freischaltung:** Reedereien schicken nur Schiffe, die gerade durch die Rinne passen. Eine neue Klasse schaltet sich frei, sobald für sie zum ersten Mal eine Rinne frei ist (Meldung); verlandet die Rinne wieder, bleiben die Schiffe aus («⚠ gesperrt» in der Klassenleiste) und kommen erst nach dem Nachbaggern zurück.
+- **Warteplatz:** An jedem Ende wartet anfangs **ein** Schiff; weitere drehen ab (entgangener Verdienst). **Rotlichter** (Signalanlage) und **Schlepper** bauen den Warteplatz um je ein Schiff pro Stufe aus.
+- **Kreuzungsstellen:** Auf der Karte (Knopf oder `K`) lassen sich Zonen ausweisen, wo die Rinne breit und tief genug für **zwei Rinnen nebeneinander** ist (grün markiert; Kosten 3000 CHF). In der Einbahnrinne warten sich Schiffe dort ab: das zuerst eingetroffene wartet in der Zone, bis das Gegenschiff eintrifft, dann fahren sie aneinander vorbei. Eine Einfahrt gegen den Verkehr ist nur erlaubt, wenn eine freie Kreuzungsstelle dazwischen liegt. Eine ist erlaubt, jede Stufe Rotlichter erlaubt eine weitere. Sind mehr Pontons oder Aufläufer im Weg, bleibt es bei Wartezeit.
+- **Schlepper:** Beschleunigen Schiffe ab 2,6 m Tiefgang um 12 % je Stufe und halten sie im Warteplatz.
+- **Flotte betoniert:** Mit «Rinne betonieren» verhärten freie Flottenpontons (Betoniergerät und Beton im Lager nötig) die Rinne der höchsten fahrenden Klasse samt zwei Zeilen Böschung beiderseits. Fehlt der Beton, melden sie es und warten.
 - **Land-Automatik:** In der Flotte lässt sich «Ufer verbreitern» einschalten (braucht den Löffelbagger, 1–5 Zeilen Breite wählbar). Der letzte gemietete Ponton baut dann selbstständig
   den Ausbaustreifen neben dem Korridor ab, bis die Tiefe der Ausbauklasse erreicht ist. So entstehen zusätzliche Korridorzellen für breitere Rinnen und Gegenverkehr. Das ist viel Material und dauert.
 - **Beton:** Das Betoniergerät (Upgrade, `V` wechselt das Gerät) verhärtet die oberste Sedimentschicht von Boden und Seiten (Leertaste bringt Beton aus, Kosten: Betonvorrat).
@@ -87,7 +92,7 @@ Das Spiel speichert automatisch im Browser (`localStorage`, Schlüssel `dredging
 Gespeichert werden Geld, Zeit, Upgrades, Markt, Schiffe, Aufträge, Flotte, Betonvorrat und die Flusssohle (mit Betonschicht) (Spielstände älterer Versionen werden nicht mehr geladen); die laufende Pontonfahrt nicht. Rekorde je Level stehen unter `dredging.levels`.
 
 ## Ideen für später
-Beton per Flotte ausbringen, Betonqualitäten, weitere Geräte (Eimerkettenbagger, Greifer), Tauchdrohne für Peilung und Abnahme, Kran-Minispiel für Wracks, Schleusen und Häfen als eigene Stationen, Kosten für Verklappung im Fluss, Jahreszeiten (Pegelkurve), weitere Flüsse.
+Frachtaufträge nach Klasse freischalten, Betonqualitäten, weitere Geräte (Eimerkettenbagger, Greifer), Tauchdrohne für Peilung und Abnahme, Kran-Minispiel für Wracks, Schleusen und Häfen als eigene Stationen, Kosten für Verklappung im Fluss, Jahreszeiten (Pegelkurve), weitere Flüsse.
 
 ## Einzeldatei zum Ausprobieren
 `dist/fahrrinne-frei.html` ist eine einzelne Datei, die per Doppelklick (ohne Server) im Browser läuft. Neu bauen mit `npm run build`.
