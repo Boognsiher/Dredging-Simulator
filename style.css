@@ -288,3 +288,7 @@ body.touch #classbar { padding-right: 58px; }
 #legend { display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 2px 10px 4px; font-size: 12px; color: var(--muted); }
 #legend i { display: inline-block; width: 18px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 @media (max-width: 860px) { #legend { display: none; } }
+#topbar { display: flex; align-items: center; gap: 6px; }
+#topbar #classbar { flex: 1; min-width: 0; }
+body.touch #topbar #btn-pause2 { position: static; flex: none; width: 46px; height: 46px; margin: 0 2px 0 0; }
+body.touch #classbar { padding-right: 4px; }

@@ -63,14 +63,14 @@ function buildClassbar() {
     const cls = shipById(id), b = document.createElement('button');
     b.className = 'cls'; b.dataset.id = id; b.title = `Taste ${k + 1}`;
     b.innerHTML = `<span class="wait" hidden></span><b><i class="dot" style="background:${cls.color}"></i>${cls.icon} ${cls.name}</b><small></small>`;
-    b.onclick = () => chooseClass(id, true);
+    b.onclick = () => chooseClass(id);
     nodes.push(b);
   });
   bar.replaceChildren(...nodes);
 }
-function chooseClass(id, setDepth = false) {
-  classSel = classSel === id && !setDepth ? null : id;
-  if (setDepth && sim.mode === 'slice') setDepthValue(Math.round((needDepth(shipById(id)) + 0.25) * 10) / 10);
+function chooseClass(id) {
+  if (sim.mode === 'slice') { classSel = id; setDepthValue(Math.round((needDepth(shipById(id)) + 0.25) * 10) / 10); } // im Querschnitt: Solltiefe für diese Klasse
+  else classSel = classSel === id ? null : id; // auf der Karte: Engstellen ein/aus
   ui.classSel = classSel;
   updateClassbar();
 }
@@ -280,7 +280,7 @@ function focusY(lh, h) {
   return ((sim.y * CELL) / lh) * h;
 }
 function panCanvas(dt) {
-  const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('classbar').offsetHeight}/${innerHeight}`;
+  const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('topbar').offsetHeight}/${innerHeight}`;
   if (sig !== layoutSig) { layoutSig = sig; fitCanvas(); }
   const stageW = $('stage').clientWidth, cw = parseFloat(canvas.style.width) || stageW, ch = parseFloat(canvas.style.height) || 0;
   if (zoom > 1 && sim.mode === 'slice') {
@@ -306,7 +306,7 @@ function fitCanvas() {
     if (cs.display === 'none' || cs.position !== 'static') continue;
     below += (el.id === 'shift-actions' ? el.scrollHeight : el.offsetHeight) + (el.id === 'touch-ui' ? 0 : parseFloat(cs.marginTop) + parseFloat(cs.marginBottom));
   }
-  const docTop = stage.getBoundingClientRect().top + scrollY - $('classbar').offsetHeight * 0; // die Klassenleiste zählt oben mit
+  const docTop = stage.getBoundingClientRect().top + scrollY - $('topbar').offsetHeight * 0; // die Klassenleiste zählt oben mit
   const stageW = stage.clientWidth;
   const portrait = narrow() && matchMedia('(orientation: portrait)').matches;
   zoom = 1; cropVis = null;
@@ -520,7 +520,7 @@ function frame(now) {
     const inMap = sim.mode === 'map';
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
-    for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k], !inMap);
+    for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {
       inp.suction = false;
       if (mapTarget) {

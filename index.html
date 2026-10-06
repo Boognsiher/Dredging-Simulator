@@ -22,7 +22,7 @@
 
   <main>
     <section id="stage">
-      <div id="classbar" aria-label="Schiffsklassen"></div>
+      <div id="topbar"><div id="classbar" aria-label="Schiffsklassen"></div><button id="btn-pause2" aria-label="Pause">⏸</button></div>
       <canvas id="canvas"></canvas>
       <div id="hints" aria-label="Steuerung"></div>
       <div id="legend" aria-label="Legende">
@@ -51,7 +51,6 @@
         <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
         <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="5.5" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
       </div>
-      <button id="btn-pause2" aria-label="Pause">⏸</button>
       <div id="toast"></div>
       <div id="overlay"></div>
       <div id="bruno" hidden></div>
