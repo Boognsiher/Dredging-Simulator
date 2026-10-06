@@ -8,6 +8,8 @@ export const PORT = {
   openCost: 30000, slots: 6, spread: 0.06, reserve: 5000, shipShare: 0.15,
   // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
   jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3 }, fee: { kies: 5, oel: 6 }, lateFactor: 0.5, bonusMax: 2 },
+  // Baugrund: Jeder Bauplatz ist unebenes Gelände (Höhen relativ zur Sollhöhe) und muss mit der Baumaschine planiert werden, bevor gebaut werden darf
+  site: { w: 5, h: 4, maxCarry: 4, fillCost: 35, autoCost: 70, act: 0.3, travel: 0.1 },
   machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 } },
   buildings: {
     kai: { name: 'Kai & Verladestation', icon: '🏗', cost: 12000, max: 1, text: 'Pflicht: Hier laden und entladen die Schiffe. Ohne Kai kein Handel.' },
@@ -23,7 +25,7 @@ export function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
   return {
     open: false, slots: Array(PORT.slots).fill(null), stock: { kies: 0, oel: 0 }, cost: { kies: 0, oel: 0 }, // cost = Einstandspreis je t (Durchschnitt)
-    auto: { kies: auto(), oel: auto() }, jobs: [], jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
+    auto: { kies: auto(), oel: auto() }, jobs: [], sites: Array(PORT.slots).fill(null), jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
   };
 }
 
@@ -43,7 +45,53 @@ export function openBlock(g) {
 export function openPort(g) {
   if (openBlock(g)) return false;
   g.money -= PORT.openCost; g.port.open = true; g.port.spent += PORT.openCost;
+  for (let i = 0; i < PORT.slots; i++) g.port.sites[i] = makeSite(g);
   g.say('Hafengelände erworben: Baue zuerst einen Kai mit Verladestation.', 'upgrade');
+  return true;
+}
+
+// ---------- Gelände planieren ----------
+function makeSite(g) {
+  const S = PORT.site, h = new Array(S.w * S.h).fill(0);
+  for (let i = 0; i < h.length; i++) h[i] = Math.round((g.rng() - 0.5) * 6); // -3..+3
+  const sum = h.reduce((a, v) => a + Math.abs(v), 0);
+  if (sum < 6) h[0] = 3, h[h.length - 1] = -3;
+  return { h, mx: 0, my: 0, carry: 0, busy: 0, ready: false };
+}
+export const siteWork = (site) => site.h.reduce((a, v) => a + Math.abs(v), 0);
+export const siteReady = (g, slot) => !!g.port.sites?.[slot]?.ready;
+// Ein Klick der Baumaschine auf Zelle (x, y): hohe Zelle abtragen (Ladung +1), tiefe Zelle auffüllen (Ladung −1, sonst Schüttgut aus dem Kieslager oder zugekauft)
+export function siteAct(g, slot, x, y) {
+  const S = PORT.site, p = g.port, site = p.sites?.[slot];
+  if (!site || site.ready || site.busy > 0 || x < 0 || y < 0 || x >= S.w || y >= S.h) return false;
+  const i = y * S.w + x, v = site.h[i];
+  if (v === 0) { // ebene Zelle: Ladung abkippen (geht ins Kieslager, falls vorhanden)
+    if (site.carry <= 0) return false;
+    site.carry--; if (capacity(g, 'kies') > 0) p.stock.kies = Math.min(capacity(g, 'kies'), p.stock.kies + 1);
+  } else if (v > 0) { if (site.carry >= S.maxCarry) return false; site.h[i]--; site.carry++; }
+  else {
+    if (site.carry > 0) site.carry--;
+    else if (p.stock.kies >= 1) p.stock.kies -= 1;
+    else { if (g.money < S.fillCost) return false; g.money -= S.fillCost; p.spent += S.fillCost; g.today.costs += S.fillCost; }
+    site.h[i]++;
+  }
+  site.busy = S.act + S.travel * (Math.abs(site.mx - x) + Math.abs(site.my - y)); site.mx = x; site.my = y;
+  if (siteWork(site) === 0) finishSite(g, site);
+  return true;
+}
+function finishSite(g, site) {
+  site.ready = true;
+  if (site.carry > 0 && capacity(g, 'kies') > 0) g.port.stock.kies = Math.min(capacity(g, 'kies'), g.port.stock.kies + site.carry); // Überschuss ins Kieslager
+  site.carry = 0;
+  g.say('Baugrund planiert: Hier kann jetzt gebaut werden.', 'upgrade');
+}
+export const autoLevelCost = (g, slot) => { const s = g.port.sites?.[slot]; return s && !s.ready ? Math.round(siteWork(s) * PORT.site.autoCost) : 0; };
+// Planierraupe samt Fahrer mieten: planiert den Platz sofort, kostet je Höheneinheit
+export function autoLevel(g, slot) {
+  const site = g.port.sites?.[slot], c = autoLevelCost(g, slot);
+  if (!site || site.ready || g.money < c || g.status !== 'playing') return false;
+  g.money -= c; g.port.spent += c; g.today.costs += c; site.h.fill(0); site.carry = 0; site.ready = true;
+  g.say(`Planierraupe hat Bauplatz ${slot + 1} geebnet (−${c.toLocaleString('de-CH')} CHF).`, 'upgrade');
   return true;
 }
 
@@ -52,6 +100,7 @@ export function buildBlock(g, slot, type) {
   if (!p.open) return 'Hafen noch nicht eröffnet';
   if (!B || slot < 0 || slot >= PORT.slots) return 'Ungültig';
   if (p.slots[slot]) return 'Platz ist belegt';
+  if (!siteReady(g, slot)) return 'Gelände muss erst planiert werden';
   if (type !== 'kai' && !hasKai(g)) return 'Zuerst einen Kai bauen';
   if (B.max && slotsOf(p, type).length >= B.max) return 'Gibt es nur einmal';
   if (g.money < B.cost) return `Braucht ${B.cost.toLocaleString('de-CH')} CHF`;
@@ -148,7 +197,8 @@ export function loadHit(g, quality) {
 }
 // Zeit vergeht: Mannschaft lädt den ersten Auftrag, die Frist läuft für alle
 export function updatePort(g, dt) {
-  const p = g.port; if (!p.jobs?.length) return;
+  const p = g.port; for (const st of p.sites ?? []) if (st && st.busy > 0) st.busy = Math.max(0, st.busy - dt);
+  if (!p.jobs?.length) return;
   for (const j of p.jobs) j.left -= dt;
   const first = p.jobs[0]; moveGoods(g, first, PORT.jobs.crewRate[first.cargo] * dt);
   for (let k = p.jobs.length - 1; k >= 0; k--) if (p.jobs[k].done >= p.jobs[k].tons - 1e-6) { finishJob(g, p.jobs[k]); p.jobs.splice(k, 1); }

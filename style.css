@@ -317,3 +317,5 @@ body.touch #classbar { padding-right: 4px; }
 .port-card .bar { height: 10px; background: #0007; border-radius: 5px; overflow: hidden; margin: 6px 0 2px; } .port-card .bar i { display: block; height: 100%; background: var(--accent); }
 .job { margin: 4px 0; } .track { position: relative; height: 26px; background: #34495e; border-radius: 6px; margin: 8px 0; overflow: hidden; }
 #pg-zone { position: absolute; top: 0; bottom: 0; background: #4bd16a; opacity: .85; } #pg-mark { position: absolute; top: -2px; bottom: -2px; width: 6px; margin-left: -3px; background: #fff; border-radius: 3px; }
+.site { display: grid; gap: 4px; margin: 8px 0; max-width: 360px; } .site .cell { padding: 10px 0; font-size: 18px; font-weight: 700; border-radius: 6px; }
+.site .hi { background: #8a3b32; } .site .lo { background: #2f5f9a; } .site .ok { background: #2f7a48; }

@@ -300,12 +300,14 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
   g.money = 0; const sec2 = g.shoreSections().find((q) => q.cells.length > 0); assert.ok(g.shoreBlock(sec2.side, sec2.part));
 });
 
-import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit } from '../src/sim/port.js';
+import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
   assert.ok(openBlock(g), 'ohne Motorschiff gesperrt');
   g.unlocked.motor = true;
   assert.ok(openPort(g));
+  assert.equal(build(g, 0, 'kai'), false, 'unebenes Gelände');
+  for (let i = 0; i < 6; i++) assert.ok(autoLevel(g, i));
   assert.equal(build(g, 1, 'kies'), false, 'ohne Kai kein Lager');
   assert.ok(build(g, 0, 'kai')); assert.ok(hasKai(g));
   assert.equal(build(g, 2, 'kai'), false, 'Kai nur einmal');
@@ -1323,4 +1325,22 @@ test('Flotte baut Rohstoffe mit Konzession ab, ohne Konzession nicht', () => {
   for (let i = 0; i < 14 * 20 * 20; i++) k.update(0.05);
   assert.equal(k.totals.premium, 0);
   assert.ok(DEPOSITS.length === 3);
+});
+
+test('Hafen: Gelände von Hand planieren (Abtrag und Auffüllen), Überschuss und Kosten', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.money = 100000; g.unlocked.motor = true; openPort(g);
+  const site = g.port.sites[0], S = PORT.site;
+  assert.ok(siteWork(site) > 0); assert.ok(g.port.sites.every((s) => s && !s.ready));
+  const m0 = g.money; let guard = 0;
+  while (!site.ready && guard++ < 500) {
+    let done = false;
+    for (let y = 0; y < S.h && !done; y++) for (let x = 0; x < S.w && !done; x++) { const v = site.h[y * S.w + x]; if ((v > 0 && site.carry < S.maxCarry) || (v < 0) || (v === 0 && site.carry >= S.maxCarry)) done = siteAct(g, 0, x, y); }
+    if (!done) { updatePort(g, 1); continue; }
+    updatePort(g, 5); // Maschine fertig
+  }
+  assert.ok(site.ready, 'planiert');
+  assert.ok(site.h.every((v) => v === 0));
+  assert.ok(m0 - g.money >= 0);
+  assert.equal(siteAct(g, 0, 0, 0), false, 'fertig: keine Aktion mehr');
+  assert.ok(autoLevelCost(g, 1) > 0); const c = autoLevelCost(g, 1), m1 = g.money; assert.ok(autoLevel(g, 1)); assert.equal(g.money, m1 - c);
 });

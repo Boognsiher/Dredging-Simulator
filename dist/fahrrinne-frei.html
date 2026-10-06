@@ -325,6 +325,8 @@ body.touch #classbar { padding-right: 4px; }
 .port-card .bar { height: 10px; background: #0007; border-radius: 5px; overflow: hidden; margin: 6px 0 2px; } .port-card .bar i { display: block; height: 100%; background: var(--accent); }
 .job { margin: 4px 0; } .track { position: relative; height: 26px; background: #34495e; border-radius: 6px; margin: 8px 0; overflow: hidden; }
 #pg-zone { position: absolute; top: 0; bottom: 0; background: #4bd16a; opacity: .85; } #pg-mark { position: absolute; top: -2px; bottom: -2px; width: 6px; margin-left: -3px; background: #fff; border-radius: 3px; }
+.site { display: grid; gap: 4px; margin: 8px 0; max-width: 360px; } .site .cell { padding: 10px 0; font-size: 18px; font-weight: 700; border-radius: 6px; }
+.site .hi { background: #8a3b32; } .site .lo { background: #2f5f9a; } .site .ok { background: #2f7a48; }
 
 </style>
 </head>
@@ -3244,6 +3246,8 @@ const PORT = {
   openCost: 30000, slots: 6, spread: 0.06, reserve: 5000, shipShare: 0.15,
   // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
   jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3 }, fee: { kies: 5, oel: 6 }, lateFactor: 0.5, bonusMax: 2 },
+  // Baugrund: Jeder Bauplatz ist unebenes Gelände (Höhen relativ zur Sollhöhe) und muss mit der Baumaschine planiert werden, bevor gebaut werden darf
+  site: { w: 5, h: 4, maxCarry: 4, fillCost: 35, autoCost: 70, act: 0.3, travel: 0.1 },
   machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 } },
   buildings: {
     kai: { name: 'Kai & Verladestation', icon: '🏗', cost: 12000, max: 1, text: 'Pflicht: Hier laden und entladen die Schiffe. Ohne Kai kein Handel.' },
@@ -3259,7 +3263,7 @@ function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
   return {
     open: false, slots: Array(PORT.slots).fill(null), stock: { kies: 0, oel: 0 }, cost: { kies: 0, oel: 0 }, // cost = Einstandspreis je t (Durchschnitt)
-    auto: { kies: auto(), oel: auto() }, jobs: [], jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
+    auto: { kies: auto(), oel: auto() }, jobs: [], sites: Array(PORT.slots).fill(null), jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
   };
 }
 
@@ -3279,7 +3283,53 @@ function openBlock(g) {
 function openPort(g) {
   if (openBlock(g)) return false;
   g.money -= PORT.openCost; g.port.open = true; g.port.spent += PORT.openCost;
+  for (let i = 0; i < PORT.slots; i++) g.port.sites[i] = makeSite(g);
   g.say('Hafengelände erworben: Baue zuerst einen Kai mit Verladestation.', 'upgrade');
+  return true;
+}
+
+// ---------- Gelände planieren ----------
+function makeSite(g) {
+  const S = PORT.site, h = new Array(S.w * S.h).fill(0);
+  for (let i = 0; i < h.length; i++) h[i] = Math.round((g.rng() - 0.5) * 6); // -3..+3
+  const sum = h.reduce((a, v) => a + Math.abs(v), 0);
+  if (sum < 6) h[0] = 3, h[h.length - 1] = -3;
+  return { h, mx: 0, my: 0, carry: 0, busy: 0, ready: false };
+}
+const siteWork = (site) => site.h.reduce((a, v) => a + Math.abs(v), 0);
+const siteReady = (g, slot) => !!g.port.sites?.[slot]?.ready;
+// Ein Klick der Baumaschine auf Zelle (x, y): hohe Zelle abtragen (Ladung +1), tiefe Zelle auffüllen (Ladung −1, sonst Schüttgut aus dem Kieslager oder zugekauft)
+function siteAct(g, slot, x, y) {
+  const S = PORT.site, p = g.port, site = p.sites?.[slot];
+  if (!site || site.ready || site.busy > 0 || x < 0 || y < 0 || x >= S.w || y >= S.h) return false;
+  const i = y * S.w + x, v = site.h[i];
+  if (v === 0) { // ebene Zelle: Ladung abkippen (geht ins Kieslager, falls vorhanden)
+    if (site.carry <= 0) return false;
+    site.carry--; if (capacity(g, 'kies') > 0) p.stock.kies = Math.min(capacity(g, 'kies'), p.stock.kies + 1);
+  } else if (v > 0) { if (site.carry >= S.maxCarry) return false; site.h[i]--; site.carry++; }
+  else {
+    if (site.carry > 0) site.carry--;
+    else if (p.stock.kies >= 1) p.stock.kies -= 1;
+    else { if (g.money < S.fillCost) return false; g.money -= S.fillCost; p.spent += S.fillCost; g.today.costs += S.fillCost; }
+    site.h[i]++;
+  }
+  site.busy = S.act + S.travel * (Math.abs(site.mx - x) + Math.abs(site.my - y)); site.mx = x; site.my = y;
+  if (siteWork(site) === 0) finishSite(g, site);
+  return true;
+}
+function finishSite(g, site) {
+  site.ready = true;
+  if (site.carry > 0 && capacity(g, 'kies') > 0) g.port.stock.kies = Math.min(capacity(g, 'kies'), g.port.stock.kies + site.carry); // Überschuss ins Kieslager
+  site.carry = 0;
+  g.say('Baugrund planiert: Hier kann jetzt gebaut werden.', 'upgrade');
+}
+const autoLevelCost = (g, slot) => { const s = g.port.sites?.[slot]; return s && !s.ready ? Math.round(siteWork(s) * PORT.site.autoCost) : 0; };
+// Planierraupe samt Fahrer mieten: planiert den Platz sofort, kostet je Höheneinheit
+function autoLevel(g, slot) {
+  const site = g.port.sites?.[slot], c = autoLevelCost(g, slot);
+  if (!site || site.ready || g.money < c || g.status !== 'playing') return false;
+  g.money -= c; g.port.spent += c; g.today.costs += c; site.h.fill(0); site.carry = 0; site.ready = true;
+  g.say(`Planierraupe hat Bauplatz ${slot + 1} geebnet (−${c.toLocaleString('de-CH')} CHF).`, 'upgrade');
   return true;
 }
 
@@ -3288,6 +3338,7 @@ function buildBlock(g, slot, type) {
   if (!p.open) return 'Hafen noch nicht eröffnet';
   if (!B || slot < 0 || slot >= PORT.slots) return 'Ungültig';
   if (p.slots[slot]) return 'Platz ist belegt';
+  if (!siteReady(g, slot)) return 'Gelände muss erst planiert werden';
   if (type !== 'kai' && !hasKai(g)) return 'Zuerst einen Kai bauen';
   if (B.max && slotsOf(p, type).length >= B.max) return 'Gibt es nur einmal';
   if (g.money < B.cost) return `Braucht ${B.cost.toLocaleString('de-CH')} CHF`;
@@ -3384,7 +3435,8 @@ function loadHit(g, quality) {
 }
 // Zeit vergeht: Mannschaft lädt den ersten Auftrag, die Frist läuft für alle
 function updatePort(g, dt) {
-  const p = g.port; if (!p.jobs?.length) return;
+  const p = g.port; for (const st of p.sites ?? []) if (st && st.busy > 0) st.busy = Math.max(0, st.busy - dt);
+  if (!p.jobs?.length) return;
   for (const j of p.jobs) j.left -= dt;
   const first = p.jobs[0]; moveGoods(g, first, PORT.jobs.crewRate[first.cargo] * dt);
   for (let k = p.jobs.length - 1; k >= 0; k--) if (p.jobs[k].done >= p.jobs[k].tons - 1e-6) { finishJob(g, p.jobs[k]); p.jobs.splice(k, 1); }
@@ -3401,7 +3453,7 @@ function portDay(g) {
   }
 }
 
-return { PORT: PORT, createPort: createPort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, buy: buy, sell: sell, machineOf: machineOf, portShip: portShip, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, createPort: createPort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, buy: buy, sell: sell, machineOf: machineOf, portShip: portShip, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 const { portShip } = __m(11);
@@ -4563,7 +4615,7 @@ return { setupTouch: setupTouch };
 },
 function(){
 const { CONFIG } = __m(1);
-const { PORT, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } = __m(11);
+const { PORT, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } = __m(11);
 const { priceOf, ratioOf } = __m(8);
 
 
@@ -4574,7 +4626,7 @@ const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
 const t = (n) => `${Math.round(n).toLocaleString('de-CH')} t`;
 
 function setupPort(root, getGame, onChange) {
-  let sig = '', pick = null, phase = 0, zone = 0.5, flashMsg = '', flashT = 0; // pick = Bauplatz, für den das Baumenü offen ist
+  let sig = '', pick = null, siteOpen = null, phase = 0, zone = 0.5, flashMsg = '', flashT = 0; // pick = Bauplatz, für den das Baumenü offen ist
   const hit = () => {
     const g = getGame(), M = PORT.machines[machineOf(g)], pos = 0.5 + 0.5 * Math.sin(phase), d = Math.abs(pos - zone) / (M.zone / 2);
     const q = d <= 1 ? 1 - d * 0.5 : 0, got = loadHit(g, q);
@@ -4590,6 +4642,8 @@ function setupPort(root, getGame, onChange) {
       const z = root.querySelector('#pg-zone'); z.style.left = `${(zone - M.zone / 2) * 100}%`; z.style.width = `${M.zone * 100}%`;
       flashT = Math.max(0, flashT - dt); const msg = root.querySelector('#pg-msg'); if (msg) msg.textContent = flashT > 0 ? flashMsg : '';
     }
+    const sb = root.querySelector('#site-busy'), ss = siteOpen !== null ? g.port.sites?.[siteOpen] : null;
+    if (sb && ss) sb.style.width = `${Math.min(100, (ss.busy / 1.2) * 100)}%`;
     for (const j of g.port.jobs ?? []) {
       const el = root.querySelector(`[data-job="${j.id}"]`); if (!el) continue;
       el.querySelector('.jb').style.width = `${(j.done / j.tons) * 100}%`; el.querySelector('.jl').textContent = Math.max(0, Math.round(j.left));
@@ -4603,7 +4657,8 @@ function setupPort(root, getGame, onChange) {
   addEventListener('keyup', (e) => { if (!root.hidden && e.code === 'Space') { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   const render = (force = false) => {
     const g = getGame(), p = g.port;
-    const s = JSON.stringify([p, Math.floor(g.money / 200), Object.keys(PORT.commodities).map((id) => Math.round(priceOf(g.market, id))), (p.jobs ?? []).map((j) => j.id), pick, !!g.unlocked.motor]);
+    const view = { ...p, jobs: (p.jobs ?? []).map((j) => j.id), sites: (p.sites ?? []).map((q) => q && { h: q.h, mx: q.mx, my: q.my, carry: q.carry, ready: q.ready }) };
+    const s = JSON.stringify([view, siteOpen, Math.floor(g.money / 200), Object.keys(PORT.commodities).map((id) => Math.round(priceOf(g.market, id))), pick, !!g.unlocked.motor]);
     if (s === sig && !force) return;
     sig = s;
     let h = `<div class="port-head"><h2>🏗 Hafen</h2><span class="port-money">${chf(g.money)}</span><button id="port-close">✕ Schliessen (H)</button></div>`;
@@ -4613,9 +4668,22 @@ function setupPort(root, getGame, onChange) {
         <p><small>Voraussetzung: das Motorschiff fährt schon durch die Rinne.</small></p>
         <button class="primary" data-act="open" ${b ? 'disabled' : ''}>Hafengelände erwerben · ${chf(PORT.openCost)}</button>${b ? `<small class="warn"> ${b}</small>` : ''}</div>`;
     } else {
+      if (siteOpen !== null && p.sites?.[siteOpen] && !p.sites[siteOpen].ready) {
+        const st = p.sites[siteOpen], S = PORT.site;
+        h += `<div class="port-card"><b>🚜 Bauplatz ${siteOpen + 1} planieren</b> <small>Rote Zellen sind zu hoch: anklicken trägt ab (Ladung wächst, max. ${S.maxCarry}). Blaue Zellen sind zu tief: anklicken füllt auf (mit Ladung, sonst Kies aus dem Lager oder ${S.fillCost} CHF Zukauf). Auf eine ebene Zelle klicken kippt Ladung ab. Wege zwischen Zellen kosten Zeit.</small>
+          <div class="site" style="grid-template-columns:repeat(${S.w},1fr)">${st.h.map((v, i) => `<button class="cell ${v > 0 ? 'hi' : v < 0 ? 'lo' : 'ok'}" data-act="cell" data-x="${i % S.w}" data-y="${Math.floor(i / S.w)}">${st.mx === i % S.w && st.my === Math.floor(i / S.w) ? '🚜' : v === 0 ? '·' : (v > 0 ? '+' : '') + v}</button>`).join('')}</div>
+          <div class="bar"><i id="site-busy" style="width:0%;background:#e0a040"></i></div><small>Ladung ${st.carry}/${S.maxCarry} · Rest ${siteWork(st)} Einheiten</small>
+          <div class="row"><button data-act="autolevel" data-slot="${siteOpen}" ${g.money < autoLevelCost(g, siteOpen) ? 'disabled' : ''}>Planierraupe mieten · ${chf(autoLevelCost(g, siteOpen))}</button><button class="ghost" data-act="siteclose">Schliessen</button></div></div>`;
+      }
       h += `<div class="port-plots">`;
       p.slots.forEach((sl, i) => {
-        if (!sl) { h += `<div class="plot empty"><b>Bauplatz ${i + 1}</b>${pick === i ? Object.entries(PORT.buildings).map(([k, B]) => { const bl = buildBlock(g, i, k); return `<button data-act="build" data-slot="${i}" data-type="${k}" ${bl ? 'disabled' : ''} title="${B.text} ${bl ?? ''}">${B.icon} ${B.name} · ${chf(B.cost)}</button>`; }).join('') + `<button data-act="pick" data-slot="-1">Abbrechen</button>` : `<button data-act="pick" data-slot="${i}">+ Bauen</button>`}</div>`; return; }
+        if (!sl) {
+          const st = p.sites?.[i], ready = st?.ready;
+          h += `<div class="plot empty"><b>Bauplatz ${i + 1}</b><small>${ready ? '✓ Gelände eben' : `Unebenes Gelände (${st ? siteWork(st) : '?'} Höheneinheiten)`}</small>`;
+          if (!ready) h += `<button data-act="site" data-slot="${i}">🚜 Planieren</button>`;
+          else h += pick === i ? Object.entries(PORT.buildings).map(([k, B]) => { const bl = buildBlock(g, i, k); return `<button data-act="build" data-slot="${i}" data-type="${k}" ${bl ? 'disabled' : ''} title="${B.text} ${bl ?? ''}">${B.icon} ${B.name} · ${chf(B.cost)}</button>`; }).join('') + `<button data-act="pick" data-slot="-1">Abbrechen</button>` : `<button data-act="pick" data-slot="${i}">+ Bauen</button>`;
+          h += `</div>`; return;
+        }
         const B = PORT.buildings[sl.type], cm = B.commodity, up = B.up && sl.level <= B.up.length;
         h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
           ${up ? `<button data-act="up" data-slot="${i}" ${upgradeBlock(g, i) ? 'disabled' : ''}>Ausbauen · ${chf(B.up[sl.level - 1])}</button>` : ''}<button class="ghost" data-act="demo" data-slot="${i}">Abreissen</button></div>`;
@@ -4645,7 +4713,7 @@ function setupPort(root, getGame, onChange) {
       }
       h += `<div class="port-card"><small>Schiffe mit Kies oder Öl laden bei Preis ≥ 100 % aus deinem Lager (du verkaufst, mit Aufschlag) und entladen bei tieferem Preis (du kaufst günstig); der Kai verdient pro Schiff zusätzlich eine Umschlaggebühr.<br>
         Bisher: ${p.ships} Schiffe umgeschlagen · ${t(p.handled)} · Handelserlös ${chf(p.earned)} · Einkäufe/Bauten ${chf(p.spent)} · Gebühren ${chf(p.fees)}${refundFrac(g) > 0 ? ` · Sanierung spart ${chf(p.refunded ?? 0)}` : ''}</small></div>
-        <div class="port-card"><small>Demnächst: Baumaschinen im Gelände (Planieren und Nivellieren), eigene Lagerhallen, Verträge mit Reedereien.</small></div>`;
+        <div class="port-card"><small>Demnächst: eigene Lagerhallen, Verträge mit Reedereien.</small></div>`;
     }
     root.innerHTML = h;
   };
@@ -4653,6 +4721,11 @@ function setupPort(root, getGame, onChange) {
     const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT') return;
     const g = getGame(), a = b.dataset.act, slot = +b.dataset.slot, id = b.dataset.id;
     if (a === 'hit') { hit(); return; }
+    if (a === 'site') siteOpen = slot;
+    else if (a === 'siteclose') siteOpen = null;
+    else if (a === 'autolevel') { autoLevel(g, slot); siteOpen = null; }
+    else if (a === 'cell') { siteAct(g, siteOpen, +b.dataset.x, +b.dataset.y); }
+    else
     if (a === 'open') openPort(g);
     else if (a === 'pick') pick = slot < 0 ? null : slot;
     else if (a === 'build') { if (build(g, slot, b.dataset.type)) pick = null; }
