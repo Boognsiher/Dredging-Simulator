@@ -201,6 +201,36 @@ export class Game {
     return true;
   }
 
+  // Naturschutzstreifen (Flachwasser am Ufer) abschnittsweise freikaufen: wird zum Baggerkorridor, die Rinne kann breiter werden
+  shoreSections() {
+    const r = this.river, P = CONFIG.zones.shoreParts, out = [];
+    for (let side = 0; side < 2; side++) for (let part = 0; part < P; part++) out.push({ side, part, cells: [] });
+    for (let x = 0; x < r.cols; x++) {
+      const part = Math.min(P - 1, Math.floor((x / r.cols) * P));
+      for (let y = 0; y < r.rows; y++) {
+        const i = r.idx(x, y);
+        if (r.isWater(i) && !r.zone[i] && r.ext[i] === 2) out[(y + 0.5 < r.centerY(x) ? 0 : P) + part].cells.push(i);
+      }
+    }
+    for (const sec of out) sec.cost = sec.cells.length * CONFIG.zones.shoreCell;
+    return out;
+  }
+  shoreBlock(side, part) {
+    const sec = this.shoreSections().find((q) => q.side === side && q.part === part);
+    if (!sec || !sec.cells.length) return 'Schon freigegeben';
+    if (this.status !== 'playing') return 'Spiel beendet';
+    return this.money < sec.cost ? `Braucht ${Math.round(sec.cost).toLocaleString('de-CH')} CHF` : null;
+  }
+  buyShore(side, part) {
+    if (this.shoreBlock(side, part)) return false;
+    const sec = this.shoreSections().find((q) => q.side === side && q.part === part), r = this.river;
+    for (const i of sec.cells) { r.zone[i] = 1; r.ext[i] = 0; }
+    this.money -= sec.cost; this.totals.shoreSpend = (this.totals.shoreSpend ?? 0) + sec.cost;
+    this.say(`Naturschutzstreifen freigegeben (−${Math.round(sec.cost)} CHF): ${sec.cells.length} Zellen sind jetzt Baggerkorridor.`, 'upgrade');
+    this.analyze(true);
+    return true;
+  }
+
   // Beton zukaufen (m³): kostet CONFIG.concrete.price pro m³, Lager hat eine Obergrenze
   concreteBlock(m3) {
     const C = CONFIG.concrete;

@@ -288,6 +288,18 @@ test('Trübungsbusse hängt vom Ort ab: Durchfahrt kaum, Altlast normal, Natursc
   void mid;
 });
 
+test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
+  const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 1e6;
+  const before = g.river.zone.reduce((a, v) => a + v, 0), secs = g.shoreSections();
+  assert.ok(secs.some((q) => q.cells.length > 0));
+  const sec = secs.find((q) => q.cells.length > 0), m0 = g.money;
+  assert.ok(g.buyShore(sec.side, sec.part));
+  assert.equal(g.money, m0 - sec.cost);
+  assert.equal(g.river.zone.reduce((a, v) => a + v, 0), before + sec.cells.length);
+  assert.equal(g.buyShore(sec.side, sec.part), false, 'zweimal kaufen geht nicht');
+  g.money = 0; const sec2 = g.shoreSections().find((q) => q.cells.length > 0); assert.ok(g.shoreBlock(sec2.side, sec2.part));
+});
+
 test('Ponton: bleibt im Wasser, ankert nur dort', () => {
   const r = flat(2); for (let y = 0; y < 5; y++) for (let x = 0; x < r.cols; x++) r.top[r.idx(x, y)] = r.wl + 1;
   const sim = new DredgeSim(r, computeStats({}), createRng(1));

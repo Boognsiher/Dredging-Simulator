@@ -389,6 +389,8 @@ body.touch #classbar { padding-right: 4px; }
       <div id="fairway"></div>
       <h2>Rohstoffgebiete</h2>
       <div id="deposits"></div>
+      <h2>Uferstreifen</h2>
+      <div id="shore"></div>
       <h2>Altlasten</h2>
       <div id="hazard"></div>
       <h2>Verkehr</h2>
@@ -658,6 +660,18 @@ function updateDeposits() {
   const eBtn = $('btn-explore'); if (eBtn) eBtn.onclick = () => { const d = game.explore(); if (d) { toast(`Gefunden: ${d.name} bei Spalte ${Math.round(d.cx) + 1}`, 'good', true); depositSig = null; updateDeposits(); updatePanel(); } };
 }
 
+let shoreSig = null;
+function updateShore() {
+  const secs = game.shoreSections(), sig = JSON.stringify([secs.map((q) => q.cells.length), Math.floor(game.money / 500)]);
+  if (sig === shoreSig) return;
+  shoreSig = sig;
+  const part = ['Oberlauf', 'Mittellauf', 'Unterlauf'], side = ['Nordufer', 'Südufer'], P = CONFIG.zones.shoreParts;
+  $('shore').innerHTML = `<small>Die Flachwasserstreifen am Ufer sind Naturschutzgebiet (hohe Bussen). Du kannst sie abschnittsweise freikaufen: Sie werden zum Baggerkorridor, die Rinne kann dort breiter werden (muss aber noch ausgebaggert werden).</small>` +
+    secs.map((q) => { const b = game.shoreBlock(q.side, q.part); return `<div class="unit"><div><b>${side[q.side]} · ${part[q.part] ?? 'Abschnitt ' + (q.part + 1)}</b> <small>${q.cells.length ? q.cells.length + ' Zellen geschützt' : '✓ freigegeben'}</small></div>${q.cells.length ? `<button data-shore="${q.side}:${q.part}" ${b ? 'disabled' : ''} title="${b ?? ''}">${chf(q.cost)}</button>` : ''}</div>`; }).join('');
+  for (const b of $('shore').querySelectorAll('[data-shore]')) b.onclick = () => { const [s, p] = b.dataset.shore.split(':').map(Number); if (game.buyShore(s, p)) { shoreSig = null; updateShore(); updatePanel(); toast('Uferstreifen freigegeben', 'good', true); } };
+  void P;
+}
+
 let hazardSig = null;
 function updateHazard() {
   const r = game.river, sum = r.altlastSummary(), price = Math.abs(CONFIG.materials[KIND.altlast].price * game.stats.disposalFactor);
@@ -811,7 +825,7 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateDeposits(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+function updatePanel() { updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -1394,7 +1408,10 @@ const CONFIG = {
     marketSpread: 0.2,
   },
   // Kreuzungsstellen: Zonen in der Rinne, in denen zwei Schiffe aneinander vorbeikommen (genug Platz für zwei Rinnen). baseMax + Rotlichter = so viele dürfen ausgewiesen werden
-  zones: { baseMax: 1, width: 3, cost: 3000 },
+  zones: {
+    // Naturschutzstreifen freikaufen: CHF pro Zelle, Abschnitte (Oberlauf, Mittellauf, Unterlauf) je Ufer
+    shoreCell: 350, shoreParts: 3,
+    baseMax: 1, width: 3, cost: 3000 },
   // Markt: Frachtpreise schwanken (Mean-Reversion + Ereignisse); hohe Preise locken mehr Schiffe dieser Fracht an
   market: { sigma: 0.07, revert: 0.1, minRatio: 0.45, maxRatio: 2.2, history: 24 },
   // Frachtaufträge der Reedereien: X Tonnen einer Fracht bis zu einem Termin durchbringen = Prämie
@@ -1760,6 +1777,36 @@ class Game {
     const d = this.river.deposits[id - 1];
     this.money -= d.cost; d.owned = true;
     this.say(`Konzession für ${d.name} erworben (−${d.cost} CHF): Aufschlag ×${d.mult} auf den Abbau.`, 'upgrade');
+    return true;
+  }
+
+  // Naturschutzstreifen (Flachwasser am Ufer) abschnittsweise freikaufen: wird zum Baggerkorridor, die Rinne kann breiter werden
+  shoreSections() {
+    const r = this.river, P = CONFIG.zones.shoreParts, out = [];
+    for (let side = 0; side < 2; side++) for (let part = 0; part < P; part++) out.push({ side, part, cells: [] });
+    for (let x = 0; x < r.cols; x++) {
+      const part = Math.min(P - 1, Math.floor((x / r.cols) * P));
+      for (let y = 0; y < r.rows; y++) {
+        const i = r.idx(x, y);
+        if (r.isWater(i) && !r.zone[i] && r.ext[i] === 2) out[(y + 0.5 < r.centerY(x) ? 0 : P) + part].cells.push(i);
+      }
+    }
+    for (const sec of out) sec.cost = sec.cells.length * CONFIG.zones.shoreCell;
+    return out;
+  }
+  shoreBlock(side, part) {
+    const sec = this.shoreSections().find((q) => q.side === side && q.part === part);
+    if (!sec || !sec.cells.length) return 'Schon freigegeben';
+    if (this.status !== 'playing') return 'Spiel beendet';
+    return this.money < sec.cost ? `Braucht ${Math.round(sec.cost).toLocaleString('de-CH')} CHF` : null;
+  }
+  buyShore(side, part) {
+    if (this.shoreBlock(side, part)) return false;
+    const sec = this.shoreSections().find((q) => q.side === side && q.part === part), r = this.river;
+    for (const i of sec.cells) { r.zone[i] = 1; r.ext[i] = 0; }
+    this.money -= sec.cost; this.totals.shoreSpend = (this.totals.shoreSpend ?? 0) + sec.cost;
+    this.say(`Naturschutzstreifen freigegeben (−${Math.round(sec.cost)} CHF): ${sec.cells.length} Zellen sind jetzt Baggerkorridor.`, 'upgrade');
+    this.analyze(true);
     return true;
   }
 

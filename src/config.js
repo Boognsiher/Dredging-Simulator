@@ -92,7 +92,10 @@ export const CONFIG = {
     marketSpread: 0.2,
   },
   // Kreuzungsstellen: Zonen in der Rinne, in denen zwei Schiffe aneinander vorbeikommen (genug Platz für zwei Rinnen). baseMax + Rotlichter = so viele dürfen ausgewiesen werden
-  zones: { baseMax: 1, width: 3, cost: 3000 },
+  zones: {
+    // Naturschutzstreifen freikaufen: CHF pro Zelle, Abschnitte (Oberlauf, Mittellauf, Unterlauf) je Ufer
+    shoreCell: 350, shoreParts: 3,
+    baseMax: 1, width: 3, cost: 3000 },
   // Markt: Frachtpreise schwanken (Mean-Reversion + Ereignisse); hohe Preise locken mehr Schiffe dieser Fracht an
   market: { sigma: 0.07, revert: 0.1, minRatio: 0.45, maxRatio: 2.2, history: 24 },
   // Frachtaufträge der Reedereien: X Tonnen einer Fracht bis zu einem Termin durchbringen = Prämie

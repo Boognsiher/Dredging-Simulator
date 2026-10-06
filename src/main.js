@@ -217,6 +217,18 @@ function updateDeposits() {
   const eBtn = $('btn-explore'); if (eBtn) eBtn.onclick = () => { const d = game.explore(); if (d) { toast(`Gefunden: ${d.name} bei Spalte ${Math.round(d.cx) + 1}`, 'good', true); depositSig = null; updateDeposits(); updatePanel(); } };
 }
 
+let shoreSig = null;
+function updateShore() {
+  const secs = game.shoreSections(), sig = JSON.stringify([secs.map((q) => q.cells.length), Math.floor(game.money / 500)]);
+  if (sig === shoreSig) return;
+  shoreSig = sig;
+  const part = ['Oberlauf', 'Mittellauf', 'Unterlauf'], side = ['Nordufer', 'Südufer'], P = CONFIG.zones.shoreParts;
+  $('shore').innerHTML = `<small>Die Flachwasserstreifen am Ufer sind Naturschutzgebiet (hohe Bussen). Du kannst sie abschnittsweise freikaufen: Sie werden zum Baggerkorridor, die Rinne kann dort breiter werden (muss aber noch ausgebaggert werden).</small>` +
+    secs.map((q) => { const b = game.shoreBlock(q.side, q.part); return `<div class="unit"><div><b>${side[q.side]} · ${part[q.part] ?? 'Abschnitt ' + (q.part + 1)}</b> <small>${q.cells.length ? q.cells.length + ' Zellen geschützt' : '✓ freigegeben'}</small></div>${q.cells.length ? `<button data-shore="${q.side}:${q.part}" ${b ? 'disabled' : ''} title="${b ?? ''}">${chf(q.cost)}</button>` : ''}</div>`; }).join('');
+  for (const b of $('shore').querySelectorAll('[data-shore]')) b.onclick = () => { const [s, p] = b.dataset.shore.split(':').map(Number); if (game.buyShore(s, p)) { shoreSig = null; updateShore(); updatePanel(); toast('Uferstreifen freigegeben', 'good', true); } };
+  void P;
+}
+
 let hazardSig = null;
 function updateHazard() {
   const r = game.river, sum = r.altlastSummary(), price = Math.abs(CONFIG.materials[KIND.altlast].price * game.stats.disposalFactor);
@@ -370,7 +382,7 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateDeposits(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+function updatePanel() { updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
