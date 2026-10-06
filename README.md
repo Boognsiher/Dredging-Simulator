@@ -113,3 +113,6 @@ Taste `H` oder Knopf «🏗 Hafen» öffnet die Hafen-Seite (das Spiel läuft im
 
 ## Teilbeladung (Fortschritt in Stufen)
 Jedes Schiff hat eine **Volllast-Tiefe** (Tiefgang + 0,3 m) und eine **Mindesttiefe** (0,3 m weniger, z. B. Motorschiff: voll bei 2,3 m, Minimum bei 2,0 m). Ab der Mindesttiefe fährt die Klasse schon, mit mindestens 30 % Ladung; je tiefer die engste Stelle der Rinne, desto mehr Fracht (linear bis 100 %). Darunter fährt das Schiff nicht. Es müssen immer nur die Abschnitte vertieft werden, an denen die günstigste Rinne zu flach ist: erst auf die Mindesttiefe (rot), dann für Volllast (gelb). Ladung und Gebühr der Schiffe skalieren mit der Beladung; die Anzeige in Klassenleiste und Panel zeigt «xx % Ladung» und was bis voll fehlt. Die Flotte vertieft die Rinne danach selbstständig bis zur Volllast-Tiefe. Das Spiel startet mit einer Rinne auf Mindesttiefe für die kleinste Klasse.
+
+## Oberfläche
+Im **Querschnitt** (Hochformat) liegt die Anzeige von Trübung, Puffer, Schieflage und offenen Zellen als schmale Leiste über dem Bild; Tempo und Solltiefe stehen kompakt in einer Zeile, das Bild darf näher an die Pumpe heranzoomen. Die **Ausrüstung** ist in Reiter geteilt (Pumpe, Geräte, Anlage, Verkehr); ein oranger Punkt am Reiter zeigt, wie viele Verbesserungen dort gerade bezahlbar sind.

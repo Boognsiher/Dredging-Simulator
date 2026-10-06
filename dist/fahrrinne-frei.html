@@ -328,6 +328,31 @@ body.touch #classbar { padding-right: 4px; }
 .site { display: grid; gap: 4px; margin: 8px 0; max-width: 360px; } .site .cell { padding: 10px 0; font-size: 18px; font-weight: 700; border-radius: 6px; }
 .site .hi { background: #8a3b32; } .site .lo { background: #2f5f9a; } .site .ok { background: #2f7a48; }
 
+/* ---------- Reiter für die Ausrüstung ---------- */
+.tabs { display: flex; gap: 4px; margin: 6px 0; overflow-x: auto; scrollbar-width: none; }
+.tab { flex: 1 0 auto; width: auto; margin: 0; padding: 8px 10px; font-size: 14px; white-space: nowrap; border-radius: 8px 8px 0 0; background: #1b3a52; opacity: .8; position: relative; }
+.tab.on { background: var(--accent); color: #05222c; opacity: 1; font-weight: 700; }
+.tab .badge { font-style: normal; font-size: 11px; background: #e0a040; color: #000; border-radius: 9px; padding: 0 6px; margin-left: 4px; } .tab .badge[hidden] { display: none; }
+.tabbody[hidden] { display: none; }
+
+/* ---------- Querschnitt: mehr Bild, Anzeigen im Bild, Leisten kompakt ---------- */
+body.mode-slice #shift-hud { display: flex; position: absolute; z-index: 3; flex-wrap: nowrap; justify-content: space-between; gap: 6px; background: #000a; border-radius: 6px; padding: 2px 8px; font-size: 12px; pointer-events: none; }
+body.mode-slice #shift-hud #s-mode, body.mode-slice #shift-hud > span:nth-child(2) { display: none; }
+body.mode-slice #shift-hud progress { width: 46px; height: 10px; } body.mode-slice #shift-hud small { font-size: 11px; }
+#s-buf.hot { accent-color: #ff6a4d; }
+body.mode-slice #hints { display: none; }
+@media (max-width: 860px) {
+  body.mode-slice #shift-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0; padding: 0; flex-direction: row; position: static; }
+  body.mode-slice #shift-actions button { flex: 1 1 0; min-height: 34px; height: 34px; padding: 2px 6px; font-size: 13px; white-space: nowrap; }
+  body.mode-slice #shift-actions button[hidden] { display: none; }
+  body.mode-slice #btn-sound, body.mode-slice #btn-pump { display: none; }
+  body.mode-slice #spd-box, body.mode-slice #cut-box { position: static; flex: 1 1 calc(50% - 2px); min-width: 0; padding: 2px 8px; font-size: 12px; gap: 4px; }
+  body.mode-slice #spd-box input, body.mode-slice #cut-box input { flex: 1; width: 100%; min-width: 40px; }
+  body.mode-slice #spd-box small, body.mode-slice #cut-box small { display: none; }
+  body.mode-slice .cls { padding: 2px 6px; } body.mode-slice #classbar { padding: 2px 0; }
+}
+body.mode-slice #shift-hud span { white-space: nowrap; } body.mode-slice #s-turbzone { display: none; }
+
 </style>
 </head>
 <body>
@@ -366,7 +391,9 @@ body.touch #classbar { padding-right: 4px; }
         <span id="s-mode"></span>
         <span><b id="s-removed"></b></span>
         <span>Trübung <progress id="s-turb" max="1" value="0"></progress> <small id="s-turbzone"></small></span>
+        <span>Puffer <progress id="s-buf" max="1" value="0"></progress></span>
         <span>Schieflage <progress id="s-tilt" max="1" value="0"></progress></span>
+        <span id="s-open"></span>
       </div>
       <div id="shift-actions" hidden>
         <button id="btn-anchor" class="primary">⚓ Anker werfen (E)</button>
@@ -558,12 +585,25 @@ function updateClassbar() {
 
 // ---------- Panel (einmal aufgebaut, danach nur aktualisiert: Klicks gehen nie verloren) ----------
 const upRows = {};
-const groups = { ponton: 'Ponton ausrüsten', plant: 'Anlage ausbauen', traffic: 'Wasserstrasse ausbauen' };
+// Ausrüstung in Reitern (Übersicht): jeder Reiter listet seine Verbesserungen
+const UP_TABS = [
+  { id: 'pump', label: '🌀 Pumpe', ids: ['power', 'radius', 'speed', 'winch', 'ballast', 'curtain'] },
+  { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr'] },
+  { id: 'plant', label: '🏭 Anlage', ids: ['plant', 'dewater', 'sorter', 'mixer'] },
+  { id: 'traffic', label: '🚢 Verkehr', ids: ['beacons', 'signals', 'tugs', 'vts', 'pilot'] },
+];
+let upTab = 'pump';
+const upTabBtns = {}, upTabBodies = {};
 function buildUpgrades() {
-  const nodes = [];
-  for (const [g, title] of Object.entries(groups)) {
-    const h = document.createElement('h3'); h.textContent = title; nodes.push(h);
-    for (const [id, def] of Object.entries(UPGRADES).filter(([, d]) => d.group === g)) {
+  const bar = document.createElement('div'); bar.className = 'tabs'; bar.setAttribute('role', 'tablist');
+  const nodes = [bar];
+  for (const tab of UP_TABS) {
+    const tb = document.createElement('button'); tb.className = 'tab'; tb.type = 'button'; tb.innerHTML = `${tab.label} <i class="badge" hidden></i>`;
+    tb.onclick = () => { upTab = tab.id; showUpTab(); };
+    bar.append(tb); upTabBtns[tab.id] = tb;
+    const body = document.createElement('div'); body.className = 'tabbody'; upTabBodies[tab.id] = body; nodes.push(body);
+    for (const id of tab.ids) {
+      const def = UPGRADES[id]; if (!def) continue;
       const row = document.createElement('div'); row.className = 'up';
       const label = document.createElement('div'), small = document.createElement('small');
       label.append(def.name + ' ', small);
@@ -580,10 +620,14 @@ function buildUpgrades() {
       const btns = document.createElement('div'); btns.className = 'upbtns'; btns.append(sell, btn);
       row.append(label, btns);
       upRows[id] = { small, btn, sell, armed: () => armed };
-      nodes.push(row);
+      body.append(row);
     }
   }
   $('upgrades').replaceChildren(...nodes);
+  showUpTab();
+}
+function showUpTab() {
+  for (const t of UP_TABS) { upTabBtns[t.id].classList.toggle('on', t.id === upTab); upTabBodies[t.id].hidden = t.id !== upTab; }
 }
 function applyStats() {
   sim.setStats(game.stats);
@@ -600,6 +644,10 @@ function updateUpgrades() {
     if (refund !== null) r.small.textContent += ` · Rückbau +${chf(refund)}`;
     r.sell.disabled = refund === null || game.status !== 'playing';
     r.sell.title = `Rückbau: ${Math.round(CONFIG.refundShare * 100)}% der Investition kommen zurück`;
+  }
+  for (const t of UP_TABS) { // Punkt am Reiter: hier ist etwas bezahlbar
+    const n = t.ids.filter((id) => { const c = game.nextUpgradeCost(id); return c !== null && game.money >= c && game.status === 'playing'; }).length, bd = upTabBtns[t.id].querySelector('.badge');
+    bd.hidden = n === 0; bd.textContent = n;
   }
 }
 
@@ -852,6 +900,10 @@ function hideOverlay() { $('overlay').classList.remove('show'); }
 const overlayOpen = () => $('overlay').classList.contains('show');
 
 let toastTimer = 0;
+function placeHud() { // Anzeigen (Trübung, Puffer, Schieflage) liegen im Querschnitt über dem Bild
+  const hud = $('shift-hud'); if (sim.mode !== 'slice') { hud.style.top = ''; hud.style.left = ''; hud.style.right = ''; return; }
+  hud.style.top = `${canvas.offsetTop + 4}px`; hud.style.left = '4px'; hud.style.right = '4px';
+}
 function placeToast() {
   const t = $('toast');
   const visTop = canvas.offsetTop + (cropVis !== null ? panY : 0), visH = cropVis !== null ? cropVis : canvas.clientHeight;
@@ -868,7 +920,7 @@ function toast(text, kind = 'info', force = false) {
 
 // ---------- Spielfeld einpassen und Steuerungsanzeige ----------
 let zoom = 1, panX = 0, panY = 0, cropVis = null;
-const MAX_ZOOM = 1.7;
+const MAX_ZOOM = 1.7, MAX_ZOOM_SLICE = 2.3; // im Querschnitt (Hochformat) darf das Bild näher an die Pumpe
 let layoutSig = '';
 function focusY(lh, h) {
   if (sim.mode === 'slice') return (sliceHeadScreen(sim.slice).y / lh) * h;
@@ -908,7 +960,7 @@ function fitCanvas() {
   let w, h;
   if (portrait && sim.mode === 'slice') {
     const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
-    zoom = Math.min(MAX_ZOOM, Math.max(1, visAvail / nat));
+    zoom = Math.min(MAX_ZOOM_SLICE, Math.max(1, visAvail / nat));
     w = stageW * zoom; h = w * (lh / lw);
     if (h > visAvail + 1) cropVis = visAvail;
   } else {
@@ -921,7 +973,7 @@ function fitCanvas() {
   if (canvas.width !== cw || canvas.height !== chh) { canvas.width = cw; canvas.height = chh; }
   canvas.q = cw / lw;
   view.s = w / lw; fx.view = view.s;
-  panCanvas(0); placeToast();
+  panCanvas(0); placeToast(); placeHud();
 }
 
 function updateHints() {
@@ -938,6 +990,7 @@ function syncMode() {
   const mode = curMode();
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
+  document.body.classList.toggle('mode-slice', mode === 'slice'); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
   $('btn-zone').hidden = mode !== 'map';
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
@@ -1258,6 +1311,8 @@ function frame(now) {
       ? `${game.totals.removed.toFixed(0)} m³ gebaggert · ${sim.slice.restCount()} Zellen über Solltiefe${sim.bufferFull ? ' · Puffer voll, Pumpe pausiert!' : ''}`
       : `${game.traffic.ships.filter((s) => s.state === 'sail').length} Schiffe unterwegs · ${game.traffic.ships.filter((s) => s.state === 'queue').length} wartend`;
     $('s-turb').value = sim.turbidity;
+    $('s-buf').value = Math.min(1, game.stockTotal / game.stats.bufferCapacity); $('s-buf').classList.toggle('hot', game.stockTotal >= game.stats.bufferCapacity * 0.9);
+    $('s-open').textContent = sim.mode === 'slice' ? `${sim.slice.restCount()} offen` : '';
     $('s-turbzone').textContent = sim.mode === 'slice' ? ({ channel: 'Rinne: Busse kaum', altlast: '☢ Altlast: Busse', nature: '🌿 Naturschutz: Busse sehr hoch!' })[sim.turbZone] : '';
     $('s-tilt').value = sim.mode === 'slice' ? sim.slice.tilt : 0;
     fx.update(dt);
@@ -5432,9 +5487,6 @@ function drawSlice(ctx, game, sim, ui = {}) {
   drawPump(ctx, game, sim, ui);
   turbidityVeil(ctx, sim);
   if (sl.freeing && sl.clog > 0) drawFreeing(ctx, sl);
-  // Kopfzeile
-  ctx.font = font(13); ctx.fillStyle = '#000a'; const head = `Pegel ${wl.toFixed(2)} m · Spalten ${sl.cols[0] + 1}–${sl.cols[sl.cols.length - 1] + 1}`;
-  ctx.fillRect(6, 6, ctx.measureText(head).width + 14, fs(13) + 8); ctx.fillStyle = '#fff'; ctx.fillText(head, 13, 6 + fs(13) + 1);
 }
 
 function drawPump(ctx, game, sim, ui) {

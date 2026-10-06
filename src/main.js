@@ -97,12 +97,25 @@ function updateClassbar() {
 
 // ---------- Panel (einmal aufgebaut, danach nur aktualisiert: Klicks gehen nie verloren) ----------
 const upRows = {};
-const groups = { ponton: 'Ponton ausrüsten', plant: 'Anlage ausbauen', traffic: 'Wasserstrasse ausbauen' };
+// Ausrüstung in Reitern (Übersicht): jeder Reiter listet seine Verbesserungen
+const UP_TABS = [
+  { id: 'pump', label: '🌀 Pumpe', ids: ['power', 'radius', 'speed', 'winch', 'ballast', 'curtain'] },
+  { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr'] },
+  { id: 'plant', label: '🏭 Anlage', ids: ['plant', 'dewater', 'sorter', 'mixer'] },
+  { id: 'traffic', label: '🚢 Verkehr', ids: ['beacons', 'signals', 'tugs', 'vts', 'pilot'] },
+];
+let upTab = 'pump';
+const upTabBtns = {}, upTabBodies = {};
 function buildUpgrades() {
-  const nodes = [];
-  for (const [g, title] of Object.entries(groups)) {
-    const h = document.createElement('h3'); h.textContent = title; nodes.push(h);
-    for (const [id, def] of Object.entries(UPGRADES).filter(([, d]) => d.group === g)) {
+  const bar = document.createElement('div'); bar.className = 'tabs'; bar.setAttribute('role', 'tablist');
+  const nodes = [bar];
+  for (const tab of UP_TABS) {
+    const tb = document.createElement('button'); tb.className = 'tab'; tb.type = 'button'; tb.innerHTML = `${tab.label} <i class="badge" hidden></i>`;
+    tb.onclick = () => { upTab = tab.id; showUpTab(); };
+    bar.append(tb); upTabBtns[tab.id] = tb;
+    const body = document.createElement('div'); body.className = 'tabbody'; upTabBodies[tab.id] = body; nodes.push(body);
+    for (const id of tab.ids) {
+      const def = UPGRADES[id]; if (!def) continue;
       const row = document.createElement('div'); row.className = 'up';
       const label = document.createElement('div'), small = document.createElement('small');
       label.append(def.name + ' ', small);
@@ -119,10 +132,14 @@ function buildUpgrades() {
       const btns = document.createElement('div'); btns.className = 'upbtns'; btns.append(sell, btn);
       row.append(label, btns);
       upRows[id] = { small, btn, sell, armed: () => armed };
-      nodes.push(row);
+      body.append(row);
     }
   }
   $('upgrades').replaceChildren(...nodes);
+  showUpTab();
+}
+function showUpTab() {
+  for (const t of UP_TABS) { upTabBtns[t.id].classList.toggle('on', t.id === upTab); upTabBodies[t.id].hidden = t.id !== upTab; }
 }
 function applyStats() {
   sim.setStats(game.stats);
@@ -139,6 +156,10 @@ function updateUpgrades() {
     if (refund !== null) r.small.textContent += ` · Rückbau +${chf(refund)}`;
     r.sell.disabled = refund === null || game.status !== 'playing';
     r.sell.title = `Rückbau: ${Math.round(CONFIG.refundShare * 100)}% der Investition kommen zurück`;
+  }
+  for (const t of UP_TABS) { // Punkt am Reiter: hier ist etwas bezahlbar
+    const n = t.ids.filter((id) => { const c = game.nextUpgradeCost(id); return c !== null && game.money >= c && game.status === 'playing'; }).length, bd = upTabBtns[t.id].querySelector('.badge');
+    bd.hidden = n === 0; bd.textContent = n;
   }
 }
 
@@ -391,6 +412,10 @@ function hideOverlay() { $('overlay').classList.remove('show'); }
 const overlayOpen = () => $('overlay').classList.contains('show');
 
 let toastTimer = 0;
+function placeHud() { // Anzeigen (Trübung, Puffer, Schieflage) liegen im Querschnitt über dem Bild
+  const hud = $('shift-hud'); if (sim.mode !== 'slice') { hud.style.top = ''; hud.style.left = ''; hud.style.right = ''; return; }
+  hud.style.top = `${canvas.offsetTop + 4}px`; hud.style.left = '4px'; hud.style.right = '4px';
+}
 function placeToast() {
   const t = $('toast');
   const visTop = canvas.offsetTop + (cropVis !== null ? panY : 0), visH = cropVis !== null ? cropVis : canvas.clientHeight;
@@ -407,7 +432,7 @@ function toast(text, kind = 'info', force = false) {
 
 // ---------- Spielfeld einpassen und Steuerungsanzeige ----------
 let zoom = 1, panX = 0, panY = 0, cropVis = null;
-const MAX_ZOOM = 1.7;
+const MAX_ZOOM = 1.7, MAX_ZOOM_SLICE = 2.3; // im Querschnitt (Hochformat) darf das Bild näher an die Pumpe
 let layoutSig = '';
 function focusY(lh, h) {
   if (sim.mode === 'slice') return (sliceHeadScreen(sim.slice).y / lh) * h;
@@ -447,7 +472,7 @@ function fitCanvas() {
   let w, h;
   if (portrait && sim.mode === 'slice') {
     const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
-    zoom = Math.min(MAX_ZOOM, Math.max(1, visAvail / nat));
+    zoom = Math.min(MAX_ZOOM_SLICE, Math.max(1, visAvail / nat));
     w = stageW * zoom; h = w * (lh / lw);
     if (h > visAvail + 1) cropVis = visAvail;
   } else {
@@ -460,7 +485,7 @@ function fitCanvas() {
   if (canvas.width !== cw || canvas.height !== chh) { canvas.width = cw; canvas.height = chh; }
   canvas.q = cw / lw;
   view.s = w / lw; fx.view = view.s;
-  panCanvas(0); placeToast();
+  panCanvas(0); placeToast(); placeHud();
 }
 
 function updateHints() {
@@ -477,6 +502,7 @@ function syncMode() {
   const mode = curMode();
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
+  document.body.classList.toggle('mode-slice', mode === 'slice'); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
   $('btn-zone').hidden = mode !== 'map';
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
@@ -797,6 +823,8 @@ function frame(now) {
       ? `${game.totals.removed.toFixed(0)} m³ gebaggert · ${sim.slice.restCount()} Zellen über Solltiefe${sim.bufferFull ? ' · Puffer voll, Pumpe pausiert!' : ''}`
       : `${game.traffic.ships.filter((s) => s.state === 'sail').length} Schiffe unterwegs · ${game.traffic.ships.filter((s) => s.state === 'queue').length} wartend`;
     $('s-turb').value = sim.turbidity;
+    $('s-buf').value = Math.min(1, game.stockTotal / game.stats.bufferCapacity); $('s-buf').classList.toggle('hot', game.stockTotal >= game.stats.bufferCapacity * 0.9);
+    $('s-open').textContent = sim.mode === 'slice' ? `${sim.slice.restCount()} offen` : '';
     $('s-turbzone').textContent = sim.mode === 'slice' ? ({ channel: 'Rinne: Busse kaum', altlast: '☢ Altlast: Busse', nature: '🌿 Naturschutz: Busse sehr hoch!' })[sim.turbZone] : '';
     $('s-tilt').value = sim.mode === 'slice' ? sim.slice.tilt : 0;
     fx.update(dt);

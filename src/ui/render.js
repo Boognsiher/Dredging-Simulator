@@ -492,9 +492,6 @@ export function drawSlice(ctx, game, sim, ui = {}) {
   drawPump(ctx, game, sim, ui);
   turbidityVeil(ctx, sim);
   if (sl.freeing && sl.clog > 0) drawFreeing(ctx, sl);
-  // Kopfzeile
-  ctx.font = font(13); ctx.fillStyle = '#000a'; const head = `Pegel ${wl.toFixed(2)} m · Spalten ${sl.cols[0] + 1}–${sl.cols[sl.cols.length - 1] + 1}`;
-  ctx.fillRect(6, 6, ctx.measureText(head).width + 14, fs(13) + 8); ctx.fillStyle = '#fff'; ctx.fillText(head, 13, 6 + fs(13) + 1);
 }
 
 function drawPump(ctx, game, sim, ui) {
