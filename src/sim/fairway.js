@@ -162,7 +162,7 @@ export function zonePlan(river, wl, cls, xc, w = 3) {
 export function analyzeClass(river, wl, cls) {
   const full = needDepth(cls), minN = minNeedDepth(cls), def = deficits(river, wl, minN), beam = cls.beam;
   const nodes = bestPath(river, def, beam, river.flow, null);
-  const res = { id: cls.id, need: minN, minNeed: minN, fullNeed: full, loadFrac: 0, loadFactor: 0, fullVolume: INF, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
+  const res = { id: cls.id, need: minN, minNeed: minN, fullNeed: full, loadFrac: 0, loadFactor: 0, fullVolume: INF, beam, passable: false, twoWay: false, def, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
   if (!nodes) return res; // Baggerkorridor ist zu schmal für dieses Schiff
   const cov = covered(river, nodes, beam);
   let miss = 0, worst = 0, worstX = nodes[0].x, altlast = 0;

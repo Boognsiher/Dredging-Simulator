@@ -1462,7 +1462,7 @@ const CONFIG = {
   ],
   turbidityFineThreshold: 0.8, turbidityFinePerSecond: 150,
   // Trübungsbussen je nach Ort des Saugkopfs: Durchfahrt kaum, Altlastenbereich normal, Naturschutzgebiet sehr hoch (und schon bei geringerer Trübung)
-  turbidityFine: { channel: { mult: 0.02, threshold: 0.8 }, altlast: { mult: 1, threshold: 0.8 }, nature: { mult: 5, threshold: 0.45 } }, turbidityGain: 250, turbidityDecay: 0.08, // Trübung pro s = Leistung/Gain × Faktoren; Abbau 8 %/s des Werts (+ 0,004/s): Gleichgewicht = Anstieg/Abbau (Leistung 10: ca. 50 %, in Fahrt 70 %, Altlast mehr)
+  turbidityFine: { channel: { mult: 0.02, threshold: 0.8 }, altlast: { mult: 1, threshold: 0.8 }, nature: { mult: 5, threshold: 0.45 } }, turbidityGain: 500, turbidityDecay: 0.08, // Trübung pro s = Leistung/Gain × Faktoren; Abbau 8 %/s des Werts (+ 0,004/s): Gleichgewicht = Anstieg/Abbau (Leistung 10: ca. 25 %, in Fahrt 35 %, Altlast mehr)
   // Automatik: Stufe 0 = Handbetrieb, 1 = experimentell, 2 = zuverlässig, 3 = voll
   auto: {
     speedFactor: [1, 0.8, 1, 1.25],
@@ -2913,7 +2913,7 @@ function zonePlan(river, wl, cls, xc, w = 3) {
 function analyzeClass(river, wl, cls) {
   const full = needDepth(cls), minN = minNeedDepth(cls), def = deficits(river, wl, minN), beam = cls.beam;
   const nodes = bestPath(river, def, beam, river.flow, null);
-  const res = { id: cls.id, need: minN, minNeed: minN, fullNeed: full, loadFrac: 0, loadFactor: 0, fullVolume: INF, beam, passable: false, twoWay: false, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
+  const res = { id: cls.id, need: minN, minNeed: minN, fullNeed: full, loadFrac: 0, loadFactor: 0, fullVolume: INF, beam, passable: false, twoWay: false, def, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
   if (!nodes) return res; // Baggerkorridor ist zu schmal für dieses Schiff
   const cov = covered(river, nodes, beam);
   let miss = 0, worst = 0, worstX = nodes[0].x, altlast = 0;
@@ -3586,8 +3586,8 @@ function income(g, ship) {
 // Position eines fahrenden Schiffs auf seinem Pfad (Strecke s in Fahrtrichtung)
 function shipPos(ship) {
   if (!ship.path) return null;
-  const sp = ship.dir > 0 ? ship.s : ship.path.length - ship.s, p = pointOnPath(ship.path, sp);
-  return ship.dir > 0 ? p : { ...p, angle: p.angle + Math.PI };
+  const sp = ship.dir > 0 ? ship.s : ship.path.length - ship.s, p = pointOnPath(ship.path, sp), y = p.y + (ship.lat ?? 0); // lat: seitlicher Versatz in der Kreuzungsstelle
+  return ship.dir > 0 ? { ...p, y } : { ...p, y, angle: p.angle + Math.PI };
 }
 
 // Warteplatz vor der Einfahrt: die Schiffe reihen sich vor dem Ende der Rinne auf
@@ -3606,6 +3606,25 @@ function zoneSupports(g, z, clsId) {
   return true;
 }
 const zoneClasses = (g, z) => SHIPS.filter((s) => g.level.classes.includes(s.id) && zoneSupports(g, z, s.id));
+
+// Fahrspur einer Klasse in der Kreuzungsstelle: erstes Fenster (beam Zeilen), das in allen drei Spalten tief genug ist.
+// Schiffe talwärts (dir > 0) nehmen die obere, bergwärts die untere Spur. -1 = kein Platz
+function zoneLaneStart(g, z, clsId, dir) {
+  const def = g.fair?.[clsId]?.def, beam = shipById(clsId).beam, r = g.river;
+  if (!def) return -1;
+  for (let k = 0; k <= r.rows - beam; k++) {
+    const a = dir > 0 ? k : r.rows - beam - k;
+    let ok = true;
+    for (let x = z.x - 1; x <= z.x + 1 && ok; x++) { if (x < 0 || x >= r.cols) { ok = false; break; } for (let y = a; y < a + beam; y++) if (def[y * r.cols + x] !== 0) { ok = false; break; } }
+    if (ok) return a;
+  }
+  return -1;
+}
+// Können sich zwei Schiffe (A talwärts, B bergwärts) hier kreuzen: beide Spuren frei, mit mindestens einer Zeile Abstand dazwischen?
+function pairFits(g, z, clsA, clsB) {
+  const a = zoneLaneStart(g, z, clsA, 1), b = zoneLaneStart(g, z, clsB, -1);
+  return a >= 0 && b >= 0 && b >= a + shipById(clsA).beam + 1;
+}
 
 // Strecke s (in Fahrtrichtung gemessen), bei der ein Schiff auf seinem Pfad die Karten-Spalte x erreicht
 function sAtX(path, x, dir) {
@@ -3626,7 +3645,7 @@ function assignMeets(g, ship, opposing, ships) {
     const xo = shipPos(o).x, oc = shipById(o.cls);
     let best = null, bs = Infinity;
     for (const z of g.zones) {
-      if (reserved.has(z.id) || used.has(z.id) || !zoneSupports(g, z, ship.cls) || !zoneSupports(g, z, o.cls)) continue;
+      if (reserved.has(z.id) || used.has(z.id) || !(ship.dir > 0 ? pairFits(g, z, ship.cls, o.cls) : pairFits(g, z, o.cls, ship.cls))) continue; // beide Spuren nebeneinander müssen Platz haben
       if (!(ship.dir > 0 ? z.x < xo - 1 : z.x > xo + 1)) continue; // die Stelle muss zwischen Einfahrt und Gegenverkehr liegen
       const score = Math.max(Math.abs(z.x - entryX) / cls.speed, Math.abs(xo - z.x) / oc.speed);
       if (score < bs) { bs = score; best = z; }
@@ -3684,6 +3703,15 @@ function updateTraffic(g, dt) {
       continue;
     }
     let v = cls.speed * (ship.dir > 0 ? C.downFactor : C.upFactor) * (cls.draught >= 2.6 ? 1 + C.tugSpeed * g.stats.tugs : 1); // Schlepper beschleunigen grosse Schiffe
+    if (ship.latZones?.length) { // seitlich auf die eigene Spur wechseln, solange die Kreuzungsstelle nah ist
+      const raw = pointOnPath(ship.path, ship.dir > 0 ? ship.s : ship.path.length - ship.s); let target = 0;
+      for (const id of ship.latZones) {
+        const z = g.zones.find((zz) => zz.id === id); if (!z) continue;
+        const ramp = Math.max(0, Math.min(1, 1 - (Math.abs(raw.x - z.x) - (z.w / 2 + 0.3)) / 2)), a = zoneLaneStart(g, z, ship.cls, ship.dir);
+        if (ramp > 0 && a >= 0) target = ramp * (a + cls.beam / 2 - raw.y);
+      }
+      ship.lat = (ship.lat ?? 0) + (target - (ship.lat ?? 0)) * Math.min(1, dt * 4);
+    }
     const p0 = shipPos(ship);
     if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow;
     let gapMin = Infinity;
@@ -3757,8 +3785,8 @@ function updateTraffic(g, dt) {
       if (oppWait > C.switchAfter && oppWait > ship.wait) ok = false;
     }
     if (!ok) continue;
-    ship.meets = meets;
-    for (const m of meets) byId.get(m.with)?.meets?.push({ zone: m.zone, with: ship.id });
+    ship.meets = meets; ship.latZones = meets.map((m) => m.zone);
+    for (const m of meets) { const o = byId.get(m.with); o?.meets?.push({ zone: m.zone, with: ship.id }); if (o) (o.latZones ??= []).push(m.zone); }
     ship.state = 'sail'; ship.s = 0; ship.lane = lane; ship.path = f.path;
   }
   T.ships = ships.filter((s) => s.state !== 'done' && s.state !== 'left');
@@ -3773,7 +3801,7 @@ function waitingByClass(g) {
 
 
 
-return { createTraffic: createTraffic, bayCapacity: bayCapacity, maxZones: maxZones, activeClasses: activeClasses, spawnShip: spawnShip, shipPos: shipPos, queuePos: queuePos, zoneSupports: zoneSupports, zoneClasses: zoneClasses, updateTraffic: updateTraffic, waitingByClass: waitingByClass, CARGOS: CARGOS };
+return { createTraffic: createTraffic, bayCapacity: bayCapacity, maxZones: maxZones, activeClasses: activeClasses, spawnShip: spawnShip, shipPos: shipPos, queuePos: queuePos, zoneSupports: zoneSupports, zoneClasses: zoneClasses, zoneLaneStart: zoneLaneStart, pairFits: pairFits, updateTraffic: updateTraffic, waitingByClass: waitingByClass, CARGOS: CARGOS };
 },
 function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(1);

@@ -64,7 +64,7 @@ export const CONFIG = {
   ],
   turbidityFineThreshold: 0.8, turbidityFinePerSecond: 150,
   // Trübungsbussen je nach Ort des Saugkopfs: Durchfahrt kaum, Altlastenbereich normal, Naturschutzgebiet sehr hoch (und schon bei geringerer Trübung)
-  turbidityFine: { channel: { mult: 0.02, threshold: 0.8 }, altlast: { mult: 1, threshold: 0.8 }, nature: { mult: 5, threshold: 0.45 } }, turbidityGain: 250, turbidityDecay: 0.08, // Trübung pro s = Leistung/Gain × Faktoren; Abbau 8 %/s des Werts (+ 0,004/s): Gleichgewicht = Anstieg/Abbau (Leistung 10: ca. 50 %, in Fahrt 70 %, Altlast mehr)
+  turbidityFine: { channel: { mult: 0.02, threshold: 0.8 }, altlast: { mult: 1, threshold: 0.8 }, nature: { mult: 5, threshold: 0.45 } }, turbidityGain: 500, turbidityDecay: 0.08, // Trübung pro s = Leistung/Gain × Faktoren; Abbau 8 %/s des Werts (+ 0,004/s): Gleichgewicht = Anstieg/Abbau (Leistung 10: ca. 25 %, in Fahrt 35 %, Altlast mehr)
   // Automatik: Stufe 0 = Handbetrieb, 1 = experimentell, 2 = zuverlässig, 3 = voll
   auto: {
     speedFactor: [1, 0.8, 1, 1.25],

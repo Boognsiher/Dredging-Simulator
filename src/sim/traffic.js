@@ -57,8 +57,8 @@ function income(g, ship) {
 // Position eines fahrenden Schiffs auf seinem Pfad (Strecke s in Fahrtrichtung)
 export function shipPos(ship) {
   if (!ship.path) return null;
-  const sp = ship.dir > 0 ? ship.s : ship.path.length - ship.s, p = pointOnPath(ship.path, sp);
-  return ship.dir > 0 ? p : { ...p, angle: p.angle + Math.PI };
+  const sp = ship.dir > 0 ? ship.s : ship.path.length - ship.s, p = pointOnPath(ship.path, sp), y = p.y + (ship.lat ?? 0); // lat: seitlicher Versatz in der Kreuzungsstelle
+  return ship.dir > 0 ? { ...p, y } : { ...p, y, angle: p.angle + Math.PI };
 }
 
 // Warteplatz vor der Einfahrt: die Schiffe reihen sich vor dem Ende der Rinne auf
@@ -77,6 +77,25 @@ export function zoneSupports(g, z, clsId) {
   return true;
 }
 export const zoneClasses = (g, z) => SHIPS.filter((s) => g.level.classes.includes(s.id) && zoneSupports(g, z, s.id));
+
+// Fahrspur einer Klasse in der Kreuzungsstelle: erstes Fenster (beam Zeilen), das in allen drei Spalten tief genug ist.
+// Schiffe talwärts (dir > 0) nehmen die obere, bergwärts die untere Spur. -1 = kein Platz
+export function zoneLaneStart(g, z, clsId, dir) {
+  const def = g.fair?.[clsId]?.def, beam = shipById(clsId).beam, r = g.river;
+  if (!def) return -1;
+  for (let k = 0; k <= r.rows - beam; k++) {
+    const a = dir > 0 ? k : r.rows - beam - k;
+    let ok = true;
+    for (let x = z.x - 1; x <= z.x + 1 && ok; x++) { if (x < 0 || x >= r.cols) { ok = false; break; } for (let y = a; y < a + beam; y++) if (def[y * r.cols + x] !== 0) { ok = false; break; } }
+    if (ok) return a;
+  }
+  return -1;
+}
+// Können sich zwei Schiffe (A talwärts, B bergwärts) hier kreuzen: beide Spuren frei, mit mindestens einer Zeile Abstand dazwischen?
+export function pairFits(g, z, clsA, clsB) {
+  const a = zoneLaneStart(g, z, clsA, 1), b = zoneLaneStart(g, z, clsB, -1);
+  return a >= 0 && b >= 0 && b >= a + shipById(clsA).beam + 1;
+}
 
 // Strecke s (in Fahrtrichtung gemessen), bei der ein Schiff auf seinem Pfad die Karten-Spalte x erreicht
 function sAtX(path, x, dir) {
@@ -97,7 +116,7 @@ function assignMeets(g, ship, opposing, ships) {
     const xo = shipPos(o).x, oc = shipById(o.cls);
     let best = null, bs = Infinity;
     for (const z of g.zones) {
-      if (reserved.has(z.id) || used.has(z.id) || !zoneSupports(g, z, ship.cls) || !zoneSupports(g, z, o.cls)) continue;
+      if (reserved.has(z.id) || used.has(z.id) || !(ship.dir > 0 ? pairFits(g, z, ship.cls, o.cls) : pairFits(g, z, o.cls, ship.cls))) continue; // beide Spuren nebeneinander müssen Platz haben
       if (!(ship.dir > 0 ? z.x < xo - 1 : z.x > xo + 1)) continue; // die Stelle muss zwischen Einfahrt und Gegenverkehr liegen
       const score = Math.max(Math.abs(z.x - entryX) / cls.speed, Math.abs(xo - z.x) / oc.speed);
       if (score < bs) { bs = score; best = z; }
@@ -155,6 +174,15 @@ export function updateTraffic(g, dt) {
       continue;
     }
     let v = cls.speed * (ship.dir > 0 ? C.downFactor : C.upFactor) * (cls.draught >= 2.6 ? 1 + C.tugSpeed * g.stats.tugs : 1); // Schlepper beschleunigen grosse Schiffe
+    if (ship.latZones?.length) { // seitlich auf die eigene Spur wechseln, solange die Kreuzungsstelle nah ist
+      const raw = pointOnPath(ship.path, ship.dir > 0 ? ship.s : ship.path.length - ship.s); let target = 0;
+      for (const id of ship.latZones) {
+        const z = g.zones.find((zz) => zz.id === id); if (!z) continue;
+        const ramp = Math.max(0, Math.min(1, 1 - (Math.abs(raw.x - z.x) - (z.w / 2 + 0.3)) / 2)), a = zoneLaneStart(g, z, ship.cls, ship.dir);
+        if (ramp > 0 && a >= 0) target = ramp * (a + cls.beam / 2 - raw.y);
+      }
+      ship.lat = (ship.lat ?? 0) + (target - (ship.lat ?? 0)) * Math.min(1, dt * 4);
+    }
     const p0 = shipPos(ship);
     if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow;
     let gapMin = Infinity;
@@ -228,8 +256,8 @@ export function updateTraffic(g, dt) {
       if (oppWait > C.switchAfter && oppWait > ship.wait) ok = false;
     }
     if (!ok) continue;
-    ship.meets = meets;
-    for (const m of meets) byId.get(m.with)?.meets?.push({ zone: m.zone, with: ship.id });
+    ship.meets = meets; ship.latZones = meets.map((m) => m.zone);
+    for (const m of meets) { const o = byId.get(m.with); o?.meets?.push({ zone: m.zone, with: ship.id }); if (o) (o.latZones ??= []).push(m.zone); }
     ship.state = 'sail'; ship.s = 0; ship.lane = lane; ship.path = f.path;
   }
   T.ships = ships.filter((s) => s.state !== 'done' && s.state !== 'left');

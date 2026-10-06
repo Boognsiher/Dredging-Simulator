@@ -301,6 +301,7 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
 });
 
 const fullLane = (g, id) => { carveFairway(g.river, g.wl, shipById(id), CONFIG.partialDepth + 0.1); g.analyze(true); }; // Rinne gleich auf volle Ladetiefe
+import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
 import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
@@ -1362,4 +1363,19 @@ test('Teilbeladung: ab Mindesttiefe befahrbar, Ladung wächst mit der Tiefe, dar
   g.fair.kahn.loadFactor = 1; const a = spawnShip(g); g.traffic.ships.length = 0;
   g.fair.kahn.loadFactor = 0.4; const b = spawnShip(g);
   assert.ok(a && b && b.tons < a.tons && b.load === 0.4);
+});
+
+test('Kreuzungsstelle: nur wenn beide Spuren nebeneinander wirklich Platz haben', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false;
+  const r = new River(CONFIG.river.cols, CONFIG.river.rows); r.top.fill(r.wl - 6); r.rock.fill(r.wl - 12); r.zone.fill(0); r.flow.fill(0.5);
+  const rows = (n) => { r.zone.fill(0); for (let x = 0; x < r.cols; x++) for (let y = 8; y < 8 + n; y++) r.zone[r.idx(x, y)] = 1; g.river = r; g.analyze(true); };
+  const z = { id: 1, x: 20, w: 3 }, kb = shipById('kahn').beam, tb = shipById('tank').beam;
+  rows(kb * 2 + 1); // genau zwei Kähne nebeneinander
+  assert.ok(pairFits(g, z, 'kahn', 'kahn'));
+  assert.ok(zoneLaneStart(g, z, 'kahn', 1) < zoneLaneStart(g, z, 'kahn', -1), 'talwärts obere, bergwärts untere Spur');
+  assert.ok(!pairFits(g, z, 'tank', 'kahn'), 'Tanker plus Kahn brauchen mehr Breite');
+  rows(tb + kb + 1);
+  assert.ok(pairFits(g, z, 'tank', 'kahn') && pairFits(g, z, 'kahn', 'tank'));
+  rows(kb * 2); // einen Zeile zu wenig (kein Abstand)
+  assert.ok(!pairFits(g, z, 'kahn', 'kahn'));
 });
