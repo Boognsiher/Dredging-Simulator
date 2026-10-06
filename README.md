@@ -116,3 +116,5 @@ Jedes Schiff hat eine **Volllast-Tiefe** (Tiefgang + 0,3 m) und eine **Mindestti
 
 ## Oberfläche
 Im **Querschnitt** (Hochformat) liegt die Anzeige von Trübung, Puffer, Schieflage und offenen Zellen als schmale Leiste über dem Bild; Tempo und Solltiefe stehen kompakt in einer Zeile, das Bild darf näher an die Pumpe heranzoomen. Die **Ausrüstung** ist in Reiter geteilt (Pumpe, Geräte, Anlage, Verkehr); ein oranger Punkt am Reiter zeigt, wie viele Verbesserungen dort gerade bezahlbar sind.
+
+**Trübung:** Sie entsteht nur, wenn der Saugkopf wirklich Material saugt: pro Sekunde `Pumpenleistung / 250 × Auslastung × Trübungsfaktor × (1 − Trübungsschutz)`, ×1,4 bei Bewegung, ×1,5 bei Altlast (Löffel 0,3, Beton 0,1). Sie klingt exponentiell ab (8 % des Werts pro Sekunde). Das Gleichgewicht liegt bei Leistung 10 etwa bei 50 % (stehend) bzw. 70 % (in Fahrt); stärkere Pumpen brauchen den Trübungsschutz. Die Busse hängt vom Ort ab (Rinne kaum, Altlast normal, Naturschutz sehr hoch).

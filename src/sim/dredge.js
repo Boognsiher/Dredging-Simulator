@@ -140,7 +140,7 @@ export class DredgeSim {
       }
     }
 
-    this.turbidity = Math.min(1, Math.max(0, this.turbidity - CONFIG.turbidityDecay * dt));
+    this.turbidity = Math.min(1, Math.max(0, this.turbidity - (this.turbidity * CONFIG.turbidityDecay + 0.004) * dt)); // exponentiell: je mehr Trübung, desto schneller klingt sie ab
     if (this.mode !== 'slice') this.turbZone = 'channel';
     const tf = CONFIG.turbidityFine[this.turbZone];
     if (this.turbidity > tf.threshold) d.fines = CONFIG.turbidityFinePerSecond * tf.mult * dt;
