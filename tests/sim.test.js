@@ -270,6 +270,24 @@ test('Automatik: Verstopfung stoppt die Pumpe, Minispiel kommt, Wartezeit sinkt 
   }
 });
 
+test('Trübungsbusse hängt vom Ort ab: Durchfahrt kaum, Altlast normal, Naturschutz sehr hoch', () => {
+  const fine = (setup) => {
+    const r = flat(2.5); r.kind.fill(KIND.sand); setup(r);
+    const sim = new DredgeSim(r, computeStats({ power: 8 }), createRng(1));
+    sim.x = 20; sim.y = 12; sim.anchor(); sim.turbidity = 0.95; sim.pumpOn = false;
+    let f = 0; for (let k = 0; k < 20; k++) { sim.turbidity = 0.95; f += sim.update(0.05, { dx: 0, dy: 0, suction: false }).fines; }
+    return { f, zone: sim.turbZone };
+  };
+  const ch = fine(() => {});
+  const mid = Math.floor(CONFIG.river.rows / 2);
+  const alt = fine((r) => { for (let c = 0; c < r.cols; c++) for (let y = 0; y < r.rows; y++) { const i = r.idx(c, y); if (r.zone[i]) r.kind[i] = KIND.altlast; } });
+  const nat = fine((r) => { r.zone.fill(0); });
+  assert.equal(ch.zone, 'channel'); assert.equal(alt.zone, 'altlast'); assert.equal(nat.zone, 'nature');
+  assert.ok(ch.f > 0 && ch.f < alt.f * 0.1, 'Durchfahrt vernachlässigbar');
+  assert.ok(nat.f > alt.f * 3, 'Naturschutz sehr hoch');
+  void mid;
+});
+
 test('Ponton: bleibt im Wasser, ankert nur dort', () => {
   const r = flat(2); for (let y = 0; y < 5; y++) for (let x = 0; x < r.cols; x++) r.top[r.idx(x, y)] = r.wl + 1;
   const sim = new DredgeSim(r, computeStats({}), createRng(1));

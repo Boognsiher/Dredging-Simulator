@@ -776,6 +776,7 @@ function frame(now) {
       ? `${game.totals.removed.toFixed(0)} m³ gebaggert · ${sim.slice.restCount()} Zellen über Solltiefe${sim.bufferFull ? ' · Puffer voll, Pumpe pausiert!' : ''}`
       : `${game.traffic.ships.filter((s) => s.state === 'sail').length} Schiffe unterwegs · ${game.traffic.ships.filter((s) => s.state === 'queue').length} wartend`;
     $('s-turb').value = sim.turbidity;
+    $('s-turbzone').textContent = sim.mode === 'slice' ? ({ channel: 'Rinne: Busse kaum', altlast: '☢ Altlast: Busse', nature: '🌿 Naturschutz: Busse sehr hoch!' })[sim.turbZone] : '';
     $('s-tilt').value = sim.mode === 'slice' ? sim.slice.tilt : 0;
     fx.update(dt);
     game.update(dt);

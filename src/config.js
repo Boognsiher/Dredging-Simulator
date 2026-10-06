@@ -60,7 +60,9 @@ export const CONFIG = {
     { zone: 0.15, hits: 3, speed: 1.2, clog: 9 }, // Schiffswrack
     { zone: 0.14, hits: 3, speed: 1.0, clog: 10 }, // Fliegerbombe (Blindgänger, bitte nicht zucken)
   ],
-  turbidityFineThreshold: 0.8, turbidityFinePerSecond: 150, turbidityGain: 30, turbidityDecay: 0.08,
+  turbidityFineThreshold: 0.8, turbidityFinePerSecond: 150,
+  // Trübungsbussen je nach Ort des Saugkopfs: Durchfahrt kaum, Altlastenbereich normal, Naturschutzgebiet sehr hoch (und schon bei geringerer Trübung)
+  turbidityFine: { channel: { mult: 0.02, threshold: 0.8 }, altlast: { mult: 1, threshold: 0.8 }, nature: { mult: 5, threshold: 0.45 } }, turbidityGain: 30, turbidityDecay: 0.08,
   // Automatik: Stufe 0 = Handbetrieb, 1 = experimentell, 2 = zuverlässig, 3 = voll
   auto: {
     speedFactor: [1, 0.8, 1, 1.25],

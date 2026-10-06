@@ -22,6 +22,8 @@ export class DredgeSim {
     this.x = 3; // Ponton-Position in Zellenkoordinaten (x = Flussrichtung)
     this.y = river.rows / 2;
     this.turbidity = 0;
+    this.turbZone = 'channel'; // wo die Trübung entsteht: 'channel' | 'altlast' | 'nature' (bestimmt die Busse)
+    this.altT = 0;
     this.turbidityMult = 1;
     this.autoStartedPump = false;
     this.tool = 'pump'; // gewähltes Gerät (Saugkopf oder Löffelbagger), gilt für die nächste Verankerung
@@ -127,6 +129,11 @@ export class DredgeSim {
       d.removed = r.removed; d.by = r.by; d.zone = r.zone; d.out = r.out; d.land = r.land; d.hard = r.hard; d.concrete = r.concrete ?? 0; d.dep = r.dep ?? {};
       // Trübung entsteht nur, wenn die Pumpe am Boden wirklich Material saugt; Mehr Leistung, Bewegung und Altlasten = mehr Trübung.
       const T = this.slice.toolParams(), use = T.power * dt > 0 ? Math.min(1, Math.max(0, r.removed / (T.power * dt))) : 0;
+      const sl = this.slice, rv = this.river, mrow = Math.min(rv.rows - 1, Math.max(0, Math.floor(sl.mouth().x)));
+      const cellOf = (c) => rv.idx(c, mrow);
+      const inCorridor = sl.cols.some((c) => rv.zone[cellOf(c)]) || (T.allowLand && sl.cols.some((c) => rv.ext[cellOf(c)]));
+      this.altT = r.by[KIND.altlast] > 0 || sl.cols.some((c) => rv.kind[cellOf(c)] === KIND.altlast && rv.top[cellOf(c)] - rv.rock[cellOf(c)] > 0.05) ? 8 : Math.max(0, this.altT - dt);
+      this.turbZone = !inCorridor ? 'nature' : this.altT > 0 ? 'altlast' : 'channel';
       if (this.slice.suctioning && use > 0) {
         const boost = (this.slice.moving ? 1.4 : 1) * (r.by[KIND.altlast] > 0 ? 1.5 : 1);
         this.turbidity += (T.power / CONFIG.turbidityGain) * this.turbidityMult * T.turb * boost * (1 - s.curtain) * use * dt;
@@ -134,7 +141,9 @@ export class DredgeSim {
     }
 
     this.turbidity = Math.min(1, Math.max(0, this.turbidity - CONFIG.turbidityDecay * dt));
-    if (this.turbidity > CONFIG.turbidityFineThreshold) d.fines = CONFIG.turbidityFinePerSecond * dt;
+    if (this.mode !== 'slice') this.turbZone = 'channel';
+    const tf = CONFIG.turbidityFine[this.turbZone];
+    if (this.turbidity > tf.threshold) d.fines = CONFIG.turbidityFinePerSecond * tf.mult * dt;
 
     this.removed += d.removed; this.outside += d.out;
     this.clogs += d.clogs; this.tips += d.tips;

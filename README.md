@@ -98,3 +98,5 @@ Reedereien nach Klasse freischalten, Betonqualitäten, weitere Geräte (Eimerket
 
 ## Einzeldatei zum Ausprobieren
 `dist/fahrrinne-frei.html` ist eine einzelne Datei, die per Doppelklick (ohne Server) im Browser läuft. Neu bauen mit `npm run build`.
+
+**Trübungsbussen** hängen vom Ort des Saugkopfs ab: in der Durchfahrt (Rinne) praktisch vernachlässigbar, im Altlastenbereich normal, im Naturschutzgebiet sehr hoch (und schon bei geringerer Trübung). Die Anzeige neben dem Trübungsbalken nennt den aktuellen Bereich.
