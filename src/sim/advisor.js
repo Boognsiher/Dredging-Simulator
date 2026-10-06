@@ -124,7 +124,7 @@ export class Advisor {
   pick(game, sim) {
     const A = CONFIG.advisor;
     if (!this.enabled || game.status !== 'playing') return null;
-    if (this.runTime - this.lastShown < A.gap) return null;
+    if (this.runTime < A.firstAfter || this.runTime - this.lastShown < A.gap) return null;
     const list = this.tips(game, sim).filter((tip) => !this.muted.has(tip.id) && this.runTime - (this.shownAt[tip.id] ?? -Infinity) >= (tip.id === 'start' ? Infinity : A.tipCooldown) && tip.when());
     list.sort((a, b) => b.prio - a.prio);
     const tip = list[0];

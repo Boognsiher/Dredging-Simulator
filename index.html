@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Fahrrinne frei!</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%9A%A2%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1 id="title">Fahrrinne frei! <small id="level-name"></small></h1>
+    <div id="hud">
+      <span>Tag <b id="h-day"></b> <small id="h-left"></small></span>
+      <span>Geld <b id="h-money"></b> <small id="h-income"></small></span>
+      <span>Fracht <b id="h-tons"></b></span>
+      <span>Pegel <b id="h-wl"></b></span>
+      <span>Puffer <b id="h-buf"></b></span>
+      <span>Rekord <b id="h-best">–</b></span>
+    </div>
+  </header>
+
+  <main>
+    <section id="stage">
+      <div id="classbar" aria-label="Schiffsklassen"></div>
+      <canvas id="canvas"></canvas>
+      <div id="hints" aria-label="Steuerung"></div>
+      <div id="legend" aria-label="Legende">
+        <span><i style="background:linear-gradient(90deg,#96cdd7,#2c5f70)"></i>flach → tief</span>
+        <span><i style="background:rgba(120,200,120,.5)"></i>Naturschutz</span>
+        <span><i style="background:rgba(255,120,40,.7)"></i>Altlast</span>
+        <span><i style="background:rgba(90,95,105,.8)"></i>Fels</span>
+        <span><i style="background:repeating-linear-gradient(45deg,#2a3a4a,#2a3a4a 2px,#8fa6ba 2px,#8fa6ba 3px)"></i>harte Schicht</span>
+        <span><i style="background:#fff;border:1px solid #222"></i>Fremdstoff</span>
+        <span><i style="background:rgba(255,70,60,.7)"></i>zu flach (Klasse)</span>
+        <span><i style="background:rgba(150,90,200,.7)"></i>Fels im Weg</span>
+      </div>
+      <div id="shift-hud" hidden>
+        <span id="s-mode"></span>
+        <span><b id="s-removed"></b></span>
+        <span>Trübung <progress id="s-turb" max="1" value="0"></progress></span>
+        <span>Schieflage <progress id="s-tilt" max="1" value="0"></progress></span>
+      </div>
+      <div id="shift-actions" hidden>
+        <button id="btn-anchor" class="primary">⚓ Anker werfen (E)</button>
+        <button id="btn-leave">↩ Zurück zur Karte (Q)</button>
+        <button id="btn-auto">🤖 Automatik an (T)</button>
+        <button id="btn-fix" class="primary">🔧 Reset (R)</button>
+        <button id="btn-pump">🌀 Pumpe: AUS (Leertaste)</button>
+        <button id="btn-sound">🔊 Ton an (M)</button>
+        <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
+        <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="5.5" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
+      </div>
+      <button id="btn-pause2" aria-label="Pause">⏸</button>
+      <div id="toast"></div>
+      <div id="overlay"></div>
+      <div id="bruno" hidden></div>
+      <div id="touch-ui" hidden>
+        <div id="stick" aria-label="Steuerkreuz"><div id="knob"></div></div>
+        <div id="dpad" hidden aria-label="Pfeiltasten für die Pumpe">
+          <button class="dp up" data-dir="up" aria-label="Pumpe hoch">↑</button>
+          <button class="dp left" data-dir="left" aria-label="Pumpe links">←</button>
+          <button class="dp right" data-dir="right" aria-label="Pumpe rechts">→</button>
+          <button class="dp down" data-dir="down" aria-label="Pumpe runter">↓</button>
+        </div>
+        <button id="act" class="primary">⚓ Anker</button>
+      </div>
+    </section>
+
+    <aside id="panel">
+      <button id="panel-handle">▲ Wasserstrasse &amp; Ausrüstung</button>
+      <h2>Verkehrsziel</h2>
+      <div id="goal"></div>
+      <h2>Wasserstrasse</h2>
+      <div id="fairway"></div>
+      <h2>Frachtmarkt</h2>
+      <div id="market"></div>
+      <h2>Frachtaufträge</h2>
+      <div id="contracts"></div>
+      <h2>Anlage an Land</h2>
+      <div id="plant">
+        <div>Puffer: <b id="p-stock"></b> / <span id="p-cap"></span> m³ · Durchsatz <span id="p-thru"></span> m³/s</div>
+        <progress id="p-prog" max="1" value="0"></progress>
+        <div id="p-mats"></div>
+        <label><input type="checkbox" id="chk-fritz" checked> Flussmeister Fritz gibt Tipps (B)</label>
+      </div>
+      <div id="upgrades"></div>
+      <button id="btn-pause">⏸ Pause (P)</button>
+      <button id="btn-sound2">🔊 Ton an (M)</button>
+      <h2>Journal</h2>
+      <ul id="log"></ul>
+    </aside>
+  </main>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

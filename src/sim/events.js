@@ -18,7 +18,7 @@ export const EVENTS = [
   {
     id: 'drought', chance: 0.022, when: (g) => !g.water.until,
     apply: (g) => {
-      const days = g.rng.range(4, 6), drop = g.rng.range(0.3, g.level.lowWater ?? 0.6);
+      const days = g.rng.range(4, 6), drop = g.rng.range(0.2, g.level.lowWater ?? 0.5);
       g.setWater(CONFIG.water.base - drop, days);
       return { kind: 'bad', text: `Niedrigwasser: der Pegel sinkt, grosse Schiffe finden zu wenig Wasser unter dem Kiel (${days.toFixed(0)} Tage).` };
     },

@@ -1,0 +1,653 @@
+import { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } from './config.js';
+import { Game } from './sim/game.js';
+import { acceptContract } from './sim/contracts.js';
+import { waitingByClass } from './sim/traffic.js';
+import { priceOf, trend } from './sim/market.js';
+import { needDepth } from './sim/fairway.js';
+import { Advisor } from './sim/advisor.js';
+import { serializeGame, restoreGame, savedSummary } from './sim/save.js';
+import { createInput } from './ui/input.js';
+import { setupTouch } from './ui/touch.js';
+import { steerToward } from './ui/touch-logic.js';
+import { fitSize, renderQuality } from './ui/layout.js';
+import { hintsFor } from './ui/hints.js';
+import { Fx } from './ui/fx.js';
+import { createAudio } from './ui/audio.js';
+import { view, CELL, OX, sizeCanvas, drawMap, drawSlice, sliceHeadScreen, sliceMouthScreen, sliceY } from './ui/render.js';
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('canvas'), ctx = canvas.getContext('2d');
+const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
+const num = (n) => Math.round(n).toLocaleString('de-CH');
+const pct = (v) => `${Math.round(v * 100)}%`;
+
+// ---------- Browser-Speicher: Rekorde, Spielstand, Einstellungen (alles darf fehlen) ----------
+const LEVELS_KEY = 'dredging.levels', SAVE_KEY = 'dredging.save', FRITZ_KEY = 'dredging.fritz', MUTE_KEY = 'dredging.fritz.muted';
+const loadLevels = () => { try { return JSON.parse(localStorage.getItem(LEVELS_KEY) ?? '{}'); } catch { return {}; } };
+const loadBest = (id = game.levelId) => loadLevels()[id] ?? null;
+const saveBest = (v, id = game.levelId) => { try { localStorage.setItem(LEVELS_KEY, JSON.stringify({ ...loadLevels(), [id]: v })); } catch { /* egal */ } };
+const levelUnlocked = (i) => i === 0 || (loadLevels()[LEVELS[i - 1].id] ?? 0) > 0;
+const readSave = () => { try { return localStorage.getItem(SAVE_KEY); } catch { return null; } };
+const clearSave = () => { try { localStorage.removeItem(SAVE_KEY); } catch { /* egal */ } };
+let saveClock = 0, savedDay = 0, stateSig = null, stateSigTimer = 0;
+const gameSig = () => JSON.stringify([game.levels, game.contracts.map((c) => c.id + c.status), game.targetDepth, game.pumpSpeed]);
+function saveGame() {
+  if (game.status !== 'playing' || overlayOpen()) return;
+  try { localStorage.setItem(SAVE_KEY, serializeGame(game)); savedDay = game.day; saveClock = 0; } catch { /* Speicher voll oder gesperrt: egal */ }
+}
+const fritzOn = () => { try { return localStorage.getItem(FRITZ_KEY) !== '0'; } catch { return true; } };
+const loadMuted = () => { try { return JSON.parse(localStorage.getItem(MUTE_KEY) ?? '[]'); } catch { return []; } };
+const saveMuted = (a) => { try { localStorage.setItem(MUTE_KEY, JSON.stringify([...a])); } catch { /* egal */ } };
+
+let advisor = new Advisor(loadMuted());
+advisor.enabled = fritzOn();
+let tipOpen = false, tipTimer = 0;
+const fx = new Fx();
+const audio = createAudio();
+let game = new Game();
+let sim = game.createSession();
+let paused = false, endShown = false;
+const readInput = createInput(canvas);
+sizeCanvas(canvas);
+let mapTarget = null;
+let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
+let sheetOpen = false;
+const narrow = () => matchMedia('(max-width: 860px)').matches;
+const isTouch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+const ui = { classSel: null, floaters: [], t: 0, dt: 1 / 60, mapTarget: null };
+
+// ---------- Schiffsklassen oben ----------
+function buildClassbar() {
+  const bar = $('classbar'), nodes = [];
+  game.level.classes.forEach((id, k) => {
+    const cls = shipById(id), b = document.createElement('button');
+    b.className = 'cls'; b.dataset.id = id; b.title = `Taste ${k + 1}`;
+    b.innerHTML = `<span class="wait" hidden></span><b><i class="dot" style="background:${cls.color}"></i>${cls.icon} ${cls.name}</b><small></small>`;
+    b.onclick = () => chooseClass(id, true);
+    nodes.push(b);
+  });
+  bar.replaceChildren(...nodes);
+}
+function chooseClass(id, setDepth = false) {
+  classSel = classSel === id && !setDepth ? null : id;
+  if (setDepth && sim.mode === 'slice') setDepthValue(Math.round((needDepth(shipById(id)) + 0.25) * 10) / 10);
+  ui.classSel = classSel;
+  updateClassbar();
+}
+function updateClassbar() {
+  const wait = waitingByClass(game);
+  for (const b of $('classbar').children) {
+    const id = b.dataset.id, f = game.fair?.[id], cls = shipById(id);
+    b.classList.toggle('ok', !!f?.passable); b.classList.toggle('on', classSel === id);
+    const small = b.querySelector('small'), w = b.querySelector('.wait');
+    const need = needDepth(cls).toFixed(1);
+    small.textContent = !f ? '' : f.passable ? `${need} m · frei${f.twoWay ? ' · ⇄' : ''}` : f.volume === Infinity ? `${need} m · Korridor zu schmal` : `${need} m · fehlt ${num(f.volume)} m³`;
+    w.hidden = !(wait[id] > 0); w.textContent = wait[id] ?? '';
+  }
+}
+
+// ---------- Panel (einmal aufgebaut, danach nur aktualisiert: Klicks gehen nie verloren) ----------
+const upRows = {};
+const groups = { ponton: 'Ponton ausrüsten', plant: 'Anlage ausbauen', traffic: 'Wasserstrasse ausbauen' };
+function buildUpgrades() {
+  const nodes = [];
+  for (const [g, title] of Object.entries(groups)) {
+    const h = document.createElement('h3'); h.textContent = title; nodes.push(h);
+    for (const [id, def] of Object.entries(UPGRADES).filter(([, d]) => d.group === g)) {
+      const row = document.createElement('div'); row.className = 'up';
+      const label = document.createElement('div'), small = document.createElement('small');
+      label.append(def.name + ' ', small);
+      const btn = document.createElement('button');
+      btn.onclick = () => { if (game.buyUpgrade(id)) { applyStats(); updatePanel(); } };
+      const sell = document.createElement('button');
+      sell.className = 'sell';
+      let armed = 0;
+      sell.onclick = () => {
+        if (!armed) { armed = setTimeout(() => { armed = 0; updateUpgrades(); }, 3000); sell.textContent = 'Sicher?'; return; }
+        clearTimeout(armed); armed = 0;
+        if (game.sellUpgrade(id)) { applyStats(); updatePanel(); }
+      };
+      const btns = document.createElement('div'); btns.className = 'upbtns'; btns.append(sell, btn);
+      row.append(label, btns);
+      upRows[id] = { small, btn, sell, armed: () => armed };
+      nodes.push(row);
+    }
+  }
+  $('upgrades').replaceChildren(...nodes);
+}
+function applyStats() {
+  sim.setStats(game.stats);
+  if (sim.mode === 'slice' && game.stats.autoLevel <= 0 && sim.slice.auto.on) { sim.slice.auto.on = false; sim.slice.auto.error = null; }
+}
+function updateUpgrades() {
+  for (const [id, def] of Object.entries(UPGRADES)) {
+    const cost = game.nextUpgradeCost(id), r = upRows[id];
+    r.small.textContent = `Stufe ${game.levels[id]}/${def.maxLevel} · ${def.desc}`;
+    r.btn.textContent = cost === null ? 'Max' : chf(cost);
+    r.btn.disabled = cost === null || game.money < cost || game.status !== 'playing';
+    const refund = game.refundFor(id);
+    if (!r.armed()) r.sell.textContent = '↩';
+    if (refund !== null) r.small.textContent += ` · Rückbau +${chf(refund)}`;
+    r.sell.disabled = refund === null || game.status !== 'playing';
+    r.sell.title = `Rückbau: ${Math.round(CONFIG.refundShare * 100)}% der Investition kommen zurück`;
+  }
+}
+
+function updatePlant() {
+  const st = game.stats;
+  $('p-stock').textContent = game.stockTotal.toFixed(0);
+  $('p-cap').textContent = st.bufferCapacity;
+  $('p-prog').max = st.bufferCapacity; $('p-prog').value = game.stockTotal;
+  $('p-thru').textContent = st.plantCapacity.toFixed(1);
+  const el = $('p-mats');
+  if (!el.children.length) el.replaceChildren(...CONFIG.materials.map((m) => { const d = document.createElement('div'); d.innerHTML = `<i style="background:${m.color}"></i><span></span><small></small>`; return d; }));
+  CONFIG.materials.forEach((m, k) => {
+    const d = el.children[k], price = k === KIND.kies ? m.price * st.sortBonus * priceOf(game.market, 'kies') / 18 : m.price < 0 ? m.price * st.disposalFactor : m.price * st.sortBonus;
+    d.querySelector('span').textContent = `${m.name} ${game.stock[k].toFixed(0)}`;
+    d.querySelector('small').textContent = `${price >= 0 ? '+' : '−'}${Math.abs(Math.round(price))}/m³`;
+    d.title = `${m.name}: ${price >= 0 ? 'Verkauf' : 'Entsorgung'} ${Math.abs(Math.round(price))} CHF pro m³`;
+  });
+}
+
+function updateGoal() {
+  const g = game, goal = g.level.goalTons, done = g.totals.tons;
+  let box = $('goal');
+  if (!box.firstChild) box.innerHTML = '<div id="goal-txt"></div><progress id="goal-prog" max="1" value="0"></progress><div id="goal-sub"></div><button id="btn-finish" class="primary" hidden>Konzession sichern und abschliessen</button>';
+  $('goal-txt').innerHTML = `<b>${num(done)}</b> / ${num(goal)} t Fracht durchgebracht`;
+  $('goal-prog').value = Math.min(1, done / goal);
+  $('goal-sub').innerHTML = `<small>${g.totals.ships} Schiffe · Verkehr +${chf(g.totals.trafficIncome)} · ${g.totals.rejected} abgewiesen${g.totals.groundings ? ` · ${g.totals.groundings} Havarien` : ''}</small>`;
+  const btn = $('btn-finish');
+  btn.hidden = !g.goalReached || g.status !== 'playing';
+  btn.onclick = () => { if (game.finish('goal')) { /* showEnd läuft in der Schleife */ } };
+}
+
+function updateFairway() {
+  const wait = waitingByClass(game), box = $('fairway');
+  if (box.children.length !== game.level.classes.length) box.replaceChildren(...game.level.classes.map(() => { const d = document.createElement('div'); d.className = 'frow'; return d; }));
+  game.level.classes.forEach((id, k) => {
+    const f = game.fair?.[id], cls = shipById(id), row = box.children[k];
+    const status = !f ? '' : f.passable ? `<span class="ok">✓ frei${f.twoWay ? ' · Gegenverkehr' : ' · einspurig'}</span>` : f.volume === Infinity ? '<span class="no">Korridor zu schmal</span>' : `<span class="no">fehlt ${num(f.volume)} m³</span>`;
+    row.innerHTML = `<div>${cls.icon} <b>${cls.name}</b><br><small>Tiefe ${needDepth(cls).toFixed(1)} m · Breite ${cls.beam} · ${cls.tons} t · ${chf(cls.fee)}${(game.rejectedBy[id] ?? 0) ? ` · ${game.rejectedBy[id]} abgewiesen` : ''}</small></div><div style="text-align:right">${status}${wait[id] ? `<br><small>${wait[id]} wartend</small>` : ''}</div>`;
+  });
+}
+
+function sparkline(h, color) {
+  const lo = Math.min(...h), hi = Math.max(...h), span = hi - lo || 1;
+  const pts = h.map((v, i) => `${(i / Math.max(1, h.length - 1)) * 56},${16 - ((v - lo) / span) * 14}`).join(' ');
+  return `<svg viewBox="0 0 56 18"><polyline fill="none" stroke="${color}" stroke-width="1.5" points="${pts}"/></svg>`;
+}
+let marketSig = '';
+function updateMarket() {
+  const sig = `${game.day}|${game.levelId}`;
+  if (sig === marketSig) return;
+  marketSig = sig;
+  const used = new Set(SHIPS.filter((s) => game.level.classes.includes(s.id)).flatMap((s) => s.cargo));
+  $('market').replaceChildren(...CARGOS.filter((c) => used.has(c.id)).map((c) => {
+    const row = document.createElement('div'), t = trend(game.market, c.id), p = priceOf(game.market, c.id), ratio = p / c.base;
+    row.className = 'mrow';
+    row.innerHTML = `<div><i class="dot" style="background:${c.color};display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px"></i>${c.name}</div><div><b>${p.toFixed(p < 50 ? 1 : 0)}</b> CHF/t <span class="${t > 0 ? 'tr-up' : t < 0 ? 'tr-down' : ''}">${t > 0 ? '▲' : t < 0 ? '▼' : '–'}</span></div>${sparkline(game.market.history[c.id], ratio > 1.15 ? '#7bd88f' : ratio < 0.85 ? '#ff7a6b' : '#8fa6ba')}`;
+    return row;
+  }));
+}
+
+let contractSig = null;
+function updateContracts() {
+  const sig = JSON.stringify(game.contracts.map((c) => [c.id, c.status, Math.floor(c.done / 50)])) + Math.floor(game.money / 500);
+  if (sig === contractSig) return;
+  contractSig = sig;
+  const box = $('contracts');
+  if (!game.contracts.length) { box.innerHTML = '<div class="empty">Keine Aufträge. Reedereien melden sich ab und zu.</div>'; return; }
+  box.replaceChildren(...game.contracts.map((c) => {
+    const d = document.createElement('div'), cargo = cargoById(c.cargo), cls = shipById(c.cls), active = c.status === 'active';
+    const left = Math.max(0, Math.ceil(((active ? c.dueAt : c.offerExpiresAt) - game.time) / CONFIG.daySeconds));
+    d.className = 'contract';
+    d.innerHTML = `<b>${c.client}</b><small>${num(c.tons)} t ${cargo.name} (${cls.icon} ${cls.name}) · Prämie ${chf(c.bonus)} · Strafe ${chf(c.penalty)}</small><small>${active ? `Noch ${left} Tage` : `Angebot gilt noch ${left} Tage`}</small>`;
+    if (active) { const p = document.createElement('progress'); p.max = c.tons; p.value = c.done; d.append(p); }
+    else {
+      const b = document.createElement('button'); b.textContent = 'Annehmen';
+      b.disabled = game.contracts.filter((x) => x.status === 'active').length >= CONFIG.contracts.maxOpen;
+      b.onclick = () => { if (acceptContract(game, c.id)) { contractSig = null; updateContracts(); } };
+      d.append(b);
+    }
+    return d;
+  }));
+}
+
+let logSig = '';
+function updateLog() {
+  const sig = `${game.log.length}|${game.log[0]?.text}|${game.log[0]?.day}`;
+  if (sig === logSig) return;
+  logSig = sig;
+  $('log').replaceChildren(...game.log.map((e) => { const li = document.createElement('li'); li.className = e.kind; li.textContent = `Tag ${e.day}: ${e.text}`; return li; }));
+}
+
+let deltaUntil = 0, lastMoney = null, moneyTimer = 0;
+function updateHud() {
+  const left = game.timeLeft, mm = Math.floor(left / 60), ss = String(Math.floor(left % 60)).padStart(2, '0');
+  $('h-day').textContent = `${Math.min(game.day, game.deadlineDays)}/${game.deadlineDays}`;
+  $('h-left').textContent = `(${mm}:${ss})`;
+  $('h-money').textContent = chf(game.money);
+  $('h-money').style.color = game.money < 0 ? 'var(--bad)' : '';
+  { const cap = game.stats.bufferCapacity, st = game.stockTotal; $('h-buf').textContent = `${Math.round(st)}/${Math.round(cap)} m³`; $('h-buf').classList.toggle('warn', st >= cap * 0.85); }
+  if (performance.now() > deltaUntil) { $('h-income').textContent = ''; $('h-income').className = ''; }
+  $('h-tons').textContent = `${Math.round((game.totals.tons / game.level.goalTons) * 100)}%`;
+  $('h-wl').textContent = `${game.wl.toFixed(1)} m${game.closed ? ' ⛔' : ''}`;
+  const best = loadBest();
+  $('h-best').textContent = best === null ? '–' : chf(best);
+}
+function flashDelta(d) {
+  const el = $('h-income');
+  el.textContent = `${d > 0 ? '+' : '−'}${Math.abs(Math.round(d)).toLocaleString('de-CH')}`;
+  el.className = `delta ${d > 0 ? 'plus' : 'minus'}`;
+  deltaUntil = performance.now() + 1500;
+}
+function trackMoney(dt) {
+  moneyTimer += dt;
+  if (moneyTimer < 0.7) return;
+  moneyTimer = 0;
+  if (lastMoney !== null && Math.abs(game.money - lastMoney) >= 5) flashDelta(game.money - lastMoney);
+  lastMoney = game.money;
+}
+
+function updatePanel() { updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+
+// ---------- Overlay, Toast ----------
+function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
+function hideOverlay() { $('overlay').classList.remove('show'); }
+const overlayOpen = () => $('overlay').classList.contains('show');
+
+let toastTimer = 0;
+function placeToast() {
+  const t = $('toast');
+  const visTop = canvas.offsetTop + (cropVis !== null ? panY : 0), visH = cropVis !== null ? cropVis : canvas.clientHeight;
+  t.style.right = '8px'; t.style.top = `${Math.max(8, visTop + visH - t.offsetHeight - 12)}px`;
+}
+function toast(text, kind = 'info', force = false) {
+  if (!force && (kind === 'info' || kind === 'upgrade')) return;
+  $('toast').innerHTML = `<span class="${kind}"></span>`;
+  $('toast').firstChild.textContent = text;
+  placeToast();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $('toast').innerHTML = ''; }, force ? 3800 : 2600);
+}
+
+// ---------- Spielfeld einpassen und Steuerungsanzeige ----------
+let zoom = 1, panX = 0, panY = 0, cropVis = null;
+const MAX_ZOOM = 1.7;
+let layoutSig = '';
+function focusY(lh, h) {
+  if (sim.mode === 'slice') return (sliceHeadScreen(sim.slice).y / lh) * h;
+  return ((sim.y * CELL) / lh) * h;
+}
+function panCanvas(dt) {
+  const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('classbar').offsetHeight}/${innerHeight}`;
+  if (sig !== layoutSig) { layoutSig = sig; fitCanvas(); }
+  const stageW = $('stage').clientWidth, cw = parseFloat(canvas.style.width) || stageW, ch = parseFloat(canvas.style.height) || 0;
+  if (zoom > 1 && sim.mode === 'slice') {
+    const sl = sim.slice, fxp = ((sl.x - sl.x0) / 16) * cw;
+    const want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
+    panX += (want - panX) * Math.min(1, dt * 6);
+    canvas.style.marginLeft = `${-panX}px`;
+  } else canvas.style.marginLeft = '';
+  if (cropVis !== null && ch > cropVis) {
+    const want = Math.min(Math.max(0, focusY(canvas.logicalH, ch) - cropVis / 2), ch - cropVis);
+    panY += (want - panY) * Math.min(1, dt * 6);
+    const bottom = ch - cropVis - panY;
+    canvas.style.marginTop = `${-panY}px`; canvas.style.marginBottom = `${-bottom}px`; canvas.style.clipPath = `inset(${panY}px 0 ${bottom}px 0)`;
+  } else { panY = 0; canvas.style.marginTop = canvas.style.marginBottom = canvas.style.clipPath = ''; }
+}
+function fitCanvas() {
+  const lw = canvas.logicalW, lh = canvas.logicalH, stage = $('stage');
+  if (!lw) return;
+  let below = 0;
+  for (const el of stage.children) {
+    if (el === canvas || el.hidden) continue;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.position !== 'static') continue;
+    below += (el.id === 'shift-actions' ? el.scrollHeight : el.offsetHeight) + (el.id === 'touch-ui' ? 0 : parseFloat(cs.marginTop) + parseFloat(cs.marginBottom));
+  }
+  const docTop = stage.getBoundingClientRect().top + scrollY - $('classbar').offsetHeight * 0; // die Klassenleiste zählt oben mit
+  const stageW = stage.clientWidth;
+  const portrait = narrow() && matchMedia('(orientation: portrait)').matches;
+  zoom = 1; cropVis = null;
+  let w, h;
+  if (portrait && sim.mode === 'slice') {
+    const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
+    zoom = Math.min(MAX_ZOOM, Math.max(1, visAvail / nat));
+    w = stageW * zoom; h = w * (lh / lw);
+    if (h > visAvail + 1) cropVis = visAvail;
+  } else {
+    const availH = Math.max(narrow() ? 60 : 220, innerHeight - docTop - below - (narrow() ? 64 : 16));
+    ({ w, h } = fitSize(stageW, availH, lw, lh));
+  }
+  canvas.style.width = `${w}px`; canvas.style.height = `${h}px`;
+  const q = renderQuality(devicePixelRatio, w, lw);
+  const cw = Math.round(lw * q), chh = Math.round(lh * q);
+  if (canvas.width !== cw || canvas.height !== chh) { canvas.width = cw; canvas.height = chh; }
+  canvas.q = cw / lw;
+  view.s = w / lw; fx.view = view.s;
+  panCanvas(0); placeToast();
+}
+
+function updateHints() {
+  const box = $('hints');
+  box.replaceChildren(...hintsFor(sim.mode, isTouch).map(([key, what]) => {
+    const item = document.createElement('span'), k = document.createElement('kbd');
+    k.textContent = key; item.append(k, what);
+    return item;
+  }));
+}
+
+// ---------- Modus: Karte / Querschnitt ----------
+function syncMode() {
+  const mode = sim.mode;
+  fx.clear(); audio.hum(false, 0);
+  $('shift-hud').hidden = false; $('shift-actions').hidden = false;
+  $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice'; $('btn-pump').hidden = mode !== 'slice';
+  $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt' }[mode];
+  if (mode !== 'slice') { $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
+  updateHints(); fitCanvas();
+}
+function anchor() {
+  if (!sim.canFloat(sim.x, sim.y)) { toast('Hier ist zu wenig Wasser für den Ponton', 'bad', true); return; }
+  if (!sim.anchor()) return;
+  syncMode();
+}
+function leave() { if (sim.leave()) syncMode(); }
+function toggleAuto() { sim.toggleAuto(); }
+function toggleSound() { audio.setMuted(!audio.muted); for (const id of ['btn-sound', 'btn-sound2']) $(id).textContent = audio.muted ? '🔇 Ton aus (M)' : '🔊 Ton an (M)'; }
+function togglePump() {
+  if (sim.mode === 'slice' && sim.slice.freeing) {
+    const r = sim.freeAttempt();
+    if (r) { const m = sliceMouthScreen(sim.slice); audio.free(r); fx.burst(m.x, m.y, r === 'cleared' ? 24 : r === 'hit' ? 8 : 4, r === 'miss' ? 'dust' : 'hard', r === 'cleared' ? 220 : 120); }
+    return;
+  }
+  if (sim.togglePump()) audio.toggle(sim.pumpOn);
+}
+function fixAuto() { sim.fixAuto(); }
+function setDepthValue(v) {
+  sim.setTargetDepth(v);
+  game.targetDepth = sim.targetDepth;
+  $('cut').value = sim.targetDepth; $('cut-val').textContent = `${sim.targetDepth.toFixed(1)} m`;
+}
+function setSpeed(v) {
+  sim.setPumpSpeed(v);
+  game.pumpSpeed = sim.pumpSpeed;
+  $('spd').value = sim.pumpSpeed; $('spd-val').textContent = pct(sim.pumpSpeed);
+}
+function togglePause() {
+  paused = !paused;
+  $('btn-pause').textContent = paused ? '▶ Weiter (P)' : '⏸ Pause (P)';
+  $('btn-pause2').textContent = paused ? '▶' : '⏸';
+  if (paused) saveGame();
+}
+function setSheet(open) {
+  sheetOpen = open && narrow();
+  $('panel').classList.toggle('open', sheetOpen);
+  if (sheetOpen) saveGame();
+}
+
+// ---------- Flussmeister Fritz (Tipps, Spiel pausiert) ----------
+const FRITZ_SVG = `<svg viewBox="0 0 100 100" width="72" height="72" aria-hidden="true">
+  <circle cx="50" cy="60" r="30" fill="#f1c9a0" stroke="#7a5230" stroke-width="2"/>
+  <path d="M18 44 Q50 6 82 44 L82 50 L18 50Z" fill="#1f3f66" stroke="#10243f" stroke-width="2"/>
+  <rect x="14" y="46" width="72" height="9" rx="4" fill="#0f2742"/><circle cx="50" cy="32" r="7" fill="#f2c94c" stroke="#8a6d00" stroke-width="1.5"/>
+  <circle cx="39" cy="63" r="5.5" fill="#fff" stroke="#444"/><circle cx="61" cy="63" r="5.5" fill="#fff" stroke="#444"/>
+  <circle cx="40" cy="64" r="2.6" fill="#222"/><circle cx="62" cy="64" r="2.6" fill="#222"/>
+  <path d="M36 76 Q50 70 64 76 Q58 86 50 83 Q42 86 36 76Z" fill="#cfcfcf" stroke="#777"/>
+  <path d="M42 80 Q50 84 58 80" stroke="#7a3b2a" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>`;
+function closeTip() { tipOpen = false; $('bruno').hidden = true; $('bruno').innerHTML = ''; }
+function showTip(tip) {
+  tipOpen = true;
+  const box = $('bruno');
+  box.innerHTML = `<div class="bruno-row"><div class="bruno-head">${FRITZ_SVG}<small>Flussmeister Fritz</small></div>
+    <div class="bruno-bubble"><p></p><div class="bruno-btns"></div><div class="bruno-links"></div></div></div>`;
+  box.querySelector('p').textContent = tip.text;
+  const btns = box.querySelector('.bruno-btns'), links = box.querySelector('.bruno-links');
+  const mk = (parent, text, fn, cls = '') => { const b = document.createElement('button'); b.textContent = text; if (cls) b.className = cls; b.onclick = fn; parent.append(b); return b; };
+  if (tip.upgrade) {
+    const u = UPGRADES[tip.upgrade.id];
+    mk(btns, `${u.name} kaufen (${chf(tip.upgrade.cost)})`, () => { if (game.buyUpgrade(tip.upgrade.id)) { applyStats(); updatePanel(); toast(`${u.name} gekauft. Fritz nickt anerkennend.`, 'good', true); } closeTip(); }, 'primary');
+  }
+  mk(btns, 'Danke, Fritz', closeTip);
+  mk(links, 'Diesen Tipp nie mehr', () => { advisor.mute(tip.id); saveMuted(advisor.muted); closeTip(); });
+  mk(links, 'Fritz ausschalten', () => { setFritz(false); closeTip(); });
+  box.hidden = false;
+}
+function setFritz(on) {
+  advisor.enabled = on; $('chk-fritz').checked = on;
+  try { localStorage.setItem(FRITZ_KEY, on ? '1' : '0'); } catch { /* egal */ }
+  if (!on) closeTip();
+}
+
+// ---------- Spielende, Level ----------
+function showEnd() {
+  endShown = true;
+  clearSave();
+  const e = game.end, t = game.totals, best = loadBest(), won = game.won;
+  const record = won && (best === null || e.finalMoney > best);
+  const idx = LEVELS.findIndex((l) => l.id === game.levelId), wasLocked = idx >= 0 && idx + 1 < LEVELS.length && !levelUnlocked(idx + 1);
+  if (record) saveBest(e.finalMoney);
+  const unlockNote = wasLocked && levelUnlocked(idx + 1) ? `Neues Level freigeschaltet: ${LEVELS[idx + 1].name}!` : '';
+  const title = e.reason === 'bankrupt' ? 'Konzession entzogen' : won ? 'Wasserstrasse offen: Ziel erreicht!' : e.goalReached ? 'Frist abgelaufen (mit Verlust)' : 'Frist abgelaufen: Verkehrsziel verfehlt';
+  const cargoLine = Object.entries(t.byCargo).sort((a, b) => b[1] - a[1]).map(([id, v]) => `${cargoById(id).name} ${num(v)} t`).join(' · ');
+  showOverlay(`<h2>${title}</h2>
+    <p>Endstand: <b>${chf(e.finalMoney)}</b>${record ? ' <b class="good">Neuer Rekord!</b>' : best !== null ? `<br><small>Rekord: ${chf(best)}</small>` : ''}</p>
+    <p><small>Fracht ${num(t.tons)} / ${num(game.level.goalTons)} t · ${t.ships} Schiffe · ${t.rejected} abgewiesen (entgangen ca. ${chf(t.lostValue)}) · ${t.groundings} Havarien (${chf(t.salvage)})<br>
+    Verkehr +${chf(t.trafficIncome)} · Baggerentgelt +${chf(t.pay)} · Anlage ${t.plantNet >= 0 ? '+' : '−'}${chf(Math.abs(t.plantNet))} · Aufträge +${chf(t.contractsPaid)} (${t.contractsDone} erfüllt, ${t.contractsFailed} verpasst)<br>
+    Betrieb −${chf(t.opCost)} · Bussen −${chf(t.fines + t.protectFines)} · Reparaturen −${chf(t.repairs + t.eventCosts)}<br>
+    Gebaggert ${num(t.removed)} m³ · ${cargoLine || 'keine Fracht'}</small></p>
+    <p>${e.reason === 'bankrupt' ? 'Das Geld ist weg.' : won ? 'Gewonnen hat, wer am Ende am meisten Geld hat.' : 'Das Verkehrsziel schaltet das nächste Level frei.'}</p>
+    <button class="primary" id="btn-restart">Neues Spiel</button>`);
+  $('btn-restart').onclick = () => showLevels(unlockNote);
+}
+
+function applyLevel() {
+  $('level-name').textContent = game.level.short;
+  document.title = `Fahrrinne frei! · ${game.level.short}`;
+}
+
+function showLevels(note = '') {
+  const best = loadLevels();
+  const rows = LEVELS.map((l, i) => {
+    const open = levelUnlocked(i), b = best[l.id];
+    return `<button class="level${open ? '' : ' locked'}" data-level="${l.id}" ${open ? '' : 'disabled'}>
+      <span class="swatch" style="background:rgb(${l.palette.water.join(',')})"></span>
+      <span class="ltxt"><b>${open ? '' : '🔒 '}${l.name}</b><small>${l.blurb}</small>
+      <small>Ziel ${num(l.goalTons)} t · ${l.deadlineDays} Tage · Start ${chf(l.startMoney)}${b !== undefined ? ` · Rekord ${chf(b)}` : ''}${open ? '' : ` · erreiche das Ziel in ${LEVELS[i - 1].short} und schliesse mit Gewinn ab`}</small></span></button>`;
+  }).join('');
+  showOverlay(`<h2>Fahrrinne frei!</h2>${note ? `<p class="good">${note}</p>` : ''}<p>Welcher Fluss soll es sein?</p><div class="levels">${rows}</div>`);
+  for (const b of document.querySelectorAll('#overlay .level:not(.locked)')) b.onclick = () => restart(b.dataset.level);
+}
+
+function restart(loaded = null) {
+  game = loaded instanceof Game ? loaded : new Game(undefined, typeof loaded === 'string' ? loaded : game.levelId);
+  sim = game.createSession(); paused = false; endShown = false;
+  $('btn-pause').textContent = '⏸ Pause (P)';
+  sizeCanvas(canvas);
+  setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
+  classSel = null; ui.classSel = null; ui.floaters = [];
+  buildClassbar();
+  // Vorauswahl: die kleinste Klasse, die noch nicht fährt
+  const first = game.level.classes.find((id) => !game.fair[id].passable);
+  if (first) { classSel = first; ui.classSel = first; }
+  hideOverlay(); syncMode(); updatePanel();
+  lastMoney = null; stateSig = null; closeTip(); advisor = new Advisor(loadMuted()); advisor.enabled = fritzOn();
+  applyLevel();
+  setDepthValue(game.targetDepth);
+  if (!(loaded instanceof Game)) { clearSave(); toast(game.level.blurb, 'info', true); } else saveGame();
+}
+
+$('btn-pump').onclick = togglePump;
+$('chk-fritz').checked = advisor.enabled;
+$('chk-fritz').onchange = (e) => setFritz(e.target.checked);
+$('btn-sound').onclick = toggleSound; $('btn-sound2').onclick = toggleSound;
+for (const id of ['btn-sound', 'btn-sound2']) $(id).textContent = audio.muted ? '🔇 Ton aus (M)' : '🔊 Ton an (M)';
+$('btn-pause').onclick = togglePause;
+addEventListener('resize', () => { fitCanvas(); placeToast(); });
+addEventListener('orientationchange', () => setTimeout(fitCanvas, 200));
+$('btn-pause2').onclick = togglePause;
+$('panel-handle').onclick = () => setSheet(!sheetOpen);
+addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
+
+const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
+readInput.onTap((px, py) => {
+  if (sim.mode !== 'map' || paused || sheetOpen || overlayOpen()) return;
+  mapTarget = { x: Math.min(game.river.cols, Math.max(0, (px - OX) / CELL)), y: Math.min(game.river.rows, Math.max(0, py / CELL)) };
+});
+$('btn-anchor').onclick = anchor;
+$('btn-leave').onclick = leave;
+$('btn-auto').onclick = toggleAuto;
+$('btn-fix').onclick = fixAuto;
+$('cut').oninput = (e) => setDepthValue(parseFloat(e.target.value));
+$('spd').oninput = (e) => setSpeed(parseFloat(e.target.value));
+
+// ---------- Hauptschleife ----------
+let last = performance.now(), panelTimer = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  ui.dt = dt; ui.t += dt;
+  if (readInput.tap('KeyP')) togglePause();
+  if (readInput.tap('KeyB') && !overlayOpen()) setFritz(!advisor.enabled);
+  const running = !paused && !sheetOpen && !overlayOpen() && !tipOpen && game.status === 'playing';
+  touch?.setMode(sim.mode);
+
+  if (!running) audio.hum(false, 0);
+  if (readInput.tap('KeyM')) toggleSound();
+  if (running) {
+    saveClock += dt;
+    if (game.day !== savedDay || saveClock > 10) saveGame();
+    const inMap = sim.mode === 'map';
+    const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
+    const inp = readInput.read(cur, { holdToMove: true });
+    for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k], !inMap);
+    if (inMap) {
+      inp.suction = false;
+      if (mapTarget) {
+        if (Math.abs(inp.dx) + Math.abs(inp.dy) > 0.1) mapTarget = null;
+        else {
+          const st = steerToward(sim, mapTarget);
+          if (st.arrived) { mapTarget = null; anchor(); } else { inp.dx = st.dx; inp.dy = st.dy; }
+        }
+      }
+      if (readInput.tap('Space', 'Enter', 'KeyE')) anchor();
+    } else {
+      if (readInput.tap('Escape', 'KeyQ')) leave();
+      if (readInput.tap('KeyT')) toggleAuto();
+      if (readInput.tap('KeyR')) fixAuto();
+      if (readInput.tap('Space')) togglePump();
+      inp.suction = sim.pumpOn;
+      if (readInput.tap('KeyZ')) setSpeed(sim.pumpSpeed - 0.1);
+      if (readInput.tap('KeyX')) setSpeed(sim.pumpSpeed + 0.1);
+      if (readInput.tap('KeyF')) setDepthValue(sim.targetDepth - 0.1);
+      if (readInput.tap('KeyG')) setDepthValue(sim.targetDepth + 0.1);
+    }
+    game.site = sim.mode === 'slice' ? { x: sim.x, y: sim.y } : null;
+    sim.bufferRoom = game.bufferRoom;
+    const before = game.money, d = sim.update(dt, inp);
+    game.collect(d);
+    advisor.observe(dt, d, game, sim);
+    for (const n of sim.notes.splice(0)) {
+      toast(n.text, n.kind);
+      if (sim.mode === 'slice' && (n.kind === 'clog' || n.kind === 'tip')) {
+        const m = sliceMouthScreen(sim.slice);
+        fx.burst(m.x, m.y, n.kind === 'tip' ? 40 : 18, n.kind === 'tip' ? 'dust' : 'hard');
+        audio[n.kind]();
+        try { navigator.vibrate?.(n.kind === 'tip' ? [80, 40, 120] : 40); } catch { /* egal */ }
+      }
+    }
+    if (sim.mode === 'slice') {
+      const sl = sim.slice, m = sliceMouthScreen(sl), load = Math.min(1, d.removed / Math.max(1e-6, sim.stats.power * dt));
+      fx.feed(m, sliceY(sl.surfaceAt(sl.mouth().x), game.wl), d, dt, Math.max(0, game.money - before));
+      audio.hum(sim.pumpOn && sl.suctioning, load);
+      $('btn-auto').hidden = sim.stats.autoLevel <= 0;
+      $('btn-auto').textContent = sl.auto.on ? '🤖 Automatik aus (T)' : '🤖 Automatik an (T)';
+      $('btn-fix').hidden = !sl.auto.error;
+      $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';
+      $('btn-pump').classList.toggle('on', sim.pumpOn);
+      touch?.setPump(sim.pumpOn, !!sl.freeing);
+      $('spd-box').hidden = false;
+      if (document.activeElement !== $('spd')) { $('spd').value = sim.pumpSpeed; $('spd-val').textContent = pct(sim.pumpSpeed); }
+      $('cut-box').hidden = false;
+      if (document.activeElement !== $('cut')) { $('cut').value = sim.targetDepth; $('cut-val').textContent = `${sim.targetDepth.toFixed(1)} m`; }
+    }
+    $('s-removed').textContent = sim.mode === 'slice'
+      ? `${game.totals.removed.toFixed(0)} m³ gebaggert · ${sim.slice.restCount()} Zellen über Solltiefe${sim.bufferFull ? ' · Puffer voll, Pumpe pausiert!' : ''}`
+      : `${game.traffic.ships.filter((s) => s.state === 'sail').length} Schiffe unterwegs · ${game.traffic.ships.filter((s) => s.state === 'queue').length} wartend`;
+    $('s-turb').value = sim.turbidity;
+    $('s-tilt').value = sim.mode === 'slice' ? sim.slice.tilt : 0;
+    fx.update(dt);
+    game.update(dt);
+    for (const f of game.flash.splice(0)) ui.floaters.push({ ...f, life: 1.6 });
+    for (const f of ui.floaters) f.life -= dt;
+    ui.floaters = ui.floaters.filter((f) => f.life > 0);
+    tipTimer += dt;
+    if (tipTimer > 1) {
+      tipTimer = 0;
+      if (advisor.enabled && !(sim.mode === 'slice' && (sim.slice.freeing || sim.slice.tipped > 0))) { const tip = advisor.pick(game, sim); if (tip) showTip(tip); }
+    }
+    for (const n of game.notes.splice(0)) toast(n.text, n.kind);
+  }
+  readInput.endFrame();
+
+  trackMoney(dt);
+  stateSigTimer += dt;
+  if (stateSigTimer > 0.5) {
+    stateSigTimer = 0;
+    const sig = gameSig();
+    if (sig !== stateSig) { if (stateSig !== null) saveGame(); stateSig = sig; }
+  }
+  panelTimer += dt;
+  if (panelTimer > 0.25) { panelTimer = 0; updatePanel(); }
+  updateHud();
+  if (game.status === 'ended' && !endShown) { updatePanel(); showEnd(); }
+
+  if (sim.mode !== 'map') mapTarget = null;
+  ui.mapTarget = mapTarget;
+  ctx.setTransform(canvas.q || 1, 0, 0, canvas.q || 1, 0, 0);
+  if (sim.mode === 'slice') {
+    const o = fx.offset();
+    ctx.save(); ctx.translate(o.x, o.y); drawSlice(ctx, game, sim, ui); fx.draw(ctx); ctx.restore();
+  } else drawMap(ctx, game, sim, ui);
+  panCanvas(1 / 60);
+  requestAnimationFrame(frame);
+}
+
+// ---------- Start ----------
+const saved = (() => { const t = readSave(); const m = t && savedSummary(t); return m && m.status === 'playing' ? m : null; })();
+applyLevel();
+buildUpgrades();
+buildClassbar();
+syncMode();
+updatePanel();
+setDepthValue(game.targetDepth);
+function showIntro() {
+  showOverlay(`<h2>Fahrrinne frei!</h2>
+    <p>Du betreibst einen Flussabschnitt. Schiffe brauchen eine <b>Fahrrinne</b> mit genug Wasser unter dem Kiel (Tiefgang + 0,3 m) und genug Breite. Am Anfang kommen nur Lastkähne durch. Wer die Flusssohle <b>ausbaggert</b>, lässt grössere Schiffe und mehr Schiffe durch: für jedes gibt es eine <b>Gebühr</b> und einen Anteil am <b>Frachtwert</b> (die Frachtpreise schwanken). Baggergut wird in der Anlage an Land aufbereitet: Kies und Sand bringen Geld, Schlick und Altlasten kosten Entsorgung.
+    Erreichst du das <b>Verkehrsziel</b> (Tonnen Fracht) und hast am Ende Gewinn, schaltest du das nächste Fluss frei. Gewonnen hat, wer am Ende am meisten Geld hat.</p>
+    <details ${isTouch ? 'open' : ''}><summary>Steuerung am Handy</summary>
+      <p><b>Stick</b> links fährt den Ponton auf der Karte, ein <b>Tipp auf die Karte</b> fährt hin und ankert. Der grosse Knopf wirft den Anker bzw. schaltet im Querschnitt die <b>Pumpe</b> ein und aus. Im Querschnitt steuerst du die Pumpe mit den <b>Pfeil-Knöpfen</b> (halten = fahren) und stellst <b>Tempo</b> und <b>Solltiefe</b> mit den Reglern ein. Oben wählst du eine <b>Schiffsklasse</b>: rote Stellen auf der Karte sind Engstellen (lila = Fels), die gestrichelte Linie ist die günstigste Rinne. Der Shop liegt unten im Fach; solange es offen ist, steht das Spiel still.</p></details>
+    <details ${isTouch ? '' : 'open'}><summary>Steuerung am Computer</summary>
+      <p>Karte: WASD / Pfeile (oder Maus gedrückt) fahren, <b>E</b> / Leertaste wirft den Anker, <b>1–5</b> wählen die Schiffsklasse. Querschnitt: A/D fährt die Pumpe quer zum Fluss, W/S zieht sie hoch oder lässt sie runter, <b>Leertaste</b> schaltet die Pumpe ein und aus (saugt nach rechts und im Stillstand, rückwärts nie), <b>1–5</b> setzen die Solltiefe für eine Klasse, <b>F/G</b> ändern sie, <b>Z/X</b> Tempo, <b>T</b> Automatik, <b>R</b> Reset, <b>Q</b> zurück zur Karte, <b>P</b> Pause.</p></details>
+    <details><summary>Regeln im Fluss</summary>
+      <p>Der Ponton baggert gleichzeitig 4 Spalten in Flussrichtung und 16 Zellen quer. Im Querschnitt zeigt die dicke Linie die <b>engste Stelle</b> (höchster Punkt) im Kasten; orange gestrichelt ist deine Solltiefe, die farbigen Linien sind die Tiefen der Schiffsklassen. Die Pumpe saugt nur am Boden und nur nach rechts; wer pro Zelle zu viel abträgt, bringt sie zum Kippen.</p>
+      <p><b>Böschungen rutschen nach:</b> schmal und tief baggern füllt sich wieder auf. Ufer und Flachwasser sind Naturschutzzone (schraffiert, kostet Busse). <b>Fels</b> (grau) lässt sich ohne Felsfräse kaum abtragen. Der Fluss <b>verlandet</b>: besonders am Rand und nach Hochwasser lagert er Schlick in der Rinne ab. Bei <b>Niedrigwasser</b> fehlt Tiefe (Schiffe können auflaufen: Bergung kostet), bei <b>Hochwasser</b> ist die Schifffahrt gesperrt. Ein Ponton in der Rinne bremst den Verkehr. Fremdstoffe (weisse Punkte) verstopfen die Pumpe: Freispülen im grünen Bereich; bei Fliegerbomben hilft nur ruhig bleiben.</p>
+      <p>In einer Einbahnrinne fahren Schiffe nur in einer Richtung; erst mit zwei getrennten Rinnen (⇄) ist Gegenverkehr möglich. Wer nicht durchkommt, dreht nach einer Weile ab und die Fracht geht auf die Bahn. Reedereien bieten <b>Frachtaufträge</b> mit Prämie an.</p></details>
+    <button class="primary" id="btn-go">Los</button>`);
+  $('btn-go').onclick = () => showLevels();
+  if (saved) {
+    const b = document.createElement('button');
+    b.className = 'primary'; b.id = 'btn-continue';
+    b.textContent = `Weiterspielen (${saved.level}, Tag ${saved.day}, ${chf(saved.money)})`;
+    b.onclick = () => { const g = restoreGame(readSave()); if (g) restart(g); else { clearSave(); hideOverlay(); } };
+    $('btn-go').before(b);
+    $('btn-go').textContent = 'Neues Spiel';
+    $('btn-go').classList.remove('primary');
+  }
+}
+showIntro();
+addEventListener('pagehide', saveGame);
+addEventListener('beforeunload', saveGame);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
+requestAnimationFrame(frame);
+globalThis.__dbg = () => ({ game, sim, ui });

@@ -77,7 +77,7 @@ export function updateTraffic(g, dt) {
       ship.ground -= dt;
       if (ship.ground <= 0) {
         const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
-        if (depth >= cls.draught) { ship.state = 'sail'; g.say(`${cls.name} ist wieder flott.`, 'info'); }
+        if (depth >= cls.draught - C.groundMargin - 0.1 * vts) { ship.state = 'sail'; g.say(`${cls.name} ist wieder flott.`, 'info'); }
         else { ship.state = 'left'; g.totals.towed++; g.say(`${cls.name} wurde abgeschleppt (ohne Gebühr).`, 'bad'); }
       }
       continue;
@@ -106,7 +106,7 @@ export function updateTraffic(g, dt) {
       continue;
     }
     const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
-    if (p.x > 0 && p.x < g.river.cols && depth < cls.draught - 0.02) {
+    if (p.x > 0 && p.x < g.river.cols && depth < cls.draught - C.groundMargin - 0.1 * vts) {
       const cost = Math.round((cls.fee * C.salvageFactor * (1 - 0.25 * vts)) / 10) * 10;
       ship.state = 'grounded'; ship.ground = C.groundSeconds * (1 - 0.25 * vts);
       g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost;

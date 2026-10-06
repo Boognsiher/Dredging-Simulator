@@ -6,12 +6,12 @@
 // oder entsorgt. Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel schaltet das nächste Level frei.
 export const CONFIG = {
   river: { cols: 44, rows: 24 },
-  daySeconds: 12, // ein Spieltag in Sekunden (120 Tage = 24 Minuten)
+  daySeconds: 14, // ein Spieltag in Sekunden (120 Tage = 28 Minuten)
   startMoney: 50000, // CHF
   deadlineDays: 120,
   bankruptcyLimit: -40000, // darunter: Konzession entzogen
   clearance: 0.3, // m Wasser, die zusätzlich zum Tiefgang unter dem Kiel bleiben müssen
-  water: { base: 8, floodClose: 1.0, floodMax: 1.6, followRate: 0.35 }, // Bezugspegel (m), ab +floodClose wird die Schifffahrt gesperrt
+  water: { base: 8, floodClose: 1.0, floodMax: 1.6, followRate: 0.12 }, // Bezugspegel (m), ab +floodClose wird die Schifffahrt gesperrt
   // Flusssohle: Raster, jede Zelle hat cellArea m² (m³ = Höhe * cellArea)
   layer: {
     cellArea: 16,
@@ -71,13 +71,14 @@ export const CONFIG = {
   pumpSpeed: { min: 0.2, max: 1, default: 1 },
   // Verkehr: Schiffe erscheinen an beiden Enden, fahren die Fahrrinne ab und zahlen beim Verlassen des Abschnitts
   traffic: {
-    shipsPerDay: 1.5, // Grundrate, mal Level-Faktor, Marktnachfrage und Betonnung
-    levy: 0.01, // Anteil am Frachtwert, der als Abgabe an die Verwaltung (also an dich) geht
-    patience: 45, // Sekunden, die ein Schiff vor der Einfahrt wartet, bevor es abdreht und die Fracht auf die Bahn geht
+    shipsPerDay: 2.0, // Grundrate, mal Level-Faktor, Marktnachfrage und Betonnung
+    levy: 0.015, // Anteil am Frachtwert, der als Abgabe an die Verwaltung (also an dich) geht
+    patience: 75, // Sekunden, die ein Schiff vor der Einfahrt wartet, bevor es abdreht und die Fracht auf die Bahn geht
     maxQueue: 7, // so viele Schiffe warten je Ende; weitere drehen sofort ab
     downFactor: 1.15, upFactor: 0.85, // talwärts schneller als bergwärts
     gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
     enterGap: 3.0,
+    groundMargin: 0.2, // m: so viel darf die Sohle über dem Tiefgang liegen, ohne dass das Schiff aufläuft (Kielfreiheit von 0,3 m ist ein Puffer)
     groundSeconds: 18, salvageFactor: 2.0, // Havarie: Schlepper-Zeit; Bergungskosten = Faktor * Gebühr
     siteRadius: 3.5, siteSlow: 0.5, // Ponton in der Rinne: langsame Fahrt, Wechselverkehr
     switchAfter: 10, // Sekunden Wartezeit auf der Gegenseite, ab der in einer Einbahnrinne die Richtung gewechselt wird
@@ -103,14 +104,14 @@ export const KIND = { schlick: 0, sand: 1, kies: 2, altlast: 3, fels: 4 };
 
 // Basiswerte ohne Upgrades
 export const BASE_STATS = {
-  power: 6.0, // m³/s Saugleistung
+  power: 8.0, // m³/s Saugleistung
   radius: 1.8, // Zellen
   speed: 4.0, // Zellen/s (Ponton auf der Karte)
   headSpeed: 4.8, // Einheiten/s: Höchsttempo der Pumpe an Katze und Kette
   curtain: 0, // Trübungsschutz (0..1)
   suctionSpeedFactor: 0.55,
-  plantCapacity: 3.5, // m³/s, die die Anlage verarbeitet
-  bufferCapacity: 120, // m³ Puffer vor der Anlage; ist er voll, muss das Saugen pausieren
+  plantCapacity: 4.5, // m³/s, die die Anlage verarbeitet
+  bufferCapacity: 140, // m³ Puffer vor der Anlage; ist er voll, muss das Saugen pausieren
   disposalFactor: 1, // Faktor auf Entsorgungskosten (Entwässerung senkt ihn)
   sortBonus: 1, // Faktor auf Verkaufserlöse (Sortieranlage hebt ihn)
   rockFirmness: 0.04, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
@@ -143,11 +144,11 @@ export const UPGRADES = {
 
 // Schiffsklassen. draught = Tiefgang (m), beam = Breite in Zellen, len = Länge in Zellen, tons = Ladung, share = Anteil am Verkehr
 export const SHIPS = [
-  { id: 'kahn', name: 'Lastkahn', icon: '🛶', draught: 1.4, beam: 2, len: 2.4, speed: 1.6, tons: 300, fee: 350, share: 0.34, cargo: ['kies', 'getreide'], color: '#a07a52' },
-  { id: 'motor', name: 'Motorgüterschiff', icon: '🚤', draught: 2.0, beam: 2, len: 3.2, speed: 2.0, tons: 800, fee: 700, share: 0.3, cargo: ['getreide', 'kohle', 'kies'], color: '#4f86b8' },
-  { id: 'tank', name: 'Tankschiff', icon: '🛢️', draught: 2.6, beam: 3, len: 3.8, speed: 1.9, tons: 1500, fee: 900, share: 0.16, cargo: ['oel', 'chemie'], color: '#b5483a' },
-  { id: 'container', name: 'Containerschiff', icon: '🚢', draught: 3.2, beam: 3, len: 4.6, speed: 2.2, tons: 2500, fee: 1500, share: 0.13, cargo: ['container'], color: '#3b9a78' },
-  { id: 'schub', name: 'Schubverband', icon: '⛴️', draught: 4.0, beam: 4, len: 5.4, speed: 1.7, tons: 4500, fee: 3500, share: 0.07, cargo: ['kohle', 'erz'], color: '#7a69b8' },
+  { id: 'kahn', name: 'Lastkahn', icon: '🛶', draught: 1.4, beam: 2, len: 2.4, speed: 1.6, tons: 300, fee: 500, share: 0.34, cargo: ['kies', 'getreide'], color: '#a07a52' },
+  { id: 'motor', name: 'Motorgüterschiff', icon: '🚤', draught: 2.0, beam: 2, len: 3.2, speed: 2.0, tons: 800, fee: 1100, share: 0.3, cargo: ['getreide', 'kohle', 'kies'], color: '#4f86b8' },
+  { id: 'tank', name: 'Tankschiff', icon: '🛢️', draught: 2.6, beam: 3, len: 3.8, speed: 1.9, tons: 1500, fee: 1800, share: 0.16, cargo: ['oel', 'chemie'], color: '#b5483a' },
+  { id: 'container', name: 'Containerschiff', icon: '🚢', draught: 3.2, beam: 3, len: 4.6, speed: 2.2, tons: 2500, fee: 2800, share: 0.13, cargo: ['container'], color: '#3b9a78' },
+  { id: 'schub', name: 'Schubverband', icon: '⛴️', draught: 4.0, beam: 4, len: 5.4, speed: 1.7, tons: 4500, fee: 4500, share: 0.07, cargo: ['kohle', 'erz'], color: '#7a69b8' },
 ];
 export const shipById = (id) => SHIPS.find((s) => s.id === id);
 
@@ -175,7 +176,7 @@ export const LEVELS = [
     id: 'hochrhein', name: 'Hochrhein: Basel–Birsfelden', short: 'Hochrhein',
     blurb: 'Der Klassiker: breiter Fluss, ein paar Barren, ein harmloser Felsriegel. Erst kommen nur Kähne durch, mit Baggern kommen Tanker und Containerschiffe.',
     river: { halfWidth: 6.8, depthMax: 2.4, rockDepth: 6.4, meander: 2.4, bars: [{ x: 9, w: 3.5, raise: 0.5 }, { x: 22, w: 4, raise: 0.55 }, { x: 36, w: 3.5, raise: 0.45 }], ridges: [{ x: 30, w: 4, depth: 4.3 }], shoals: 5, altlast: 2, hardBlobs: 3, debris: 14 },
-    classes: ['kahn', 'motor', 'tank', 'container'], traffic: 1, goalTons: 90000, startMoney: 50000, deadlineDays: 120, turbidityMult: 1,
+    classes: ['kahn', 'motor', 'tank', 'container'], traffic: 1, goalTons: 80000, startMoney: 50000, deadlineDays: 120, turbidityMult: 1,
     palette: { water: [38, 120, 160], land: [96, 130, 78] },
   },
   {

@@ -5,7 +5,7 @@ import { CONFIG, SHIPS } from '../config.js';
 // haben (Tiefgang + Kielfreiheit). Kosten = fehlende Tiefe (m·Zellen, Fels zählt mehr), damit die Suche an den Schwachstellen baggert.
 // Ergebnis je Klasse: passable (Rinne ohne Baggern), volume (m³ bis zur Passierbarkeit), twoWay (zwei getrennte Rinnen: Gegenverkehr),
 // path (geglättete Mittellinie in Zellkoordinaten, zum Fahren und Zeichnen), weakest (engste Stelle: Spalte, die am meisten fehlt).
-const EPS = 0.02;
+const EPS = 0.06; // m: so viel darf die Sohle über der nötigen Tiefe liegen (Verlandung im Zentimeterbereich sperrt die Rinne nicht)
 const INF = Infinity;
 
 class Heap {
@@ -95,14 +95,17 @@ function covered(river, nodes, beam, margin = 0) {
   return set;
 }
 
-// Mittellinie glätten und über den Kartenrand verlängern, damit Schiffe von ausserhalb ein- und ausfahren
+// Mittellinie glätten und über den Kartenrand verlängern, damit Schiffe von ausserhalb ein- und ausfahren.
+// Die geglättete Linie bleibt so nah an der Rinne, dass der Rumpf (beam - 1 Zellen) im geprüften Fenster der Rinnenzelle liegt:
+// sonst würden Schiffe über Zellen fahren, die nie auf Tiefe geprüft wurden.
 function smoothPath(river, nodes, beam) {
-  const { lo, hi } = lanes(beam), off = (hi - lo) / 2 + 0.5;
+  const { lo, hi } = lanes(beam), off = (hi - lo) / 2 + 0.5, n = Math.max(1, beam - 1);
   const pts = nodes.map((p) => ({ x: p.x + 0.5, y: p.y + off }));
   const out = pts.map((p, i) => {
     let sx = 0, sy = 0, c = 0;
     for (let k = Math.max(0, i - 3); k <= Math.min(pts.length - 1, i + 3); k++) { sx += pts[k].x; sy += pts[k].y; c++; }
-    return { x: sx / c, y: sy / c };
+    const node = nodes[i], yMin = node.y - lo + n / 2, yMax = node.y + hi + 1 - n / 2;
+    return { x: sx / c, y: Math.min(yMax, Math.max(yMin, sy / c)) };
   });
   out.unshift({ x: -2.5, y: out[0].y }); out.push({ x: river.cols + 2.5, y: out[out.length - 1].y });
   let len = 0;
@@ -145,16 +148,16 @@ export function analyzeFairway(river, wl) {
   return out;
 }
 
-// Geringste Wassertiefe (m) unter einem Schiff der Breite beam bei (x, yMid): wird für Grundberührung gebraucht
+// Geringste Wassertiefe (m) unter dem Rumpf eines Schiffs der Breite beam bei (x, yMid). Der Rumpf ist schmaler als die Rinnenbreite
+// (beam - 1 Zellen um die Mittellinie): die geglättete Fahrlinie weicht an Kurven etwas von der Rinnenzelle ab
 export function minDepthAt(river, wl, x, yMid, beam) {
-  const cx = Math.min(river.cols - 1, Math.max(0, Math.floor(x))), { lo } = lanes(beam);
-  const y0 = Math.floor(yMid - beam / 2 + 0.5);
+  const cx = Math.min(river.cols - 1, Math.max(0, Math.floor(x))), n = Math.max(1, beam - 1);
+  const y0 = Math.floor(yMid - n / 2 + 0.5);
   let m = INF;
-  for (let k = 0; k < beam; k++) {
+  for (let k = 0; k < n; k++) {
     const y = Math.min(river.rows - 1, Math.max(0, y0 + k));
     m = Math.min(m, wl - river.top[y * river.cols + cx]);
   }
-  void lo;
   return m;
 }
 

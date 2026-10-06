@@ -1,0 +1,290 @@
+:root { --bg:#0e1a24; --panel:#16273a; --ink:#e8eef4; --muted:#8fa6ba; --accent:#3fb0c9; --bad:#ff7a6b; --good:#7bd88f; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 system-ui, sans-serif; }
+header { display:flex; flex-wrap:wrap; gap:8px 24px; align-items:center; justify-content:space-between; padding:10px 16px; background:var(--panel); }
+h1 { font-size:18px; margin:0; } h2 { font-size:14px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:16px 0 8px; }
+#hud, #shift-hud { display:flex; gap:16px; } #hud b, #shift-hud b { font-variant-numeric:tabular-nums; }
+main { display:grid; grid-template-columns: minmax(0,1fr) 300px; gap:16px; padding:16px; }
+@media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+#stage { position:relative; background:#0a1219; border-radius:8px; overflow:hidden; }
+canvas { display:block; margin:0 auto; touch-action:none; }
+#shift-hud { position:absolute; top:8px; left:8px; background:#000a; padding:4px 10px; border-radius:6px; }
+#overlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; text-align:center; background:#000b; padding:24px; }
+#overlay.show { display:flex; } #overlay div { max-width:380px; }
+#panel { background:var(--panel); border-radius:8px; padding:4px 16px 16px; }
+button { font:inherit; color:var(--ink); background:#24415c; border:0; border-radius:6px; padding:8px 12px; cursor:pointer; }
+button:hover:not(:disabled) { background:#2f5679; } button:disabled { opacity:.4; cursor:not-allowed; }
+button.primary { background:var(--accent); color:#04222b; font-weight:600; width:100%; margin:12px 0 6px; } button#btn-wait { width:100%; }
+.up { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; } .up small { color:var(--muted); display:block; }
+#log { list-style:none; margin:0; padding:0; max-height:240px; overflow:auto; font-size:13px; } #log li { padding:2px 0; color:var(--muted); }
+#log .good { color:var(--good); } #log .bad { color:var(--bad); }
+#shift-actions { display:flex; flex-wrap:wrap; gap:8px; padding:0 8px 8px; } #shift-actions button { width:auto; margin:0; }
+#shift-actions[hidden], #shift-hud[hidden] { display:none; }
+#plant { font-size:13px; } #plant progress { width:100%; height:10px; } #plant label { display:flex; gap:6px; align-items:center; margin-top:6px; }
+#upgrades h3 { font-size:13px; color:var(--muted); margin:12px 0 6px; font-weight:600; }
+.warn { color:var(--bad); }
+#toast { position:absolute; top:44px; left:8px; right:8px; text-align:center; pointer-events:none; }
+#toast span { display:inline-block; background:#000c; padding:6px 12px; border-radius:6px; }
+#toast .bad, #toast .clog { color:var(--bad); } #toast .good { color:var(--good); }
+button#btn-drone, button#btn-wait { width:100%; margin-top:6px; }
+#stage { position:sticky; top:8px; align-self:start; }
+#toast .tip { color:var(--bad); }
+#cut-box { display:flex; align-items:center; gap:6px; background:#000a; padding:4px 10px; border-radius:6px; } #cut-box input { width:120px; }
+#hud small { color:var(--muted); } button#btn-pause { width:100%; margin-top:6px; }
+#cut-box[hidden], #shift-actions button[hidden] { display:none; }
+
+/* ---------- Touch & kleine Bildschirme ---------- */
+button { touch-action: manipulation; }
+#stage { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#touch-ui[hidden], #btn-pause2, #panel-handle { display: none; }
+#touch-ui { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 20px; }
+#stick { position: relative; width: 132px; height: 132px; border-radius: 50%; background: #ffffff12; border: 2px solid #ffffff30; touch-action: none; flex: none; }
+#stick::before, #stick::after { content: ''; position: absolute; background: #ffffff22; }
+#stick::before { left: 50%; top: 10px; bottom: 10px; width: 2px; transform: translateX(-1px); }
+#stick::after { top: 50%; left: 10px; right: 10px; height: 2px; transform: translateY(-1px); }
+#knob { position: absolute; left: 38px; top: 38px; width: 56px; height: 56px; border-radius: 50%; background: var(--accent); opacity: .9; pointer-events: none; }
+#act { width: 160px; height: 100px; border-radius: 50px; font-size: 19px; margin: 0; touch-action: none; }
+#act.held { background: #7fe3ff; box-shadow: 0 0 0 6px #7fe3ff55; }
+body.touch #btn-pause2 { display: block; position: absolute; top: 8px; right: 8px; z-index: 5; width: 48px; height: 48px; padding: 0; font-size: 20px; border-radius: 50%; }
+body.touch button { min-height: 44px; }
+body.touch #shift-actions button { padding: 10px 14px; }
+
+@media (max-width: 860px) {
+  body { padding-bottom: 56px; }
+  main { padding: 8px; gap: 8px; }
+  header { padding: 8px 12px; }
+  #stage { position: relative; top: auto; }
+  header h1 { font-size: 15px; }
+  #hud { gap: 2px 12px; font-size: 13px; flex-wrap: wrap; }
+  #hud span { white-space: nowrap; }
+  #panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; max-height: 74vh; overflow: auto; border-radius: 14px 14px 0 0;
+           box-shadow: 0 -6px 24px #000a; transform: translateY(calc(100% - 52px)); transition: transform .2s ease; padding-top: 0; }
+  #panel.open { transform: none; }
+  #panel-handle { display: block; position: sticky; top: 0; width: 100%; min-height: 52px; margin: 0; border-radius: 14px 14px 0 0; background: #1d3650; font-weight: 600; z-index: 1; }
+  /* HUD und Aktionsknöpfe unter dem Spielfeld statt darüber, damit der Ponton frei bleibt */
+  #shift-hud { position: static; display: flex; flex-wrap: wrap; gap: 4px 12px; background: none; padding: 6px 4px 0; font-size: 13px; border-radius: 0; }
+  #shift-hud[hidden], #shift-actions[hidden] { display: none; }
+  #shift-actions { margin: 6px 0 0; padding: 0; }
+  #toast { top: 8px; right: 64px; }
+  body.touch #btn-pause2 { width: 44px; height: 44px; }
+}
+/* Steuerung als Overlay: schwebt über dem unteren Bildschirmrand (über dem Panel-Griff), das Spielfeld bleibt oben sichtbar */
+@media (max-width: 860px) {
+  #touch-ui { position: fixed; left: 0; right: 0; bottom: 56px; z-index: 15; padding: 0 12px; pointer-events: none; }
+  #touch-ui > * { pointer-events: auto; opacity: .82; }
+  body { padding-bottom: 260px; }
+}
+@media (max-width: 860px) and (max-height: 720px) {
+  #touch-ui { padding: 6px 16px; }
+  #stick { width: 108px; height: 108px; } #knob { left: 26px; top: 26px; width: 56px; height: 56px; }
+  #act { height: 84px; }
+}
+@media (max-width: 860px) and (orientation: landscape) and (max-height: 560px) {
+  #touch-ui { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 14px; pointer-events: none; }
+  #touch-ui > * { pointer-events: auto; opacity: .85; }
+  #stick { width: 112px; height: 112px; } #knob { left: 28px; top: 28px; }
+  #act { width: 130px; height: 84px; }
+  body.touch #shift-actions { position: absolute; top: 8px; left: 8px; right: 64px; bottom: auto; margin: 0; }
+  #shift-hud { position: absolute; top: auto; bottom: 8px; left: 50%; transform: translateX(-50%); background: #000a; border-radius: 6px; padding: 4px 10px; }
+}
+
+/* Overlays (Intro, Spielende) als Vollbild-Dialog: scrollbar, Knopf bleibt erreichbar */
+#overlay { position: fixed; inset: 0; z-index: 30; overflow-y: auto; align-items: flex-start; padding: 16px; background: #000d; }
+#overlay > div { margin: auto; max-width: 460px; }
+#overlay .primary { position: sticky; bottom: 8px; width: 100%; }
+#overlay details { text-align: left; margin: 8px 0; font-size: 14px; background: #ffffff0d; border-radius: 8px; padding: 6px 12px; }
+#overlay summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+#overlay details p { margin: 6px 0; }
+@media (max-width: 860px) { #shift-hud progress { width: 80px; } }
+
+/* Pfeil-Knöpfe für die Pumpe (Handy, Querschnitt) und Tempo-Regler */
+#dpad { display: grid; grid-template-columns: repeat(3, 58px); grid-template-rows: repeat(3, 58px); gap: 6px; flex: none; }
+#dpad[hidden] { display: none; }
+#dpad .dp { margin: 0; padding: 0; font-size: 22px; border-radius: 14px; background: #24415c; touch-action: none; min-height: 0; }
+#dpad .dp:active, #dpad .dp.held { background: var(--accent); color: #04222b; }
+#dpad .up { grid-column: 2; grid-row: 1; } #dpad .left { grid-column: 1; grid-row: 2; }
+#dpad .right { grid-column: 3; grid-row: 2; } #dpad .down { grid-column: 2; grid-row: 3; }
+#spd-box, #cut-box { display: flex; align-items: center; gap: 6px; background: #000a; padding: 4px 10px; border-radius: 6px; }
+#spd-box input { width: 110px; }
+#spd-box[hidden] { display: none; }
+@media (max-width: 860px) and (orientation: landscape) and (max-height: 560px) { #dpad { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); gap: 4px; } }
+#dpad .dp { font-size: 30px; font-weight: 700; line-height: 1; display: flex; align-items: center; justify-content: center; }
+#btn-pump.on { background: var(--accent); color: #04222b; font-weight: 600; }
+#btn-pump[hidden] { display: none; }
+#act.held { background: #7fe3ff; box-shadow: 0 0 0 6px #7fe3ff55; }
+
+/* Steuerungsanzeige */
+#hints { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 10px; font-size: 13px; color: var(--muted); }
+#hints kbd { display: inline-block; background: #24415c; color: var(--ink); border: 1px solid #ffffff22; border-radius: 5px; padding: 1px 7px; margin-right: 5px; font: inherit; font-size: 12px; font-weight: 600; }
+@media (max-width: 860px) { #hints { font-size: 12px; padding: 6px 4px 0; gap: 2px 12px; } }
+/* grosse Bildschirme: Panel und Schrift etwas grösser */
+@media (min-width: 1500px) { main { grid-template-columns: minmax(0, 1fr) 380px; } body { font-size: 16px; } #hints { font-size: 14px; } }
+body.touch #btn-anchor { display: none; } /* auf dem Handy wirft der grosse Knopf den Anker */
+
+/* Handy quer: Aktionsknöpfe als schmale Spalte links, Regler oben rechts, Tastenhinweise aus: das Bild bleibt frei */
+@media (max-width: 860px) and (orientation: landscape) and (max-height: 560px) {
+  #hints { display: none; }
+  body.touch #shift-actions { left: auto; right: 64px; width: auto; align-items: flex-end; flex-direction: column; flex-wrap: nowrap; gap: 4px; }
+  body.touch #shift-actions button { padding: 2px 10px; min-height: 0; height: 28px; font-size: 12px; white-space: nowrap; }
+  body.touch #spd-box, body.touch #cut-box { position: fixed; top: 80px; left: 16px; z-index: 5; }
+  body.touch #cut-box { top: 118px; }
+  #touch-ui { bottom: 4px; }
+}
+
+/* Handy hochkant: feste Aufteilung ohne Scrollen. Oben das Spiel (mit HUD im Bild), darunter die Bedienung,
+   alles Weitere steckt im eingeklappten Panel am unteren Rand. */
+@media (max-width: 860px) and (orientation: portrait) {
+  html, body { height: 100dvh; overflow: hidden; }
+  body { display: flex; flex-direction: column; padding-bottom: 0; }
+  header { padding: 6px 12px; flex: none; }
+  header h1 { display: none; }
+  #hud { font-size: 12px; gap: 2px 10px; }
+  main { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px 8px 0; gap: 0; }
+  #stage { flex: 1; min-height: 0; min-width: 0; width: 100%; display: flex; flex-direction: column; overflow: hidden; }
+  #stage > canvas { flex: none; }
+  #hints { display: none; }
+  #shift-hud { position: absolute; top: 4px; left: 4px; right: 56px; background: #000a; border-radius: 6px; padding: 2px 8px; font-size: 11px; gap: 2px 10px; z-index: 2; }
+  #shift-hud progress { width: 52px; }
+  #shift-actions { flex: none; gap: 6px; margin: 6px 0 0; }
+  #shift-actions button { padding: 6px 8px; font-size: 12px; flex: 1 1 28%; width: auto; min-height: 40px; line-height: 1.2; }
+  #spd-box, #cut-box { flex: 1 1 100%; }
+  #touch-ui { position: static; flex: none; margin-top: auto; padding: 8px 4px 64px; gap: 12px; }
+  #touch-ui > * { opacity: 1; }
+}
+@media (max-width: 860px) and (orientation: portrait) and (max-height: 720px) {
+  #dpad { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); gap: 4px; }
+  #touch-ui { padding-bottom: 58px; }
+  #act { height: 80px; }
+}
+
+/* Rückbau-Knopf neben dem Kaufen-Knopf */
+.upbtns { display: flex; gap: 6px; align-items: stretch; }
+.upbtns button { margin: 0; }
+.upbtns .sell { background: #3a2f2f; font-size: 14px; white-space: nowrap; min-width: 40px; padding: 6px 8px; }
+.upbtns .sell:disabled { opacity: .35; }
+.up > div:first-child { flex: 1 1 auto; min-width: 0; }
+.upbtns { flex: none; }
+
+/* Hochformat: Tempo- und Abtragsregler teilen sich eine Zeile, die Knöpfe laufen einzeilig (seitlich wischbar), damit die Steuerung unten nie abgeschnitten wird */
+@media (max-width: 860px) and (orientation: portrait) {
+  #shift-actions { flex-wrap: wrap; }
+  #shift-actions button { flex: 1 0 auto; white-space: nowrap; min-height: 36px; }
+  #spd-box, #cut-box { flex: 1 1 45%; min-width: 0; padding: 2px 8px; font-size: 12px; }
+  #spd-box input, #cut-box input { width: 100%; min-width: 50px; flex: 1; }
+  #spd-box small, #cut-box small { display: none; }
+}
+
+/* Zeilenwahl des Kastens */
+#row-box-unused { display: flex; align-items: center; gap: 4px; background: #000a; padding: 3px 8px; border-radius: 6px; font-size: 12px; }
+#row-box-unused:empty { display: none; }
+.rowchip { margin: 0; padding: 0; width: 38px; height: 34px; border-radius: 8px; font-weight: 700; color: var(--ink);
+  background: linear-gradient(to top, #3a6a4a var(--p, 0%), #24415c var(--p, 0%)); border: 2px solid transparent; }
+.rowchip.on { border-color: #7fe3ff; box-shadow: 0 0 0 2px #7fe3ff55; }
+.rowchip.done { background: #2f7a48; }
+.rowchip.deep { background: linear-gradient(to top, #8a5a2a var(--p, 0%), #24415c var(--p, 0%)); }
+@media (max-width: 860px) and (orientation: portrait) { #row-box-unused { flex: 1 1 100%; justify-content: center; } .rowchip { flex: 1; max-width: 56px; height: 40px; } }
+@media (max-width: 860px) and (orientation: portrait) and (max-height: 720px) { .rowchip { height: 32px; } #shift-actions button { min-height: 32px; } }
+
+/* Levelauswahl */
+h1 small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.levels { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+button.level { display: flex; gap: 12px; align-items: flex-start; text-align: left; width: 100%; margin: 0; padding: 12px; border-radius: 12px; }
+button.level small { display: block; color: var(--muted); font-weight: 400; margin-top: 4px; font-size: 13px; }
+button.level .swatch { flex: none; width: 34px; height: 34px; border-radius: 8px; border: 2px solid #ffffff55; margin-top: 2px; }
+button.level.locked { opacity: .5; }
+
+/* Lesbarkeit: etwas grössere Schrift, Meldungen gut sichtbar */
+#toast { z-index: 6; }
+#toast span { font-size: 15px; padding: 8px 14px; box-shadow: 0 2px 10px #000a; max-width: 100%; }
+#shift-hud { font-size: 14px; }
+#hints { font-size: 14px; }
+#hud { font-size: 14px; }
+#shift-actions button { font-size: 14px; }
+@media (max-width: 860px) {
+  #hud { font-size: 13px; }
+  #shift-hud { font-size: 13px; }
+  #toast span { font-size: 16px; }
+  #panel { font-size: 15px; }
+  .up small, .claim small, #claims, #plant { font-size: 14px; }
+}
+@media (max-width: 860px) and (orientation: portrait) {
+  #shift-hud { font-size: 12px; }
+  #shift-actions button { font-size: 13px; }
+  #spd-box, #cut-box { font-size: 13px; }
+}
+#row-box-unused[hidden] { display: none; }
+
+/* Hochformat: doppelte Knöpfe entfallen (die Pumpe schaltet der grosse Knopf, Ton steht im Panel); die Knopfzeilen scrollen notfalls,
+   statt die Pfeile unten aus dem Bild zu drängen */
+@media (max-width: 860px) and (orientation: portrait) {
+  body.touch #btn-pump, body.touch #btn-sound { display: none; }
+  #shift-actions { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+  #touch-ui { flex: none; }
+}
+#h-buf.warn { color: var(--bad); }
+button#btn-sound2 { width: 100%; margin-top: 6px; }
+
+/* Bauleiter Bruno (Tipps, Spiel pausiert) */
+#bruno { position: fixed; inset: 0; z-index: 26; display: flex; align-items: flex-end; justify-content: center; padding: 0 10px 72px; background: #0006; }
+#bruno[hidden] { display: none; }
+.bruno-row { display: flex; gap: 10px; align-items: flex-end; max-width: 560px; width: 100%; animation: brunoIn .25s ease-out; }
+.bruno-head { flex: none; text-align: center; animation: brunoBob 2.4s ease-in-out infinite; }
+.bruno-head small { display: block; color: #ffd84d; font-weight: 700; font-size: 11px; margin-top: -4px; }
+.bruno-bubble { position: relative; flex: 1; background: #fffbe8; color: #2c2415; border: 2px solid #b58900; border-radius: 16px; padding: 12px 14px; box-shadow: 0 6px 20px #000a; }
+.bruno-bubble::before { content: ''; position: absolute; left: -12px; bottom: 28px; border: 8px solid transparent; border-right: 12px solid #b58900; border-left: 0; }
+.bruno-bubble::after { content: ''; position: absolute; left: -8px; bottom: 30px; border: 6px solid transparent; border-right: 10px solid #fffbe8; border-left: 0; }
+.bruno-bubble p { margin: 0 0 10px; font-size: 16px; line-height: 1.4; }
+.bruno-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.bruno-btns button { margin: 0; flex: 1 1 auto; }
+.bruno-links { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; }
+.bruno-links button { background: none; border: 0; color: #6f5d33; text-decoration: underline; padding: 4px 0; font-size: 13px; min-height: 0; width: auto; margin: 0; }
+@keyframes brunoIn { from { transform: translateY(20px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes brunoBob { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-4px) rotate(2deg); } }
+@media (max-width: 860px) { .bruno-bubble p { font-size: 15px; } }
+
+#touch-ui #act { margin-left: auto; }
+
+/* Geld-Änderung kurz in der Kopfzeile (ersetzt die Einkommensangabe) */
+#h-income.delta { font-weight: 800; font-size: 1.05em; }
+#h-income.delta.plus { color: var(--good); }
+#h-income.delta.minus { color: var(--bad); }
+/* Meldung: klein, ein Chip, nie über 2 Zeilen */
+#toast span { font-size: 14px !important; padding: 5px 12px !important; }
+body.touch #btn-pause2 { opacity: .8; }
+canvas { transition: none; }
+
+/* ---------- Fahrrinne frei: neue Bereiche ---------- */
+:root { --bg:#0b1a26; --panel:#142a3d; --accent:#4fc3d9; }
+#classbar { display: flex; gap: 6px; padding: 6px 4px; overflow-x: auto; scrollbar-width: thin; }
+.cls { flex: 1 1 0; min-width: 118px; margin: 0; padding: 6px 8px; text-align: left; border: 2px solid transparent; border-radius: 10px; background: #1b3550; line-height: 1.25; }
+.cls b { display: block; font-size: 13px; white-space: nowrap; }
+.cls small { display: block; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.cls.ok { background: #1f4a37; } .cls.ok small { color: #a9e9bd; }
+.cls.on { border-color: #7fe3ff; box-shadow: 0 0 0 2px #7fe3ff55; }
+.cls .wait { float: right; background: #ffd24d; color: #3b2f08; border-radius: 9px; padding: 0 6px; font-size: 11px; font-weight: 700; }
+.cls .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
+#goal progress, #fairway progress { width: 100%; height: 10px; }
+#goal { font-size: 13px; } #goal button { margin-top: 8px; width: 100%; }
+.frow { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 13px; padding: 3px 0; border-bottom: 1px solid #ffffff10; }
+.frow small { color: var(--muted); } .frow .ok { color: var(--good); } .frow .no { color: #ffb4a8; }
+.mrow { display: grid; grid-template-columns: 1fr auto 56px; gap: 8px; align-items: center; font-size: 13px; padding: 3px 0; }
+.mrow svg { width: 56px; height: 18px; display: block; }
+.tr-up { color: var(--good); } .tr-down { color: var(--bad); }
+.contract { background: #ffffff0d; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; }
+.contract b { display: block; } .contract small { color: var(--muted); display: block; }
+.contract progress { width: 100%; height: 8px; margin-top: 4px; }
+.contract button { margin-top: 6px; width: 100%; }
+#contracts .empty { color: var(--muted); font-size: 13px; }
+#p-mats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 8px 0; font-size: 11.5px; text-align: center; }
+#p-mats div { background: #ffffff0d; border-radius: 6px; padding: 3px 2px; }
+#p-mats i { display: block; height: 4px; border-radius: 2px; margin-bottom: 3px; }
+@media (max-width: 860px) { #classbar { padding: 4px 0; gap: 4px; } .cls { min-width: 104px; padding: 4px 6px; } }
+@media (max-width: 860px) and (orientation: landscape) and (max-height: 560px) { #classbar { display: none; } }
+#bruno-name { color: #ffd84d; }
+/* HUD des Querschnitts liegt unter dem Bild (nicht über der Klassenleiste) */
+#shift-hud { position: static; background: none; padding: 6px 10px 0; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
+@media (min-width: 861px) { #hints { padding-top: 4px; } }
+body.touch #classbar { padding-right: 58px; }
+#legend { display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 2px 10px 4px; font-size: 12px; color: var(--muted); }
+#legend i { display: inline-block; width: 18px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+@media (max-width: 860px) { #legend { display: none; } }

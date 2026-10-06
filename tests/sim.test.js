@@ -169,6 +169,8 @@ test('Pfad: Punkt auf Strecke liegt im Bereich und steigt in x', () => {
   const a = pointOnPath(f.path, 0), b = pointOnPath(f.path, f.path.length);
   assert.ok(a.x < 0 && b.x > r.cols);
   assert.ok(minDepthAt(r, r.wl, 10, 12, 2) >= 3 - 1e-6);
+  r.top[r.idx(10, 12)] = r.wl - 1;
+  assert.ok(minDepthAt(r, r.wl, 10, 12.5, 3) < 3, 'flache Zelle unter dem Rumpf wird erkannt');
 });
 
 test('Querschnitt: Pumpe saugt nur nach rechts, nur im Wasser, Karte bleibt in Balance', () => {
