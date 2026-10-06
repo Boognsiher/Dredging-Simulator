@@ -5,11 +5,15 @@ import { priceOf, ratioOf } from './market.js';
 // Der Hafen handelt mit Waren: Schiffe der passenden Fracht laden bei hohen Preisen aus deinem Lager (du verkaufst) und entladen bei tiefen
 // Preisen in dein Lager (du kaufst). Zusätzlich kannst du von Hand kaufen/verkaufen oder den Handel automatisieren (Kauf-/Verkaufsschwelle).
 export const PORT = {
-  openCost: 30000, slots: 6, spread: 0.06, handlingFee: 0.012, reserve: 5000, shipShare: 0.3,
+  openCost: 30000, slots: 6, spread: 0.06, reserve: 5000, shipShare: 0.15,
+  // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
+  jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3 }, fee: { kies: 5, oel: 6 }, lateFactor: 0.5, bonusMax: 2 },
+  machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 } },
   buildings: {
     kai: { name: 'Kai & Verladestation', icon: '🏗', cost: 12000, max: 1, text: 'Pflicht: Hier laden und entladen die Schiffe. Ohne Kai kein Handel.' },
     kies: { name: 'Kieslager', icon: '⛰', commodity: 'kies', cost: 9000, up: [14000, 30000], cap: [600, 1600, 3600], text: 'Lager für Kies und Sand. Billig im Einkauf, wenig Marge pro Tonne, dafür viel Menge.' },
     tank: { name: 'Tanklager', icon: '🛢', commodity: 'oel', cost: 20000, up: [28000, 60000], cap: [500, 1300, 3000], text: 'Lager für Mineralöl. Teuer, aber hohe Preise und grosse Preisausschläge.' },
+    kran: { name: 'Portalkran', icon: '🏗', cost: 14000, max: 1, text: 'Grosse Greifer: im Verlade-Minispiel 32 t pro Treffer statt 14 t (aber schnelleres Pendel).' },
     sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
   },
   commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' } },
@@ -19,7 +23,7 @@ export function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
   return {
     open: false, slots: Array(PORT.slots).fill(null), stock: { kies: 0, oel: 0 }, cost: { kies: 0, oel: 0 }, // cost = Einstandspreis je t (Durchschnitt)
-    auto: { kies: auto(), oel: auto() }, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
+    auto: { kies: auto(), oel: auto() }, jobs: [], jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
   };
 }
 
@@ -104,18 +108,50 @@ export function sell(g, id, tons) {
   return q;
 }
 
-// Ein Schiff hat die Rinne durchfahren: bei passender Fracht und Lager wird umgeschlagen
+// Ein Schiff hat die Rinne durchfahren: bei passender Fracht entsteht ein Umschlagauftrag (Kai). Ladet die Mannschaft allein, dauert es;
+// im Minispiel (Radlader/Kran) geht es schneller, und es gibt einen Zeitbonus.
+export const machineOf = (g) => (slotsOf(g.port, 'kran').length ? 'kran' : 'radlader');
 export function portShip(g, ship) {
-  const p = g.port; if (!hasKai(g) || !PORT.commodities[ship.cargo] || capacity(g, ship.cargo) <= 0) return;
-  const id = ship.cargo, amount = ship.tons * PORT.shipShare, price = priceOf(g.market, id), fee = ship.tons * price * PORT.handlingFee;
-  g.money += fee; p.fees += fee; g.today.income += fee; p.ships++;
-  if (ratioOf(g.market, id) >= 1) { // Preis hoch: Schiff lädt aus deinem Lager
-    const q = Math.min(amount, p.stock[id]), r = q * price * (1 + PORT.spread / 2);
-    if (q > 0) { p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; p.handled += q; }
-  } else { // Preis tief: Schiff entlädt, du kaufst günstig
-    const q = Math.min(amount, capacity(g, id) - p.stock[id], Math.max(0, Math.floor((g.money - PORT.reserve) / (price * (1 - PORT.spread / 2)))));
-    if (q > 0) { const c = q * price * (1 - PORT.spread / 2); p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q; g.money -= c; p.spent += c; g.today.costs += c; p.handled += q; }
-  }
+  const p = g.port, J = PORT.jobs; p.jobs ??= []; if (!hasKai(g) || !PORT.commodities[ship.cargo] || capacity(g, ship.cargo) <= 0) return;
+  if (p.jobs.length >= J.max) return; // Kai ausgelastet: Schiff fährt ohne Umschlag weiter
+  const id = ship.cargo, price = priceOf(g.market, id), out = ratioOf(g.market, id) >= 1;
+  p.jobs.push({ id: ++p.jobSeq, cargo: id, tons: Math.max(10, Math.round(ship.tons * PORT.shipShare)), done: 0, out, price, left: J.deadline, fee: 0, ship: shipLabel(ship) });
+  p.jobs[p.jobs.length - 1].fee = p.jobs[p.jobs.length - 1].tons * J.fee[id];
+  p.ships++;
+}
+const shipLabel = (ship) => ship.cls ?? '';
+
+// Verlademenge bewegen: Ware aus dem Lager aufs Schiff (out) oder vom Schiff ins Lager (in). Gibt die wirklich bewegte Menge zurück.
+function moveGoods(g, job, q) {
+  const p = g.port, id = job.cargo, price = job.price;
+  q = Math.min(q, job.tons - job.done);
+  if (job.out) q = Math.min(q, p.stock[id]);
+  else q = Math.min(q, capacity(g, id) - p.stock[id], Math.max(0, (g.money - PORT.reserve) / (price * (1 - PORT.spread / 2))));
+  if (q <= 1e-9) { job.done = job.tons; return 0; } // nichts mehr möglich (Lager leer/voll/kein Geld): Auftrag endet
+  if (job.out) { const r = q * price * (1 + PORT.spread / 2); p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; }
+  else { const c = q * price * (1 - PORT.spread / 2); p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q; g.money -= c; p.spent += c; g.today.costs += c; }
+  job.done += q; p.handled += q;
+  return q;
+}
+function finishJob(g, job) {
+  const p = g.port, J = PORT.jobs, late = job.left <= 0;
+  const frac = Math.max(0, job.left) / J.deadline, pay = late ? job.fee * J.lateFactor : job.fee * (1 + J.bonusMax * frac);
+  g.money += pay; p.fees += pay; g.today.income += pay; if (!late) p.bonus += pay - job.fee; else p.jobsLate++;
+  p.jobsDone++;
+  g.flash.push({ x: 0, y: 0, text: `+${Math.round(pay)}`, color: late ? '#e0a040' : '#7bd88f' });
+}
+// Minispiel-Treffer: quality 0..1 (0 = Fehlwurf). Lädt den ersten Auftrag.
+export function loadHit(g, quality) {
+  const job = g.port.jobs[0]; if (!job || quality <= 0) return 0;
+  const M = PORT.machines[machineOf(g)];
+  return moveGoods(g, job, M.bucket * (0.5 + 0.5 * quality) * (quality > 0.85 ? 1.3 : 1));
+}
+// Zeit vergeht: Mannschaft lädt den ersten Auftrag, die Frist läuft für alle
+export function updatePort(g, dt) {
+  const p = g.port; if (!p.jobs?.length) return;
+  for (const j of p.jobs) j.left -= dt;
+  const first = p.jobs[0]; moveGoods(g, first, PORT.jobs.crewRate[first.cargo] * dt);
+  for (let k = p.jobs.length - 1; k >= 0; k--) if (p.jobs[k].done >= p.jobs[k].tons - 1e-6) { finishJob(g, p.jobs[k]); p.jobs.splice(k, 1); }
 }
 
 // Tagesende: automatischer Handel nach den eingestellten Schwellen

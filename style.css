@@ -315,3 +315,5 @@ body.touch #classbar { padding-right: 4px; }
 .plot-icon { font-size: 34px; } .plot button { margin-top: 2px; } .plot .ghost { opacity: .6; font-size: 12px; }
 .port-card { background: #142a3d; border-radius: 10px; padding: 10px 12px; } .port-card .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; } .port-card .auto label { font-size: 13px; }
 .port-card .bar { height: 10px; background: #0007; border-radius: 5px; overflow: hidden; margin: 6px 0 2px; } .port-card .bar i { display: block; height: 100%; background: var(--accent); }
+.job { margin: 4px 0; } .track { position: relative; height: 26px; background: #34495e; border-radius: 6px; margin: 8px 0; overflow: hidden; }
+#pg-zone { position: absolute; top: 0; bottom: 0; background: #4bd16a; opacity: .85; } #pg-mark { position: absolute; top: -2px; bottom: -2px; width: 6px; margin-left: -3px; background: #fff; border-radius: 3px; }

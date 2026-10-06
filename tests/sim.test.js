@@ -300,7 +300,7 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
   g.money = 0; const sec2 = g.shoreSections().find((q) => q.cells.length > 0); assert.ok(g.shoreBlock(sec2.side, sec2.part));
 });
 
-import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock } from '../src/sim/port.js';
+import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
   assert.ok(openBlock(g), 'ohne Motorschiff gesperrt');
@@ -316,9 +316,21 @@ test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', ()
   assert.equal(q, 50); assert.ok(g.money < m0); assert.equal(g.port.stock.oel, 50);
   const s0 = g.money; sell(g, 'oel', 50); assert.ok(g.money > s0 && g.port.stock.oel === 0);
   assert.ok(m0 - g.money > 0, 'Spread kostet Geld');
-  // Schiff entlädt bei tiefem Preis, belädt bei hohem
-  g.market.dev.oel = -0.4; portShip(g, { cargo: 'oel', tons: 400 }); assert.ok(g.port.stock.oel > 0);
-  const st = g.port.stock.oel; g.market.dev.oel = 0.5; portShip(g, { cargo: 'oel', tons: 400 }); assert.ok(g.port.stock.oel < st);
+  // Schiff entlädt bei tiefem Preis (Auftrag), belädt bei hohem; Mannschaft lädt allein, das Minispiel beschleunigt
+  g.market.dev.oel = -0.4; portShip(g, { cargo: 'oel', tons: 400 }); assert.equal(g.port.jobs.length, 1);
+  const f0 = g.port.fees; for (let k = 0; k < 100; k++) updatePort(g, 1);
+  assert.equal(g.port.jobs.length, 0); assert.ok(g.port.stock.oel > 0 && g.port.fees > f0);
+  const st = g.port.stock.oel; g.market.dev.oel = 0.5; portShip(g, { cargo: 'oel', tons: 400 });
+  assert.ok(loadHit(g, 1) > 0, 'Treffer lädt'); assert.equal(loadHit(g, 0), 0, 'Fehlwurf lädt nichts');
+  for (let k = 0; k < 100; k++) updatePort(g, 1);
+  assert.ok(g.port.stock.oel < st);
+  // Zeitbonus: schnell fertig zahlt mehr als zu spät
+  g.port.stock.kies = 5000; g.market.dev.kies = 0.5; g.port.jobs = [];
+  portShip(g, { cargo: 'kies', tons: 400 }); const j = g.port.jobs[0], tons = j.tons;
+  let m1 = g.money; while (g.port.jobs.length) { loadHit(g, 1); updatePort(g, 0.01); } const quick = g.money - m1;
+  g.port.jobs = []; portShip(g, { cargo: 'kies', tons: 400 }); m1 = g.money; updatePort(g, 100); const slow = g.money - m1;
+  assert.ok(quick > slow, 'schneller Auftrag bringt mehr');
+  void tons;
   // Automatik kauft billig und verkauft teuer
   g.port.stock.oel = 0; g.port.auto.oel.on = true; g.market.dev.oel = -0.4; portDay(g); assert.ok(g.port.stock.oel > 0);
   g.market.dev.oel = 0.5; const before = g.port.stock.oel; portDay(g); assert.ok(g.port.stock.oel < before);

@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { PORT, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } from '../sim/port.js';
+import { PORT, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } from '../sim/port.js';
 import { priceOf, ratioOf } from '../sim/market.js';
 
 // Hafen-Seite: Vollbild-Overlay mit Bauplätzen, Lagern, Handel und Automatik. Die Simulation läuft im Hintergrund weiter.
@@ -7,10 +7,36 @@ const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
 const t = (n) => `${Math.round(n).toLocaleString('de-CH')} t`;
 
 export function setupPort(root, getGame, onChange) {
-  let sig = '', pick = null; // pick = Bauplatz, für den das Baumenü offen ist
+  let sig = '', pick = null, phase = 0, zone = 0.5, flashMsg = '', flashT = 0; // pick = Bauplatz, für den das Baumenü offen ist
+  const hit = () => {
+    const g = getGame(), M = PORT.machines[machineOf(g)], pos = 0.5 + 0.5 * Math.sin(phase), d = Math.abs(pos - zone) / (M.zone / 2);
+    const q = d <= 1 ? 1 - d * 0.5 : 0, got = loadHit(g, q);
+    flashMsg = q <= 0 ? 'Daneben!' : q > 0.85 ? `Voltreffer! +${Math.round(got)} t` : `+${Math.round(got)} t`; flashT = 1.2;
+    zone = 0.2 + Math.random() * 0.6; onChange?.();
+  };
+  // Pendel und Fristanzeige (ohne die Seite neu zu bauen)
+  const tick = (dt) => {
+    const g = getGame(), M = PORT.machines[machineOf(g)], mark = root.querySelector('#pg-mark');
+    phase += dt * M.speed * 2.2;
+    if (mark) {
+      mark.style.left = `${(0.5 + 0.5 * Math.sin(phase)) * 100}%`;
+      const z = root.querySelector('#pg-zone'); z.style.left = `${(zone - M.zone / 2) * 100}%`; z.style.width = `${M.zone * 100}%`;
+      flashT = Math.max(0, flashT - dt); const msg = root.querySelector('#pg-msg'); if (msg) msg.textContent = flashT > 0 ? flashMsg : '';
+    }
+    for (const j of g.port.jobs ?? []) {
+      const el = root.querySelector(`[data-job="${j.id}"]`); if (!el) continue;
+      el.querySelector('.jb').style.width = `${(j.done / j.tons) * 100}%`; el.querySelector('.jl').textContent = Math.max(0, Math.round(j.left));
+    }
+  };
+  addEventListener('keydown', (e) => {
+    if (root.hidden || e.code !== 'Space') return;
+    e.preventDefault(); e.stopImmediatePropagation(); // Leertaste gehört dem Minispiel, solange die Hafenseite offen ist
+    if (!e.repeat && root.querySelector('#pg-hit')) hit();
+  }, true);
+  addEventListener('keyup', (e) => { if (!root.hidden && e.code === 'Space') { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   const render = (force = false) => {
     const g = getGame(), p = g.port;
-    const s = JSON.stringify([p, Math.floor(g.money / 200), Object.keys(PORT.commodities).map((id) => Math.round(priceOf(g.market, id))), pick, !!g.unlocked.motor]);
+    const s = JSON.stringify([p, Math.floor(g.money / 200), Object.keys(PORT.commodities).map((id) => Math.round(priceOf(g.market, id))), (p.jobs ?? []).map((j) => j.id), pick, !!g.unlocked.motor]);
     if (s === sig && !force) return;
     sig = s;
     let h = `<div class="port-head"><h2>🏗 Hafen</h2><span class="port-money">${chf(g.money)}</span><button id="port-close">✕ Schliessen (H)</button></div>`;
@@ -30,7 +56,13 @@ export function setupPort(root, getGame, onChange) {
       h += `</div>`;
       if (!hasKai(g)) h += `<div class="port-card"><b>Ohne Kai kein Handel.</b> Baue zuerst einen Kai mit Verladestation.</div>`;
       else {
-        h += `<div class="port-trade">`;
+        const jobs = p.jobs ?? [], M = PORT.machines[machineOf(g)];
+        h += `<div class="port-card"><b>${M.icon} Verladen mit ${M.name}</b> <small>${jobs.length ? 'Leertaste oder Knopf, wenn der Zeiger im grünen Bereich ist: mehr Tonnen pro Treffer, schneller fertig gibt Zeitbonus' : 'Kein Schiff am Kai. Kommen Schiffe mit Kies oder Öl vorbei, entstehen hier Aufträge.'}</small>`;
+        if (jobs.length) {
+          h += jobs.map((j, k) => `<div class="job" data-job="${j.id}"><small>${k === 0 ? '▶ ' : ''}${PORT.commodities[j.cargo].icon} ${j.out ? 'Laden' : 'Entladen'} ${t(j.tons)} · Frist <span class="jl">${Math.max(0, Math.round(j.left))}</span> s</small><div class="bar"><i class="jb" style="width:${(j.done / j.tons) * 100}%"></i></div></div>`).join('');
+          h += `<div class="track" id="pg-track"><div id="pg-zone"></div><div id="pg-mark"></div></div><button class="primary" id="pg-hit" data-act="hit">${M.icon} Laden! (Leertaste)</button><small id="pg-msg"></small>`;
+        }
+        h += `</div><div class="port-trade">`;
         for (const [id, C] of Object.entries(PORT.commodities)) {
           const cap = capacity(g, id), st = p.stock[id], r = ratioOf(g.market, id), a = p.auto[id];
           if (cap <= 0) { h += `<div class="port-card"><b>${C.icon} ${C.name}</b><small> braucht ein ${id === 'oel' ? 'Tanklager' : 'Kieslager'}</small></div>`; continue; }
@@ -53,6 +85,7 @@ export function setupPort(root, getGame, onChange) {
   root.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT') return;
     const g = getGame(), a = b.dataset.act, slot = +b.dataset.slot, id = b.dataset.id;
+    if (a === 'hit') { hit(); return; }
     if (a === 'open') openPort(g);
     else if (a === 'pick') pick = slot < 0 ? null : slot;
     else if (a === 'build') { if (build(g, slot, b.dataset.type)) pick = null; }
@@ -72,5 +105,5 @@ export function setupPort(root, getGame, onChange) {
     sig = '';
   });
   root.addEventListener('change', () => render(true));
-  return { render };
+  return { render, tick };
 }

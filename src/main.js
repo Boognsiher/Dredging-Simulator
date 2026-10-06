@@ -709,7 +709,7 @@ function frame(now) {
   ui.dt = dt; ui.t += dt;
   if (readInput.tap('KeyH')) togglePort();
   if (portOpen() && readInput.tap('Escape')) togglePort();
-  if (portOpen()) portUi.render();
+  if (portOpen()) { portUi.render(); portUi.tick(dt); }
   if (readInput.tap('KeyP')) togglePause();
   if (readInput.tap('KeyB') && !overlayOpen()) setFritz(!advisor.enabled);
   const running = !paused && !sheetOpen && !overlayOpen() && !tipOpen && game.status === 'playing';
