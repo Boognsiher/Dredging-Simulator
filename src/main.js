@@ -50,7 +50,7 @@ let tipOpen = false, tipTimer = 0;
 const fx = new Fx();
 const audio = createAudio();
 let game = new Game();
-let sim = game.createSession();
+let sim = game.createSession(); sim.autoRange = game.autoRange ?? null;
 let paused = false, endShown = false;
 const readInput = createInput(canvas);
 sizeCanvas(canvas);
@@ -468,7 +468,7 @@ function syncMode() {
   $('btn-zone').hidden = mode !== 'map';
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
-  if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
+  if (mode !== 'slice') { for (const id of ['btn-afrom', 'btn-ato', 'btn-aclr']) $(id).hidden = true; $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
   updateHints(); fitCanvas();
 }
 function anchor() {
@@ -502,6 +502,12 @@ function togglePump() {
   if (sim.togglePump()) audio.toggle(sim.pumpOn);
 }
 function fixAuto() { sim.fixAuto(); }
+function autoRange(which) {
+  if (sim.mode !== 'slice' || !sim.setAutoRange(which)) return;
+  game.autoRange = sim.autoRange;
+  const R = sim.autoRange;
+  toast(R ? `Automatik fährt von Zeile ${R[0] + 1} bis ${R[1] + 1}` : 'Automatik: ganzer Korridor', 'info', true);
+}
 function toggleTool() {
   const to = sim.nextTool();
   if (to === sim.tool) { toast('Kein weiteres Gerät: Löffelbagger oder Betoniergerät unter Ausrüstung kaufen', 'bad', true); return; }
@@ -611,7 +617,7 @@ function showLevels(note = '') {
 
 function restart(loaded = null) {
   game = loaded instanceof Game ? loaded : new Game(undefined, typeof loaded === 'string' ? loaded : game.levelId);
-  sim = game.createSession(); paused = false; endShown = false;
+  sim = game.createSession(); sim.autoRange = game.autoRange ?? null; paused = false; endShown = false;
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
@@ -659,6 +665,7 @@ canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfer
 });
 $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
+$('btn-afrom').onclick = () => autoRange('from'); $('btn-ato').onclick = () => autoRange('to'); $('btn-aclr').onclick = () => autoRange('clear');
 $('btn-fix').onclick = fixAuto;
 $('btn-tool').onclick = toggleTool;
 $('btn-tow').onclick = startTow;
@@ -704,6 +711,9 @@ function frame(now) {
       if (readInput.tap('Escape', 'KeyQ')) leave();
       if (readInput.tap('KeyT')) toggleAuto();
       if (readInput.tap('KeyR')) fixAuto();
+      if (readInput.tap('BracketLeft')) autoRange('from');
+      if (readInput.tap('BracketRight')) autoRange('to');
+      if (readInput.tap('Backslash')) autoRange('clear');
       if (readInput.tap('KeyV')) toggleTool();
       if (readInput.tap('Space')) togglePump();
       inp.suction = sim.pumpOn;
@@ -743,6 +753,10 @@ function frame(now) {
       audio.hum(sim.pumpOn && sl.suctioning, load);
       $('btn-auto').hidden = sim.stats.autoLevel <= 0;
       $('btn-auto').textContent = sl.auto.on ? '🤖 Automatik aus (T)' : '🤖 Automatik an (T)';
+      for (const id of ['btn-afrom', 'btn-ato']) $(id).hidden = sim.stats.autoLevel <= 0;
+      $('btn-aclr').hidden = sim.stats.autoLevel <= 0 || !sim.autoRange;
+      $('btn-afrom').textContent = `⇤ Auto-Start hier ([)${sim.autoRange ? ` · ab ${sim.autoRange[0] + 1}` : ''}`;
+      $('btn-ato').textContent = `⇥ Auto-Ende hier (])${sim.autoRange ? ` · bis ${sim.autoRange[1] + 1}` : ''}`;
       $('btn-fix').hidden = !sl.auto.error;
       const tl = sl.tool;
       $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : tl === 'beton' ? (sim.pumpOn ? '🧱 Beton: AN (Leertaste)' : '🧱 Beton: AUS (Leertaste)') : tl === 'loeffel' ? (sim.pumpOn ? '⛏ Löffel: AN (Leertaste)' : '⛏ Löffel: AUS (Leertaste)') : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';

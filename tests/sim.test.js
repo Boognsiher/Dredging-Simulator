@@ -232,6 +232,29 @@ test('Querschnitt: Automatik fährt Solltiefe an und schaltet sich ab', () => {
   assert.equal(over, 0, 'Profil innerhalb der Messtoleranz auf Solltiefe');
 });
 
+test('Querschnitt: Automatik-Bereich (von/bis) beschränkt die Arbeit', () => {
+  const r = flat(2.5); r.kind.fill(KIND.sand);
+  const stats = computeStats({ auto: 3, echolot: 2, power: 8 });
+  const sim = new DredgeSim(r, stats, createRng(3));
+  sim.x = 20; sim.y = 12; sim.setTargetDepth(3.0); sim.setPumpSpeed(1);
+  assert.ok(sim.anchor());
+  const sl = sim.slice;
+  sl.x = sl.x0 + 5.5; sim.setAutoRange('from');
+  sl.x = sl.x0 + 9.5; sim.setAutoRange('to');
+  const [a, b] = sim.autoRange;
+  assert.ok(a < b);
+  assert.ok(sim.toggleAuto());
+  let guard = 0;
+  while (sl.auto.on && guard++ < 40000) sim.update(0.05, { dx: 0, dy: 0, suction: true });
+  assert.ok(!sl.auto.on);
+  for (let c = 0; c < SLICE.cols; c++) {
+    const row = sl.x0 + c, deep = sl.envTop(row) <= sl.targetTop() + 0.12;
+    if (row >= a && row <= b) assert.ok(deep, `Zeile ${row} im Bereich ist auf Solltiefe`);
+    else assert.ok(!deep, `Zeile ${row} ausserhalb bleibt unberührt`);
+  }
+  sim.setAutoRange('clear'); assert.equal(sim.autoRange, null);
+});
+
 test('Ponton: bleibt im Wasser, ankert nur dort', () => {
   const r = flat(2); for (let y = 0; y < 5; y++) for (let x = 0; x < r.cols; x++) r.top[r.idx(x, y)] = r.wl + 1;
   const sim = new DredgeSim(r, computeStats({}), createRng(1));

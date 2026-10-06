@@ -34,6 +34,7 @@ export class Game {
     this.stock = [0, 0, 0, 0, 0]; // Puffer vor der Anlage in m³ je Material
     this.targetDepth = CONFIG.echolot.defaultDepth;
     this.pumpSpeed = CONFIG.pumpSpeed.default;
+    this.autoRange = null; // Automatik-Bereich des Spielers (Zeilen quer zum Fluss)
     this.tool = 'pump'; // zuletzt gewähltes Gerät des eigenen Pontons
     this.concrete = 0; // Betonvorrat in m³ (gekauft oder im Betonwerk gemischt)
     this.agg = { kies: 0, sand: 0 }; // Lager für das Betonwerk (m³)

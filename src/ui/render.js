@@ -57,7 +57,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const i = y * cols + x;
-      if (r.isWater(i) && !r.zone[i]) { ctx.fillStyle = 'rgba(120,200,120,.22)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); }
+      if (r.isWater(i) && !r.zone[i]) { ctx.fillStyle = 'rgba(70,230,110,.38)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); if ((x + y) % 2 === 0) { ctx.fillStyle = 'rgba(200,255,200,.22)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } }
       else if (!r.isWater(i) && r.ext[i] === 1) { ctx.fillStyle = 'rgba(235,200,70,.30)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } // Ausbaustreifen am Ufer (Löffelbagger)
     }
   }
@@ -376,17 +376,48 @@ export function drawSlice(ctx, game, sim, ui = {}) {
   for (let c = 0; c < n; c++) {
     if (hi[c] > wl) { const strip = r.ext[r.idx(sl.centerCol, sl.x0 + c)] === 1; ctx.fillStyle = strip ? '#c9b050' : '#6fa05a'; ctx.fillRect(c * U, Y(hi[c]) - 3, U + 1, 8); }
   }
-  // Naturschutzzone (Ufer, Flachwasser): schraffiert
+  // Naturschutzzone (Ufer, Flachwasser): kräftig grün getönt, schraffiert, mit Leuchtband auf der Sohle und Grenzlinien
+  const prot = (c) => { const i = r.idx(sl.centerCol, sl.x0 + c); return !(r.zone[i] || (sl.tool === 'loeffel' && r.ext[i])) && hi[c] < wl; };
   for (let c = 0; c < n; c++) {
-    const i = r.idx(sl.centerCol, sl.x0 + c);
-    if (r.zone[i] || (sl.tool === 'loeffel' && r.ext[i])) continue; // mit dem Löffel ist der Ausbaustreifen erlaubt
-    const top = Math.max(SURF, Y(hi[c]));
-    if (hi[c] >= wl) continue;
-    ctx.fillStyle = 'rgba(120,220,120,.14)'; ctx.fillRect(c * U, SURF, U, top - SURF);
-    ctx.save(); ctx.beginPath(); ctx.rect(c * U, SURF, U, top - SURF); ctx.clip();
-    ctx.strokeStyle = 'rgba(160,255,160,.35)'; ctx.lineWidth = 1; ctx.beginPath();
-    for (let k = -(top - SURF); k < U; k += 12) { ctx.moveTo(c * U + k, SURF); ctx.lineTo(c * U + k + (top - SURF), top); }
+    if (!prot(c)) continue;
+    const top = Math.max(SURF, Y(hi[c])), hgt = top - SURF;
+    ctx.fillStyle = 'rgba(70,230,110,.26)'; ctx.fillRect(c * U, SURF, U, hgt);
+    ctx.save(); ctx.beginPath(); ctx.rect(c * U, SURF, U, hgt); ctx.clip();
+    ctx.strokeStyle = 'rgba(190,255,190,.6)'; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let k = -hgt; k < U; k += 9) { ctx.moveTo(c * U + k, SURF); ctx.lineTo(c * U + k + hgt, top); }
     ctx.stroke(); ctx.restore();
+    ctx.fillStyle = 'rgba(110,255,140,.85)'; ctx.fillRect(c * U, top - 5, U, 5); // Leuchtband auf der geschützten Sohle
+  }
+  ctx.strokeStyle = '#7dff9a'; ctx.lineWidth = 2; ctx.setLineDash([7, 4]);
+  for (let c = 0; c <= n; c++) { // Grenzlinie, wo Schutzzone und Baggerkorridor aneinanderstossen
+    const a = c > 0 && prot(c - 1), b = c < n && prot(c);
+    if (a === b) continue;
+    const x = c * U, cc = Math.min(n - 1, c), top = Math.max(SURF, Y(hi[a ? c - 1 : cc]));
+    ctx.beginPath(); ctx.moveTo(x, SURF); ctx.lineTo(x, Math.min(H, top + 40)); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  { // Beschriftung, wo Platz ist (zusammenhängende Strecken)
+    ctx.font = font(12); ctx.textAlign = 'center';
+    for (let c = 0, s0 = -1; c <= n; c++) {
+      const p = c < n && prot(c);
+      if (p && s0 < 0) s0 = c;
+      if (!p && s0 >= 0) {
+        if (c - s0 >= 2) { const x = ((s0 + c) / 2) * U, tx = '🌿 Naturschutz'; ctx.fillStyle = '#0a3a1acc'; const w = ctx.measureText(tx).width + 10; ctx.fillRect(x - w / 2, SURF + 6, w, fs(12) + 4); ctx.fillStyle = '#b8ffc6'; ctx.fillText(tx, x, SURF + 6 + fs(12)); }
+        s0 = -1;
+      }
+    }
+    ctx.textAlign = 'start';
+  }
+  // Automatik-Bereich: Streifen ausserhalb abdunkeln, Start/Ende markieren
+  if (sl.autoRange) {
+    const [ra, rb] = sl.autoRange, xa = Math.max(0, (ra - sl.x0) * U), xb = Math.min(W, (rb + 1 - sl.x0) * U);
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    if (xa > 0) ctx.fillRect(0, SURF, xa, H - SURF);
+    if (xb < W) ctx.fillRect(xb, SURF, W - xb, H - SURF);
+    ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.font = font(12);
+    if (ra >= sl.x0) { ctx.beginPath(); ctx.moveTo(xa, SURF); ctx.lineTo(xa, H); ctx.stroke(); ctx.fillStyle = '#7fe3ff'; ctx.fillText('▶ Auto-Start', xa + 4, SURF + 32); }
+    if (rb < sl.x0 + n) { ctx.beginPath(); ctx.moveTo(xb, SURF); ctx.lineTo(xb, H); ctx.stroke(); ctx.fillStyle = '#7fe3ff'; ctx.textAlign = 'right'; ctx.fillText('Auto-Ende ◀', xb - 4, SURF + 32); ctx.textAlign = 'start'; }
+    ctx.setLineDash([]);
   }
   // Profilkanten: dick = engste Stelle (höchster Punkt), dünn = tiefster Punkt im Kasten
   ctx.lineJoin = 'round';

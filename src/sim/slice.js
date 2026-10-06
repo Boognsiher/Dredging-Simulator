@@ -171,9 +171,23 @@ export class SliceSim {
     this.auto.startX = this.x;
     this.auto.didWork = false;
     this.auto.dir = 'sweep';
+    if (this.auto.on && this.autoRange) { // mit eingestelltem Bereich: erst zum Anfang fahren, dann von dort bis zum Ende
+      const b = this.bounds();
+      this.auto.startX = Math.max(b.min, this.autoRange[0] + 0.01);
+      if (this.x > this.auto.startX + 0.05) this.auto.dir = 'return';
+    }
     if (this.auto.on) { this.sound(); this.say('info', `Peilung: Automatik fährt auf ${this.targetDepth.toFixed(1)} m Tiefe.`); }
     else this.say('info', 'Automatik aus.');
     return true;
+  }
+
+  // Automatik-Bereich: Anfang/Ende an der Position des Saugkopfs setzen (Zeilen quer zum Fluss, absolut)
+  setAutoEdge(which) {
+    const row = clamp(Math.floor(this.mouth().x), 0, this.river.rows - 1), rows = this.river.rows;
+    let [a, b] = this.autoRange || [0, rows - 1];
+    if (which === 'from') { a = row; if (b < a) b = rows - 1; } else { b = row; if (a > b) a = 0; }
+    this.autoRange = (a <= 0 && b >= rows - 1) ? null : [a, b];
+    return this.autoRange;
   }
 
   fixAuto() {

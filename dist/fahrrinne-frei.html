@@ -357,6 +357,9 @@ body.touch #classbar { padding-right: 4px; }
         <button id="btn-anchor" class="primary">⚓ Anker werfen (E)</button>
         <button id="btn-leave">↩ Zurück zur Karte (Q)</button>
         <button id="btn-auto">🤖 Automatik an (T)</button>
+        <button id="btn-afrom" hidden>⇤ Auto-Start hier ([)</button>
+        <button id="btn-ato" hidden>⇥ Auto-Ende hier (])</button>
+        <button id="btn-aclr" hidden>✖ Auto-Bereich löschen (\)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
         <button id="btn-zone">↔ Kreuzungsstelle planen (K)</button>
         <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
@@ -491,7 +494,7 @@ let tipOpen = false, tipTimer = 0;
 const fx = new Fx();
 const audio = createAudio();
 let game = new Game();
-let sim = game.createSession();
+let sim = game.createSession(); sim.autoRange = game.autoRange ?? null;
 let paused = false, endShown = false;
 const readInput = createInput(canvas);
 sizeCanvas(canvas);
@@ -909,7 +912,7 @@ function syncMode() {
   $('btn-zone').hidden = mode !== 'map';
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
-  if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
+  if (mode !== 'slice') { for (const id of ['btn-afrom', 'btn-ato', 'btn-aclr']) $(id).hidden = true; $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
   updateHints(); fitCanvas();
 }
 function anchor() {
@@ -943,6 +946,12 @@ function togglePump() {
   if (sim.togglePump()) audio.toggle(sim.pumpOn);
 }
 function fixAuto() { sim.fixAuto(); }
+function autoRange(which) {
+  if (sim.mode !== 'slice' || !sim.setAutoRange(which)) return;
+  game.autoRange = sim.autoRange;
+  const R = sim.autoRange;
+  toast(R ? `Automatik fährt von Zeile ${R[0] + 1} bis ${R[1] + 1}` : 'Automatik: ganzer Korridor', 'info', true);
+}
 function toggleTool() {
   const to = sim.nextTool();
   if (to === sim.tool) { toast('Kein weiteres Gerät: Löffelbagger oder Betoniergerät unter Ausrüstung kaufen', 'bad', true); return; }
@@ -1052,7 +1061,7 @@ function showLevels(note = '') {
 
 function restart(loaded = null) {
   game = loaded instanceof Game ? loaded : new Game(undefined, typeof loaded === 'string' ? loaded : game.levelId);
-  sim = game.createSession(); paused = false; endShown = false;
+  sim = game.createSession(); sim.autoRange = game.autoRange ?? null; paused = false; endShown = false;
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
@@ -1100,6 +1109,7 @@ canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfer
 });
 $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
+$('btn-afrom').onclick = () => autoRange('from'); $('btn-ato').onclick = () => autoRange('to'); $('btn-aclr').onclick = () => autoRange('clear');
 $('btn-fix').onclick = fixAuto;
 $('btn-tool').onclick = toggleTool;
 $('btn-tow').onclick = startTow;
@@ -1145,6 +1155,9 @@ function frame(now) {
       if (readInput.tap('Escape', 'KeyQ')) leave();
       if (readInput.tap('KeyT')) toggleAuto();
       if (readInput.tap('KeyR')) fixAuto();
+      if (readInput.tap('BracketLeft')) autoRange('from');
+      if (readInput.tap('BracketRight')) autoRange('to');
+      if (readInput.tap('Backslash')) autoRange('clear');
       if (readInput.tap('KeyV')) toggleTool();
       if (readInput.tap('Space')) togglePump();
       inp.suction = sim.pumpOn;
@@ -1184,6 +1197,10 @@ function frame(now) {
       audio.hum(sim.pumpOn && sl.suctioning, load);
       $('btn-auto').hidden = sim.stats.autoLevel <= 0;
       $('btn-auto').textContent = sl.auto.on ? '🤖 Automatik aus (T)' : '🤖 Automatik an (T)';
+      for (const id of ['btn-afrom', 'btn-ato']) $(id).hidden = sim.stats.autoLevel <= 0;
+      $('btn-aclr').hidden = sim.stats.autoLevel <= 0 || !sim.autoRange;
+      $('btn-afrom').textContent = `⇤ Auto-Start hier ([)${sim.autoRange ? ` · ab ${sim.autoRange[0] + 1}` : ''}`;
+      $('btn-ato').textContent = `⇥ Auto-Ende hier (])${sim.autoRange ? ` · bis ${sim.autoRange[1] + 1}` : ''}`;
       $('btn-fix').hidden = !sl.auto.error;
       const tl = sl.tool;
       $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : tl === 'beton' ? (sim.pumpOn ? '🧱 Beton: AN (Leertaste)' : '🧱 Beton: AUS (Leertaste)') : tl === 'loeffel' ? (sim.pumpOn ? '⛏ Löffel: AN (Leertaste)' : '⛏ Löffel: AUS (Leertaste)') : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';
@@ -1574,6 +1591,7 @@ class Game {
     this.stock = [0, 0, 0, 0, 0]; // Puffer vor der Anlage in m³ je Material
     this.targetDepth = CONFIG.echolot.defaultDepth;
     this.pumpSpeed = CONFIG.pumpSpeed.default;
+    this.autoRange = null; // Automatik-Bereich des Spielers (Zeilen quer zum Fluss)
     this.tool = 'pump'; // zuletzt gewähltes Gerät des eigenen Pontons
     this.concrete = 0; // Betonvorrat in m³ (gekauft oder im Betonwerk gemischt)
     this.agg = { kies: 0, sand: 0 }; // Lager für das Betonwerk (m³)
@@ -2050,9 +2068,23 @@ class SliceSim {
     this.auto.startX = this.x;
     this.auto.didWork = false;
     this.auto.dir = 'sweep';
+    if (this.auto.on && this.autoRange) { // mit eingestelltem Bereich: erst zum Anfang fahren, dann von dort bis zum Ende
+      const b = this.bounds();
+      this.auto.startX = Math.max(b.min, this.autoRange[0] + 0.01);
+      if (this.x > this.auto.startX + 0.05) this.auto.dir = 'return';
+    }
     if (this.auto.on) { this.sound(); this.say('info', `Peilung: Automatik fährt auf ${this.targetDepth.toFixed(1)} m Tiefe.`); }
     else this.say('info', 'Automatik aus.');
     return true;
+  }
+
+  // Automatik-Bereich: Anfang/Ende an der Position des Saugkopfs setzen (Zeilen quer zum Fluss, absolut)
+  setAutoEdge(which) {
+    const row = clamp(Math.floor(this.mouth().x), 0, this.river.rows - 1), rows = this.river.rows;
+    let [a, b] = this.autoRange || [0, rows - 1];
+    if (which === 'from') { a = row; if (b < a) b = rows - 1; } else { b = row; if (a > b) a = 0; }
+    this.autoRange = (a <= 0 && b >= rows - 1) ? null : [a, b];
+    return this.autoRange;
   }
 
   fixAuto() {
@@ -2826,6 +2858,7 @@ class DredgeSim {
     this.notes = [];
     this.targetDepth = CONFIG.echolot.defaultDepth;
     this.pumpSpeed = CONFIG.pumpSpeed.default;
+    this.autoRange = null; // [erste, letzte Zeile] der Automatik (null = alles im Korridor)
     this.bufferRoom = Infinity;
     this.concreteAvail = 0; // Betonvorrat (m³), setzt das Game
     this.mode = 'map';
@@ -2858,6 +2891,7 @@ class DredgeSim {
     if (this.mode !== 'map') return false;
     if (!this.canFloat(this.x, this.y)) return false;
     this.slice = new SliceSim(this.river, this.stats, this.x, this.y, this.rng, this.targetDepth, this.pumpSpeed, this.tool);
+    this.slice.autoRange = this.autoRange;
     this.mode = 'slice';
     this.pumpOn = false;
     return true;
@@ -2903,6 +2937,14 @@ class DredgeSim {
   toggleAuto() {
     if (this.mode !== 'slice' || !this.slice.toggleAuto()) return false;
     if (this.slice.auto.on && !this.pumpOn) { this.pumpOn = true; this.autoStartedPump = true; }
+    return true;
+  }
+  // Automatik-Bereich ('from' | 'to' = an der Position des Saugkopfs, 'clear' = ganzer Korridor); gilt auch für die nächsten Verankerungen
+  setAutoRange(which) {
+    if (which === 'clear') this.autoRange = null;
+    else if (this.mode === 'slice') this.autoRange = this.slice.setAutoEdge(which);
+    else return false;
+    if (this.slice) this.slice.autoRange = this.autoRange;
     return true;
   }
   fixAuto() { return this.mode === 'slice' && this.slice.fixAuto(); }
@@ -4487,7 +4529,7 @@ function drawMap(ctx, game, sim, ui = {}) {
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const i = y * cols + x;
-      if (r.isWater(i) && !r.zone[i]) { ctx.fillStyle = 'rgba(120,200,120,.22)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); }
+      if (r.isWater(i) && !r.zone[i]) { ctx.fillStyle = 'rgba(70,230,110,.38)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); if ((x + y) % 2 === 0) { ctx.fillStyle = 'rgba(200,255,200,.22)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } }
       else if (!r.isWater(i) && r.ext[i] === 1) { ctx.fillStyle = 'rgba(235,200,70,.30)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } // Ausbaustreifen am Ufer (Löffelbagger)
     }
   }
@@ -4806,17 +4848,48 @@ function drawSlice(ctx, game, sim, ui = {}) {
   for (let c = 0; c < n; c++) {
     if (hi[c] > wl) { const strip = r.ext[r.idx(sl.centerCol, sl.x0 + c)] === 1; ctx.fillStyle = strip ? '#c9b050' : '#6fa05a'; ctx.fillRect(c * U, Y(hi[c]) - 3, U + 1, 8); }
   }
-  // Naturschutzzone (Ufer, Flachwasser): schraffiert
+  // Naturschutzzone (Ufer, Flachwasser): kräftig grün getönt, schraffiert, mit Leuchtband auf der Sohle und Grenzlinien
+  const prot = (c) => { const i = r.idx(sl.centerCol, sl.x0 + c); return !(r.zone[i] || (sl.tool === 'loeffel' && r.ext[i])) && hi[c] < wl; };
   for (let c = 0; c < n; c++) {
-    const i = r.idx(sl.centerCol, sl.x0 + c);
-    if (r.zone[i] || (sl.tool === 'loeffel' && r.ext[i])) continue; // mit dem Löffel ist der Ausbaustreifen erlaubt
-    const top = Math.max(SURF, Y(hi[c]));
-    if (hi[c] >= wl) continue;
-    ctx.fillStyle = 'rgba(120,220,120,.14)'; ctx.fillRect(c * U, SURF, U, top - SURF);
-    ctx.save(); ctx.beginPath(); ctx.rect(c * U, SURF, U, top - SURF); ctx.clip();
-    ctx.strokeStyle = 'rgba(160,255,160,.35)'; ctx.lineWidth = 1; ctx.beginPath();
-    for (let k = -(top - SURF); k < U; k += 12) { ctx.moveTo(c * U + k, SURF); ctx.lineTo(c * U + k + (top - SURF), top); }
+    if (!prot(c)) continue;
+    const top = Math.max(SURF, Y(hi[c])), hgt = top - SURF;
+    ctx.fillStyle = 'rgba(70,230,110,.26)'; ctx.fillRect(c * U, SURF, U, hgt);
+    ctx.save(); ctx.beginPath(); ctx.rect(c * U, SURF, U, hgt); ctx.clip();
+    ctx.strokeStyle = 'rgba(190,255,190,.6)'; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let k = -hgt; k < U; k += 9) { ctx.moveTo(c * U + k, SURF); ctx.lineTo(c * U + k + hgt, top); }
     ctx.stroke(); ctx.restore();
+    ctx.fillStyle = 'rgba(110,255,140,.85)'; ctx.fillRect(c * U, top - 5, U, 5); // Leuchtband auf der geschützten Sohle
+  }
+  ctx.strokeStyle = '#7dff9a'; ctx.lineWidth = 2; ctx.setLineDash([7, 4]);
+  for (let c = 0; c <= n; c++) { // Grenzlinie, wo Schutzzone und Baggerkorridor aneinanderstossen
+    const a = c > 0 && prot(c - 1), b = c < n && prot(c);
+    if (a === b) continue;
+    const x = c * U, cc = Math.min(n - 1, c), top = Math.max(SURF, Y(hi[a ? c - 1 : cc]));
+    ctx.beginPath(); ctx.moveTo(x, SURF); ctx.lineTo(x, Math.min(H, top + 40)); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  { // Beschriftung, wo Platz ist (zusammenhängende Strecken)
+    ctx.font = font(12); ctx.textAlign = 'center';
+    for (let c = 0, s0 = -1; c <= n; c++) {
+      const p = c < n && prot(c);
+      if (p && s0 < 0) s0 = c;
+      if (!p && s0 >= 0) {
+        if (c - s0 >= 2) { const x = ((s0 + c) / 2) * U, tx = '🌿 Naturschutz'; ctx.fillStyle = '#0a3a1acc'; const w = ctx.measureText(tx).width + 10; ctx.fillRect(x - w / 2, SURF + 6, w, fs(12) + 4); ctx.fillStyle = '#b8ffc6'; ctx.fillText(tx, x, SURF + 6 + fs(12)); }
+        s0 = -1;
+      }
+    }
+    ctx.textAlign = 'start';
+  }
+  // Automatik-Bereich: Streifen ausserhalb abdunkeln, Start/Ende markieren
+  if (sl.autoRange) {
+    const [ra, rb] = sl.autoRange, xa = Math.max(0, (ra - sl.x0) * U), xb = Math.min(W, (rb + 1 - sl.x0) * U);
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    if (xa > 0) ctx.fillRect(0, SURF, xa, H - SURF);
+    if (xb < W) ctx.fillRect(xb, SURF, W - xb, H - SURF);
+    ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.font = font(12);
+    if (ra >= sl.x0) { ctx.beginPath(); ctx.moveTo(xa, SURF); ctx.lineTo(xa, H); ctx.stroke(); ctx.fillStyle = '#7fe3ff'; ctx.fillText('▶ Auto-Start', xa + 4, SURF + 32); }
+    if (rb < sl.x0 + n) { ctx.beginPath(); ctx.moveTo(xb, SURF); ctx.lineTo(xb, H); ctx.stroke(); ctx.fillStyle = '#7fe3ff'; ctx.textAlign = 'right'; ctx.fillText('Auto-Ende ◀', xb - 4, SURF + 32); ctx.textAlign = 'start'; }
+    ctx.setLineDash([]);
   }
   // Profilkanten: dick = engste Stelle (höchster Punkt), dünn = tiefster Punkt im Kasten
   ctx.lineJoin = 'round';

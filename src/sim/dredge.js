@@ -13,6 +13,7 @@ export class DredgeSim {
     this.notes = [];
     this.targetDepth = CONFIG.echolot.defaultDepth;
     this.pumpSpeed = CONFIG.pumpSpeed.default;
+    this.autoRange = null; // [erste, letzte Zeile] der Automatik (null = alles im Korridor)
     this.bufferRoom = Infinity;
     this.concreteAvail = 0; // Betonvorrat (m³), setzt das Game
     this.mode = 'map';
@@ -45,6 +46,7 @@ export class DredgeSim {
     if (this.mode !== 'map') return false;
     if (!this.canFloat(this.x, this.y)) return false;
     this.slice = new SliceSim(this.river, this.stats, this.x, this.y, this.rng, this.targetDepth, this.pumpSpeed, this.tool);
+    this.slice.autoRange = this.autoRange;
     this.mode = 'slice';
     this.pumpOn = false;
     return true;
@@ -90,6 +92,14 @@ export class DredgeSim {
   toggleAuto() {
     if (this.mode !== 'slice' || !this.slice.toggleAuto()) return false;
     if (this.slice.auto.on && !this.pumpOn) { this.pumpOn = true; this.autoStartedPump = true; }
+    return true;
+  }
+  // Automatik-Bereich ('from' | 'to' = an der Position des Saugkopfs, 'clear' = ganzer Korridor); gilt auch für die nächsten Verankerungen
+  setAutoRange(which) {
+    if (which === 'clear') this.autoRange = null;
+    else if (this.mode === 'slice') this.autoRange = this.slice.setAutoEdge(which);
+    else return false;
+    if (this.slice) this.slice.autoRange = this.autoRange;
     return true;
   }
   fixAuto() { return this.mode === 'slice' && this.slice.fixAuto(); }
