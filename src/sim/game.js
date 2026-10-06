@@ -113,7 +113,7 @@ export class Game {
 
   // Fahrrinnen neu auswerten; meldet, wenn eine Klasse befahrbar wird oder die Rinne wieder zu flach wird
   analyze(silent = false) {
-    this.fair = analyzeFairway(this.river, this.wl);
+    this.fair = analyzeFairway(this.river, Math.min(this.wl, CONFIG.water.base)); // Hochwasser öffnet keine Klassen: massgebend ist der Normalpegel (Niedrigwasser sperrt)
     for (const cls of SHIPS) {
       if (!this.level.classes.includes(cls.id)) continue;
       const f = this.fair[cls.id], was = this.fairSig[cls.id];

@@ -188,7 +188,7 @@ export function updateTraffic(g, dt) {
   const queue = ships.filter((s) => s.state === 'queue').sort((a, b) => b.wait - a.wait);
   for (const ship of queue) {
     const cls = shipById(ship.cls), f = g.fair?.[ship.cls];
-    if (open) ship.wait += dt;
+    if (open) ship.wait += dt * (f?.passable ? 1 : 6); // wartende Schiffe, für die die Rinne nicht mehr reicht, geben schnell auf und blockieren den Warteplatz nicht
     if (ship.wait > C.patience) {
       ship.state = 'left';
       g.totals.rejected++; g.totals.lostValue += income(g, ship); g.today.rejected++;

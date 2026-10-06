@@ -1019,3 +1019,20 @@ test('Flotte betoniert nur mit Betoniergerät und wenn eingeschaltet', () => {
   assert.match(g.fleet.units[0].note, /Betoniergerät|Engstelle|Rinne|Beton/);
   assert.equal(g.totals.concreteUsed, 0, 'ohne Betoniergerät bleibt es beim Hinweis');
 });
+
+test('Hochwasser öffnet keine grösseren Klassen: massgebend ist der Normalpegel', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false; g.traffic.spawnIn = 1e9;
+  assert.deepEqual(activeClasses(g).map((s) => s.id), ['kahn']);
+  g.wl = CONFIG.water.base + 0.9; g.river.wl = g.wl; g.analyze();
+  assert.deepEqual(activeClasses(g).map((s) => s.id), ['kahn'], 'auch bei hohem Pegel nur der Kahn');
+  assert.ok(!g.unlocked.tank);
+  g.wl = CONFIG.water.base - 0.4; g.river.wl = g.wl; g.analyze();
+  assert.ok(g.fair.kahn.volume >= 0, 'bei Niedrigwasser wird die Rinne eher enger');
+});
+
+test('Wartende Schiffe ohne befahrbare Rinne geben schnell auf und blockieren den Warteplatz nicht', () => {
+  const g = emptyGame(4); g.eventsOn = false; g.traffic.spawnIn = 1e9;
+  g.traffic.ships.push({ id: 1, cls: 'schub', dir: 1, cargo: 'kohle', tons: 4000, price: 60, state: 'queue', wait: 0, s: 0, ground: 0, lane: 'one', meets: [] });
+  for (let i = 0; i < 20 * 20; i++) g.update(0.05);
+  assert.equal(g.traffic.ships.length, 0);
+});
