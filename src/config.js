@@ -39,14 +39,10 @@ export const CONFIG = {
   sediment: { rate: 0.003, maxAbove: 0.3, floodDeposit: [0.18, 0.34], flowPower: 2 },
   // Anlage an Land: nimmt Baggergut aus dem Puffer, sortiert, verkauft oder entsorgt
   plant: { batchFee: 0 },
-  // Pumpe an der Kette: Einsaugbereich liegt unten rechts. Wer zu tief abträgt, bringt sie zum Kippen.
+  // Pumpe an der Kette: Einsaugbereich liegt unten rechts.
   pump: {
     offsetX: 0.3, offsetY: 0.1,
     fullDraw: 2.0, // Summe der Saugwichte, ab der die volle Leistung ankommt
-    minTravel: 1.0, // Zellen/s: so schnell gilt die Pumpe mindestens als bewegt
-    tiltRate: 0.6, tiltRecover: 0.4,
-    liftTolerance: 0.3, liftTiltRate: 0.5,
-    tipSeconds: 6, repairCost: 1500,
     maxHeightBelowWater: 0.35, // die Pumpe hängt mindestens so tief unter dem Wasserspiegel
   },
   unclog: { hits: 2, zone: 0.24, speed: 1.1, speedUp: 1.4, missPenalty: 1.0 },
@@ -121,7 +117,7 @@ export const CONFIG = {
   tow: { range: 4.5, seconds: 30, band: [0.4, 0.7], gain: 0.5, drain: 0.35, snapAt: 1.0, need: 6, refund: 0.6, snapPenalty: 400 },
   // Löffelbagger (Schaufeln): langsamer als der Saugbagger, aber ohne Verstopfen, besser bei harter Schicht und Fels, wenig Trübung,
   // und er reicht über den Wasserspiegel: damit lässt sich Ufer im Ausbaustreifen abtragen (der Fluss wird breiter)
-  bucket: { hardFactor: 0.5, turbidity: 0.3, stability: 3, reachAbove: 2.2, bombChance: 1 },
+  bucket: { hardFactor: 0.5, turbidity: 0.3, reachAbove: 2.2, bombChance: 1 },
   // Flotte: gemietete Pontons arbeiten selbstständig (Automatik), ohne dass du den Querschnitt öffnest
   fleet: { widenRows: 3, max: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
 };
@@ -142,7 +138,6 @@ export const BASE_STATS = {
   disposalFactor: 1, // Faktor auf Entsorgungskosten (Entwässerung senkt ihn)
   sortBonus: 1, // Faktor auf Verkaufserlöse (Sortieranlage hebt ihn)
   rockFirmness: 0.04, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
-  stability: 0.7,
   autoLevel: 0,
   echolot: 0,
   trafficMult: 1, // Betonnung & Leuchtfeuer: mehr Schiffe
@@ -166,7 +161,6 @@ export const UPGRADES = {
   radius: { group: 'ponton', name: 'Saugkopf', desc: 'Grössere Saugfläche', maxLevel: 5, baseCost: 6000, growth: 1.6, apply: (s, l) => { s.radius += l * 0.5; } },
   speed: { group: 'ponton', name: 'Ponton-Antrieb', desc: 'Schnelleres Fahren auf der Karte', maxLevel: 5, baseCost: 5000, growth: 1.5, apply: (s, l) => { s.speed += l * 0.6; } },
   winch: { group: 'ponton', name: 'Katze & Winde', desc: 'Pumpe fährt und taucht schneller (Höchsttempo)', maxLevel: 5, baseCost: 5000, growth: 1.5, apply: (s, l) => { s.headSpeed += l * 0.7; } },
-  ballast: { group: 'ponton', name: 'Pumpen-Ballast', desc: 'Pumpe steht fester und kippt später', maxLevel: 4, baseCost: 6000, growth: 1.5, apply: (s, l) => { s.stability += l * 0.25; } },
   curtain: { group: 'ponton', name: 'Trübungsschutz', desc: 'Schlammvorhang: weniger Trübung, weniger Bussen', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.curtain = Math.min(0.8, l * 0.2); } },
   cutter: { group: 'ponton', name: 'Felsfräse', desc: 'Schneidkopf: Felsriegel lassen sich abtragen (ohne Fräse kaum)', maxLevel: 4, baseCost: 14000, growth: 1.7, apply: (s, l) => { s.rockFirmness += l * 0.14; } },
   loeffel: { group: 'ponton', name: 'Löffelbagger', desc: 'Ausleger mit Schaufel (V = Gerät wechseln): verstopft nie, schafft Fels und harte Schicht, wenig Trübung, reicht über Wasser (Ufer abtragen). Höhere Stufen: mehr Leistung', maxLevel: 5, baseCost: 12000, growth: 1.6, apply: (s, l) => { s.loeffel = l; if (l > 0) { s.bucketPower = 2.4 + 1.3 * (l - 1); s.bucketRadius = 1.0 + 0.12 * l; s.bucketRock = 0.28 + 0.08 * l; } } },

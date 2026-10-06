@@ -25,7 +25,7 @@ Steuerung, Aufbau und Oberfläche folgen dem Seesanierungs-Spiel ([Romans-Altlas
   **Niedrigwasser** nimmt Tiefe (Schiffe können auflaufen: Bergung kostet, Rinne blockiert), **Hochwasser** sperrt die Schifffahrt. **Fels** (Felsriegel) lässt sich ohne Felsfräse kaum
   abtragen. Ufer und Flachwasser sind **Naturschutzzone** (Busse pro m³). Ein Ponton in der Rinne bremst den Verkehr (Baustelle).
 - **Löffelbagger (Schaufeln):** Upgrade «Löffelbagger», im Querschnitt mit `V` oder dem Knopf «Gerät» umschaltbar. Er ist langsamer als der Saugbagger, verstopft aber nie
-  (Fremdstoffe hebt er einfach aus, nur Bomben bleiben ein Problem), schafft harte Schichten und Fels besser, trübt wenig und kippt kaum.
+  (Fremdstoffe hebt er einfach aus, nur Bomben bleiben ein Problem), schafft harte Schichten und Fels besser, trübt wenig.
 - **Land abtragen:** Der Löffel reicht über den Wasserspiegel. Das Ufer im **gelben Ausbaustreifen** (Karte) lässt sich abgraben, das kostet nur eine Landgebühr
   (`pay.landFee`) statt Busse. Liegt das Land unter Wasser, wird es zum Baggerkorridor: der Fluss wird breiter (mehr Platz für grosse Schiffe und Gegenverkehr). Das Material kommt in den Puffer
   (Aushub wird als Sand verwertet). Ausserhalb des Streifens gilt Schutzgebiet. Böschungen rutschen auch hier nach.
@@ -115,8 +115,10 @@ Taste `H` oder Knopf «🏗 Hafen» öffnet die Hafen-Seite (das Spiel läuft im
 Jedes Schiff hat eine **Volllast-Tiefe** (Tiefgang + 0,3 m) und eine **Mindesttiefe** (0,3 m weniger, z. B. Motorschiff: voll bei 2,3 m, Minimum bei 2,0 m). Ab der Mindesttiefe fährt die Klasse schon, mit mindestens 30 % Ladung; je tiefer die engste Stelle der Rinne, desto mehr Fracht (linear bis 100 %). Darunter fährt das Schiff nicht. Es müssen immer nur die Abschnitte vertieft werden, an denen die günstigste Rinne zu flach ist: erst auf die Mindesttiefe (rot), dann für Volllast (gelb). Ladung und Gebühr der Schiffe skalieren mit der Beladung; die Anzeige in Klassenleiste und Panel zeigt «xx % Ladung» und was bis voll fehlt. Die Flotte vertieft die Rinne danach selbstständig bis zur Volllast-Tiefe. Das Spiel startet mit einer Rinne auf Mindesttiefe für die kleinste Klasse.
 
 ## Oberfläche
-Im **Querschnitt** (Hochformat) liegt die Anzeige von Trübung, Puffer, Schieflage und offenen Zellen als schmale Leiste über dem Bild; Tempo und Solltiefe stehen kompakt in einer Zeile, das Bild darf näher an die Pumpe heranzoomen. Die **Ausrüstung** ist in Reiter geteilt (Pumpe, Geräte, Anlage, Verkehr); ein oranger Punkt am Reiter zeigt, wie viele Verbesserungen dort gerade bezahlbar sind.
+Im **Querschnitt** (Hochformat) liegt die Anzeige von Trübung, Puffer und offenen Zellen als schmale Leiste über dem Bild; Tempo und Solltiefe stehen kompakt in einer Zeile, das Bild darf näher an die Pumpe heranzoomen. Die **Ausrüstung** ist in Reiter geteilt (Pumpe, Geräte, Anlage, Verkehr); ein oranger Punkt am Reiter zeigt, wie viele Verbesserungen dort gerade bezahlbar sind.
 
 **Trübung:** Sie entsteht nur, wenn der Saugkopf wirklich Material saugt: pro Sekunde `Pumpenleistung / 250 × Auslastung × Trübungsfaktor × (1 − Trübungsschutz)`, ×1,4 bei Bewegung, ×1,5 bei Altlast (Löffel 0,3, Beton 0,1). Sie klingt exponentiell ab (8 % des Werts pro Sekunde). Das Gleichgewicht liegt bei Leistung 10 etwa bei 25 % (stehend) bzw. 35 % (in Fahrt); stärkere Pumpen brauchen den Trübungsschutz. Die Busse hängt vom Ort ab (Rinne kaum, Altlast normal, Naturschutz sehr hoch).
 
 **Kreuzungsstellen:** Zwei Schiffe kreuzen nur, wenn ihre beiden Spuren (talwärts oben, bergwärts unten, je `beam` Zeilen, mit einer Zeile Abstand) in allen drei Spalten der Stelle tief genug sind; sonst wird die Stelle für dieses Paar nicht benutzt (z. B. Tanker + Kahn brauchen 3 + 1 + 2 = 6 Zeilen). In der Stelle wechseln die Schiffe sichtbar auf ihre Spur.
+
+Hinweis: Die frühere Schieflage (Umkippen der Pumpe) und das Upgrade «Pumpen-Ballast» sind entfernt.

@@ -16,7 +16,7 @@ export class Advisor {
     this.runTime = 0;
     this.lastShown = -Infinity;
     this.shownAt = {};
-    this.t = { bufFull: 0, turb: 0, tips: [], clogs: [], outRate: 0 };
+    this.t = { bufFull: 0, turb: 0, clogs: [], outRate: 0 };
   }
 
   observe(dt, d, game, sim) {
@@ -25,10 +25,9 @@ export class Advisor {
     t.bufFull = ema(t.bufFull, sim.bufferFull ? 1 : 0, dt, tau);
     t.turb = ema(t.turb, sim.turbidity ?? 0, dt, tau);
     t.outRate = ema(t.outRate, dt > 0 ? (d?.out ?? 0) / dt : 0, dt, tau);
-    for (let i = 0; i < (d?.tips ?? 0); i++) t.tips.push(game.time);
     for (let i = 0; i < (d?.clogs ?? 0); i++) t.clogs.push(game.time);
     const cut = game.time - CONFIG.advisor.eventWindow;
-    t.tips = t.tips.filter((x) => x >= cut); t.clogs = t.clogs.filter((x) => x >= cut);
+    t.clogs = t.clogs.filter((x) => x >= cut);
   }
 
   // Passendes Upgrade zu den Messwerten, nur wenn es bezahlbar ist: { id, cost } oder null
@@ -37,7 +36,6 @@ export class Advisor {
     const order = [];
     if (t.bufFull > A.bufferFull) order.push('plant', 'dewater');
     if (t.turb > A.turbidity) order.push('curtain');
-    if (t.tips.length >= 1) order.push('ballast');
     if (this.rockBlocked(game)) order.push('cutter', 'loeffel');
     if (L.auto === 0 && game.totals.removed > 400) order.push('auto');
     order.push('power', 'beacons', 'sorter', 'speed', 'radius', 'winch', 'pilot', 'vts', 'echolot', 'plant');
@@ -80,9 +78,6 @@ export class Advisor {
       { id: 'buffer', prio: 90, when: () => t.bufFull > A.bufferFull && sim.mode !== 'map',
         text: () => `Der Puffer ist schon wieder voll, die Pumpe steht rum wie ein Schleusenwärter im Feierabend. ${rec && ['plant', 'dewater'].includes(rec.id) ? `Wie wäre es mit mehr ${name(rec.id)}?` : 'Eine bessere Aufbereitungsanlage bringt das Baggergut schneller durch.'}`,
         upgrade: () => (rec && ['plant', 'dewater'].includes(rec.id) ? rec : null) },
-      { id: 'tipover', prio: 85, when: () => t.tips.length >= 1,
-        text: () => `Die Pumpe ist umgekippt. Das passiert, wenn man pro Zelle zu viel abträgt: Tempo-Regler hoch, die Pumpe nicht tiefer hängen als nötig${game.levels.ballast < UPGRADES.ballast.maxLevel ? ' oder Ballast kaufen' : ''}.`,
-        upgrade: () => (game.levels.ballast < UPGRADES.ballast.maxLevel && upgradeCost('ballast', game.levels.ballast) <= game.money ? { id: 'ballast', cost: upgradeCost('ballast', game.levels.ballast) } : null) },
       { id: 'grounding', prio: 88, when: () => game.totals.groundings >= 1 && game.totals.groundings > (this.shownAt._g ?? 0),
         text: () => { this.shownAt._g = game.totals.groundings; return 'Ein Schiff ist aufgelaufen und hat die Rinne versperrt, die Bergung kostet. Meist ist Niedrigwasser oder die Verlandung schuld: lieber ein Stück tiefer baggern, als nur gerade so viel wie nötig. Ein Verkehrsleitsystem macht die Bergung schneller.'; } },
       { id: 'queue', prio: 80, when: () => !!stuck && (waiting[stuck.id] ?? 0) >= 2,

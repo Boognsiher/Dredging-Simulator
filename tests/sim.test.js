@@ -190,20 +190,6 @@ test('Querschnitt: Pumpe saugt nur nach rechts, nur im Wasser, Karte bleibt in B
   assert.equal(r2, 0, 'rückwärts wird nicht gesaugt');
 });
 
-test('Querschnitt: Pumpe kippt bei zu tiefem Schnitt, Ballast hilft', () => {
-  const run = (levels) => {
-    const r = flat(2); r.kind.fill(KIND.schlick);
-    const stats = computeStats({ power: 8, ...levels });
-    const sl = new SliceSim(r, stats, 20, 12, createRng(1), 3, 0.2);
-    sl.h = r.wl - 2.1; sl.x = sl.x0 + 4;
-    let tipped = false;
-    for (let i = 0; i < 400 && !tipped; i++) { sl.update(0.05, { dx: 0, dy: 0, suction: true }); tipped = sl.tipped > 0; }
-    return tipped;
-  };
-  assert.ok(run({}));
-  assert.ok(!run({ ballast: 4 }));
-});
-
 test('Querschnitt: Fremdstoff verstopft, Freispülen löst nach Treffern', () => {
   const r = flat(2.5);
   const stats = computeStats({});

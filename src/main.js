@@ -99,7 +99,7 @@ function updateClassbar() {
 const upRows = {};
 // Ausrüstung in Reitern (Übersicht): jeder Reiter listet seine Verbesserungen
 const UP_TABS = [
-  { id: 'pump', label: '🌀 Pumpe', ids: ['power', 'radius', 'speed', 'winch', 'ballast', 'curtain'] },
+  { id: 'pump', label: '🌀 Pumpe', ids: ['power', 'radius', 'speed', 'winch', 'curtain'] },
   { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr'] },
   { id: 'plant', label: '🏭 Anlage', ids: ['plant', 'dewater', 'sorter', 'mixer'] },
   { id: 'traffic', label: '🚢 Verkehr', ids: ['beacons', 'signals', 'tugs', 'vts', 'pilot'] },
@@ -412,7 +412,7 @@ function hideOverlay() { $('overlay').classList.remove('show'); }
 const overlayOpen = () => $('overlay').classList.contains('show');
 
 let toastTimer = 0;
-function placeHud() { // Anzeigen (Trübung, Puffer, Schieflage) liegen im Querschnitt über dem Bild
+function placeHud() { // Anzeigen (Trübung, Puffer) liegen im Querschnitt über dem Bild
   const hud = $('shift-hud'); if (sim.mode !== 'slice') { hud.style.top = ''; hud.style.left = ''; hud.style.right = ''; return; }
   hud.style.top = `${canvas.offsetTop + 4}px`; hud.style.left = '4px'; hud.style.right = '4px';
 }
@@ -544,7 +544,7 @@ function fixAuto() { sim.fixAuto(); }
 function toggleTool() {
   const to = sim.nextTool();
   if (to === sim.tool) { toast('Kein weiteres Gerät: Löffelbagger oder Betoniergerät unter Ausrüstung kaufen', 'bad', true); return; }
-  if (!sim.setTool(to)) { toast('Gerät lässt sich jetzt nicht wechseln (Verstopfung oder Kippen)', 'bad', true); return; }
+  if (!sim.setTool(to)) { toast('Gerät lässt sich jetzt nicht wechseln (Verstopfung)', 'bad', true); return; }
   game.tool = sim.tool; audio.toggle(true);
   if (sim.mode === 'map') toast(`Nächste Verankerung mit ${toolName(to)}`, 'info', true);
 }
@@ -796,11 +796,11 @@ function frame(now) {
     advisor.observe(dt, d, game, sim);
     for (const n of sim.notes.splice(0)) {
       if (n.kind !== 'clog') toast(n.text, n.kind); // beim Verstopfen zeigt das Minispiel selbst den Gegenstand
-      if (sim.mode === 'slice' && (n.kind === 'clog' || n.kind === 'tip')) {
+      if (sim.mode === 'slice' && n.kind === 'clog') {
         const m = sliceMouthScreen(sim.slice);
-        fx.burst(m.x, m.y, n.kind === 'tip' ? 40 : 18, n.kind === 'tip' ? 'dust' : 'hard');
+        fx.burst(m.x, m.y, 18, 'hard');
         audio[n.kind]();
-        try { navigator.vibrate?.(n.kind === 'tip' ? [80, 40, 120] : 40); } catch { /* egal */ }
+        try { navigator.vibrate?.(40); } catch { /* egal */ }
       }
     }
     if (sim.mode === 'slice') {
@@ -826,7 +826,6 @@ function frame(now) {
     $('s-buf').value = Math.min(1, game.stockTotal / game.stats.bufferCapacity); $('s-buf').classList.toggle('hot', game.stockTotal >= game.stats.bufferCapacity * 0.9);
     $('s-open').textContent = sim.mode === 'slice' ? `${sim.slice.restCount()} offen` : '';
     $('s-turbzone').textContent = sim.mode === 'slice' ? ({ channel: 'Rinne: Busse kaum', altlast: '☢ Altlast: Busse', nature: '🌿 Naturschutz: Busse sehr hoch!' })[sim.turbZone] : '';
-    $('s-tilt').value = sim.mode === 'slice' ? sim.slice.tilt : 0;
     fx.update(dt);
     game.update(dt);
     for (const f of game.flash.splice(0)) ui.floaters.push({ ...f, life: 1.6 });
@@ -835,7 +834,7 @@ function frame(now) {
     tipTimer += dt;
     if (tipTimer > 1) {
       tipTimer = 0;
-      if (advisor.enabled && !(sim.mode === 'slice' && (sim.slice.freeing || sim.slice.tipped > 0))) { const tip = advisor.pick(game, sim); if (tip) showTip(tip); }
+      if (advisor.enabled && !(sim.mode === 'slice' && sim.slice.freeing)) { const tip = advisor.pick(game, sim); if (tip) showTip(tip); }
     }
     for (const n of game.notes.splice(0)) toast(n.text, n.kind);
   }
@@ -882,7 +881,7 @@ function showIntro() {
     <details ${isTouch ? '' : 'open'}><summary>Steuerung am Computer</summary>
       <p>Karte: WASD / Pfeile (oder Maus gedrückt) fahren, <b>E</b> / Leertaste wirft den Anker, <b>1–5</b> wählen die Schiffsklasse. Querschnitt: A/D fährt die Pumpe quer zum Fluss, W/S zieht sie hoch oder lässt sie runter, <b>Leertaste</b> schaltet die Pumpe ein und aus (saugt nach rechts und im Stillstand, rückwärts nie), <b>1–5</b> setzen die Solltiefe für eine Klasse, <b>F/G</b> ändern sie, <b>Z/X</b> Tempo, <b>T</b> Automatik, <b>R</b> Reset, <b>Q</b> zurück zur Karte, <b>P</b> Pause.</p></details>
     <details><summary>Regeln im Fluss</summary>
-      <p>Der Ponton baggert gleichzeitig 4 Spalten in Flussrichtung und 16 Zellen quer. Im Querschnitt zeigt die dicke Linie die <b>engste Stelle</b> (höchster Punkt) im Kasten; orange gestrichelt ist deine Solltiefe, die farbigen Linien sind die Tiefen der Schiffsklassen. Die Pumpe saugt nur am Boden und nur nach rechts; wer pro Zelle zu viel abträgt, bringt sie zum Kippen.</p>
+      <p>Der Ponton baggert gleichzeitig 4 Spalten in Flussrichtung und 16 Zellen quer. Im Querschnitt zeigt die dicke Linie die <b>engste Stelle</b> (höchster Punkt) im Kasten; orange gestrichelt ist deine Solltiefe, die farbigen Linien sind die Tiefen der Schiffsklassen. Die Pumpe saugt nur am Boden und nur nach rechts.</p>
       <p><b>Böschungen rutschen nach:</b> schmal und tief baggern füllt sich wieder auf. Ufer und Flachwasser sind Naturschutzzone (schraffiert, kostet Busse). <b>Fels</b> (grau) lässt sich ohne Felsfräse kaum abtragen. Der Fluss <b>verlandet</b>: besonders am Rand und nach Hochwasser lagert er Schlick in der Rinne ab. Bei <b>Niedrigwasser</b> fehlt Tiefe (Schiffe können auflaufen: Bergung kostet), bei <b>Hochwasser</b> ist die Schifffahrt gesperrt. Ein Ponton in der Rinne bremst den Verkehr. Fremdstoffe (weisse Punkte) verstopfen die Pumpe: Freispülen im grünen Bereich; bei Fliegerbomben hilft nur ruhig bleiben.</p>
       <p>In einer Einbahnrinne fahren Schiffe nur in einer Richtung; erst mit zwei getrennten Rinnen (⇄) ist Gegenverkehr möglich. Wer nicht durchkommt, dreht nach einer Weile ab und die Fracht geht auf die Bahn. Reedereien bieten <b>Frachtaufträge</b> mit Prämie an.</p></details>
     <button class="primary" id="btn-go">Los</button>`);

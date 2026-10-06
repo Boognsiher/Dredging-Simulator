@@ -505,11 +505,10 @@ function drawPump(ctx, game, sim, ui) {
   ctx.fillStyle = '#222'; for (let i = 0; i < 24; i++) { ctx.beginPath(); ctx.arc(54 + i * ((W - 108) / 23), SURF - 6, 2.5, 0, Math.PI * 2); ctx.fill(); }
   const trolleyY = SURF - 28;
   ctx.fillStyle = '#e8c33a'; ctx.fillRect(pumpX - 16, trolleyY - 8, 32, 14); ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(pumpX - 8, trolleyY + 7, 3, 0, 7); ctx.arc(pumpX + 8, trolleyY + 7, 3, 0, 7); ctx.fill();
-  const tipOff = sl.tipped > 0 ? 1 : sl.tilt;
   chain.update(dt, pumpX, trolleyY + 6, pumpX, py - PH + 6);
   drawChain(ctx, chain);
   // Pumpe: hochkantes Rechteck, Einsaugöffnung unten vorne (rechts)
-  const ang = sl.tipped > 0 ? Math.PI / 2 * 0.92 : Math.max(-0.4, Math.min(0.4, chain.endAngle())) * 0.5 + sl.tilt * 0.5 * (sl.tilt > 0.6 ? Math.sin(performance.now() / 70) * 0.15 + 0.6 : 0.3);
+  const ang = Math.max(-0.4, Math.min(0.4, chain.endAngle())) * 0.5;
   ctx.save(); ctx.translate(pumpX, py); ctx.rotate(ang);
   ctx.fillStyle = sl.clog > 0 ? '#a64a3a' : '#e07a2a'; ctx.strokeStyle = '#3a1a05'; ctx.lineWidth = 2;
   ctx.fillRect(-PW / 2, -PH, PW, PH); ctx.strokeRect(-PW / 2, -PH, PW, PH);
@@ -517,7 +516,6 @@ function drawPump(ctx, game, sim, ui) {
   ctx.fillStyle = sl.suctioning ? '#7bd88f' : '#555'; ctx.fillRect(-PW / 2 + 3, -PH + 28, PW - 6, 6);
   ctx.fillStyle = '#444'; ctx.fillRect(PW / 2 - 2, -12, 10, 12); // Saugrohr
   ctx.restore();
-  void tipOff;
   const m = sliceMouthScreen(sl);
   if (sl.suctioning) { // Sog
     ctx.fillStyle = 'rgba(255,230,160,.18)'; ctx.beginPath(); ctx.moveTo(m.x, m.y);
@@ -525,7 +523,7 @@ function drawPump(ctx, game, sim, ui) {
   }
   // Saugradius als schwache Kontur
   ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sl.toolParams().radius * U, sl.toolParams().radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
-  // Schieflage und Hubhöhe
+  // Hubhöhe
   if (sl.setH - sl.h < -0.05 || sl.h - sl.setH > 0.05) { const sy = sliceY(sl.setH, wl); ctx.strokeStyle = '#ffa94d'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(pumpX - 22, sy); ctx.lineTo(pumpX + 22, sy); ctx.stroke(); ctx.setLineDash([]); }
   if (sl.auto.on) { ctx.font = font(13); ctx.fillStyle = '#7fe3ff'; ctx.fillText(sl.auto.error ? '🤖 Fehler! (R)' : '🤖 Automatik', pumpX + 20, py - PH - 4); }
 }

@@ -43,8 +43,6 @@ export class SliceSim {
     this.sounding = null;
     this.sound();
     this.blocked = false; // Puffer voll: kein Saugen
-    this.tilt = 0;
-    this.tipped = 0;
     this.overNote = 0;
     this.clog = 0;
     this.freeing = null;
@@ -63,17 +61,17 @@ export class SliceSim {
   get reaches() { return this.tool !== 'pump'; } // Löffel und Betoniergerät reichen über Wasser und über das ganze Fenster
   maxH() { return this.reaches ? this.wl + CONFIG.bucket.reachAbove : this.wl - CONFIG.pump.maxHeightBelowWater; }
 
-  // Kennwerte des gewählten Geräts. Der Löffel verstopft nicht, kippt kaum, trübt wenig, schafft harte Schicht und Fels besser und reicht über Wasser.
+  // Kennwerte des gewählten Geräts. Der Löffel verstopft nicht, trübt wenig, schafft harte Schicht und Fels besser und reicht über Wasser.
   toolParams() {
     const s = this.stats, B = CONFIG.bucket;
-    if (this.tool === 'beton') return { power: s.pourPower, radius: CONFIG.concrete.radius, firmness: 0, hardFactor: 0, allowLand: true, turb: 0.1, stability: 99, clogs: false, pour: true, armorEff: 0 };
-    if (this.tool === 'loeffel') return { armorEff: CONFIG.concrete.bucketBreak, power: s.bucketPower, radius: s.bucketRadius, firmness: s.bucketRock, hardFactor: B.hardFactor, allowLand: true, turb: B.turbidity, stability: s.stability * B.stability, clogs: false };
-    return { armorEff: CONFIG.concrete.pumpBreak, power: s.power, radius: s.radius, firmness: s.rockFirmness, hardFactor: CONFIG.hard.factor, allowLand: false, turb: 1, stability: s.stability, clogs: true };
+    if (this.tool === 'beton') return { power: s.pourPower, radius: CONFIG.concrete.radius, firmness: 0, hardFactor: 0, allowLand: true, turb: 0.1, clogs: false, pour: true, armorEff: 0 };
+    if (this.tool === 'loeffel') return { armorEff: CONFIG.concrete.bucketBreak, power: s.bucketPower, radius: s.bucketRadius, firmness: s.bucketRock, hardFactor: B.hardFactor, allowLand: true, turb: B.turbidity, clogs: false };
+    return { armorEff: CONFIG.concrete.pumpBreak, power: s.power, radius: s.radius, firmness: s.rockFirmness, hardFactor: CONFIG.hard.factor, allowLand: false, turb: 1, clogs: true };
   }
 
-  // Gerät wechseln (nur mit ausgebautem Löffel; nicht während Verstopfung oder Kippen)
+  // Gerät wechseln (nur mit ausgebautem Löffel; nicht während Verstopfung)
   setTool(tool) {
-    if (tool === this.tool || this.tipped > 0 || this.clog > 0) return false;
+    if (tool === this.tool || this.clog > 0) return false;
     if (!toolAvailable(this.stats, tool)) return false;
     this.tool = tool; this.suctioning = false; this.auto.on = false;
     const b = this.bounds();
@@ -210,7 +208,6 @@ export class SliceSim {
     if (a.error === 'stuck') return { dx: 0, dy: 0, suction: false };
     if (a.error === 'wrongway') return { dx: -1, dy: 0, suction: true };
     if (a.error === 'high') return { dx: 0, dy: -1, suction: true };
-    if (lvl >= 2 && this.tilt > 0.5) return { dx: 0, dy: -1, suction: false };
     const b = this.bounds(), R = this.autoRange; // mit Arbeitsbereich fährt die Automatik nur über diesen Streifen
     const lo = R ? Math.max(b.min, R[0] + 0.01) : b.min, hiX = R ? Math.min(b.max, R[1] + 1) : b.max;
     if (a.dir === 'sweep' && this.x >= hiX - CONFIG.pump.offsetX - 0.05) a.dir = 'return';
@@ -222,13 +219,6 @@ export class SliceSim {
   // input: { dx, dy (dy>0 = nach unten), suction }
   update(dt, input) {
     const s = this.stats, a = this.auto, lvl = s.autoLevel, P = CONFIG.pump, R = this.river;
-    if (this.tipped > 0) {
-      this.tipped -= dt;
-      this.suctioning = false; this.moving = false;
-      this.h = Math.min(this.maxH(), this.h + 3 * dt);
-      if (this.tipped <= 0) { this.tipped = 0; this.tilt = 0; this.say('info', 'Pumpe steht wieder. Sie tut so, als wäre nichts gewesen.'); }
-      return ZERO;
-    }
     this.overNote = Math.max(0, this.overNote - dt);
     let ctl = input;
     if (a.on) {
@@ -266,12 +256,12 @@ export class SliceSim {
     const af = a.on ? CONFIG.auto.speedFactor[lvl] : 1;
     const speed = s.headSpeed * this.speedSetting * af * (working ? s.suctionSpeedFactor : along < -0.05 ? SLICE.returnBoost : 1);
 
-    const oldX = this.x, b = this.bounds();
+    const b = this.bounds();
     this.x = clamp(this.x + dx * speed * dt, b.min, b.max - P.offsetX);
     const floor = this.surfaceAt(this.x);
     const top = this.maxH();
     if (dy) { this._h = clamp(this._h - dy * speed * dt, Math.min(floor, top), top); this.setH = this._h; }
-    if (a.on && !a.error && this.tilt <= 0.5) {
+    if (a.on && !a.error) {
       const v = s.headSpeed * this.speedSetting * af * 0.8, target = floor + (lvl === 1 ? 0.4 : 0);
       this._h += clamp(target - this._h, -v * dt, v * dt);
       this.setH = this._h;
@@ -279,19 +269,14 @@ export class SliceSim {
     if (this._h < floor) this._h = floor;
     else if (this._h > this.setH && !dy) this._h = Math.max(this.setH, floor, this._h - s.headSpeed * this.speedSetting * 0.8 * dt);
     this._h = Math.min(this._h, Math.max(top, floor));
-    const lift = Math.max(0, this._h - this.setH - P.liftTolerance), liftGain = lift * P.liftTiltRate * dt;
 
     if (a.on && working) a.didWork = true;
     this.suctioning = working;
-    if (!this.suctioning) {
-      if (liftGain > 0) this.tilt += liftGain; else this.tilt = Math.max(0, this.tilt - P.tiltRecover * dt);
-      if (this.tilt >= 1) this._tip();
-      return ZERO;
-    }
+    if (!this.suctioning) return ZERO;
 
     // Fremdstoff an der Einsaugstelle? Wer den Kopf anhebt, fährt drüber weg. Der Löffel hebt Fremdstoffe einfach aus (ausser Bomben).
     const T = this.toolParams();
-    if (T.pour) { // Beton ausbringen (kein Saugen, keine Fremdstoffe, kein Kippen)
+    if (T.pour) { // Beton ausbringen (kein Saugen, keine Fremdstoffe)
       const m0 = this.mouth(), avail = this.concreteAvail ?? 0;
       if (avail <= 1e-9) { if (this.overNote <= 0) { this.say('bad', 'Kein Beton mehr: im Panel kaufen oder im Betonwerk mischen.'); this.overNote = 8; } this.suctioning = false; return ZERO; }
       const pr = R.pourSwath(this.cols, this.centerCol, m0.x, m0.h, T.radius, Math.min(avail, T.power * dt));
@@ -316,21 +301,11 @@ export class SliceSim {
     }
     const res = R.suckSwath(this.cols, this.centerCol, m.x, m.h, T.radius, T.power * dt, T.firmness, { allowLand: T.allowLand, hardFactor: T.hardFactor, armorEff: T.armorEff });
 
-    // Zu tief abgetragen: pro gefahrene Zelle wird zu viel weggesaugt, der Boden bricht vor der Pumpe weg und sie kippt.
-    const dist = Math.max(Math.abs(this.x - oldX), P.minTravel * dt), cut = res.removed / R.area / dist;
-    if (cut > T.stability || liftGain > 0) this.tilt += Math.max(0, cut - T.stability) * P.tiltRate * dt + liftGain;
-    else this.tilt = Math.max(0, this.tilt - P.tiltRecover * dt);
     if (res.out > 1e-6 && this.overNote <= 0) {
       this.say('bad', this.tool === 'loeffel' ? 'Schutzgebiet! Hier darf nicht abgetragen werden (Busse pro m³).' : 'Naturschutzzone! Die Fischereiaufsicht schaut zu (Busse pro m³).');
       this.overNote = 8;
     }
-    if (this.tilt >= 1) this._tip();
     return res;
-  }
-
-  _tip() {
-    this.tilt = 1; this.tipped = CONFIG.pump.tipSeconds; this.suctioning = false;
-    this.say('tip', this.tool === 'loeffel' ? 'Bagger gekippt! Der Löffel liegt im Wasser.' : 'Pumpe gekippt! Sie liegt jetzt am Grund und nennt es Mittagspause.');
   }
 }
 
