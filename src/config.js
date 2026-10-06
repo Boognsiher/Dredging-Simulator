@@ -66,7 +66,7 @@ export const CONFIG = {
     speedFactor: [1, 0.8, 1, 1.25],
     errorRate: [0, 0.08, 0.025, 0],
     errorSeconds: 6,
-    clogSeconds: [3, 5, 3, 1.5],
+    clogSeconds: [15, 15, 10, 5], // Wartezeit bei Verstopfung: Pumpe bleibt stehen, bis sie vorbei ist oder das Freispülen gelingt (bessere Automatik = kürzer)
   },
   // Echolot: lotet das Profil vor dem Abtrag aus. Ohne Echolot ist die Messung ungenau (±), die Automatik trifft die Solltiefe schlechter.
   echolot: { noise: [0.35, 0.12, 0.04], doneEps: 0.03, defaultDepth: 2.8, minDepth: 1.0, maxDepth: 5.5 },

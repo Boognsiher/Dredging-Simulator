@@ -255,6 +255,22 @@ test('Querschnitt: Automatik-Bereich (von/bis) beschränkt die Arbeit', () => {
   sim.setAutoRange('clear'); assert.equal(sim.autoRange, null);
 });
 
+test('Automatik: Verstopfung stoppt die Pumpe, Minispiel kommt, Wartezeit sinkt mit Stufe', () => {
+  for (const [lvl, secs] of [[1, 15], [3, 5]]) {
+    const r = flat(2.5); r.kind.fill(KIND.sand);
+    const sl = new SliceSim(r, computeStats({ auto: lvl, echolot: 2, power: 8 }), 20, 12, createRng(3), 3.0, 1);
+    sl.x = sl.x0 + 2; sl.h = r.wl - 2.4;
+    r.debris[r.idx(20, Math.floor(sl.x + CONFIG.pump.offsetX) + 1)] = 1;
+    sl.toggleAuto();
+    let guard = 0;
+    while (!sl.freeing && guard++ < 4000) sl.update(0.05, { dx: 0, dy: 0, suction: true });
+    assert.ok(sl.freeing, 'Minispiel startet auch bei Automatik');
+    assert.ok(Math.abs(sl.clog - secs) < 0.2);
+    const x = sl.x; for (let k = 0; k < 20; k++) sl.update(0.05, { dx: 0, dy: 0, suction: true });
+    assert.equal(sl.x, x, 'Pumpe bleibt an Ort stehen');
+  }
+});
+
 test('Ponton: bleibt im Wasser, ankert nur dort', () => {
   const r = flat(2); for (let y = 0; y < 5; y++) for (let x = 0; x < r.cols; x++) r.top[r.idx(x, y)] = r.wl + 1;
   const sim = new DredgeSim(r, computeStats({}), createRng(1));

@@ -1365,7 +1365,7 @@ const CONFIG = {
     speedFactor: [1, 0.8, 1, 1.25],
     errorRate: [0, 0.08, 0.025, 0],
     errorSeconds: 6,
-    clogSeconds: [3, 5, 3, 1.5],
+    clogSeconds: [15, 15, 10, 5], // Wartezeit bei Verstopfung: Pumpe bleibt stehen, bis sie vorbei ist oder das Freispülen gelingt (bessere Automatik = kürzer)
   },
   // Echolot: lotet das Profil vor dem Abtrag aus. Ohne Echolot ist die Messung ungenau (±), die Automatik trifft die Solltiefe schlechter.
   echolot: { noise: [0.35, 0.12, 0.04], doneEps: 0.03, defaultDepth: 2.8, minDepth: 1.0, maxDepth: 5.5 },
@@ -2143,6 +2143,7 @@ class SliceSim {
         }
       } else ctl = this._autoControl(dt);
     }
+    if (a.on && this.clog > 0) ctl = { dx: 0, dy: 0, suction: false }; // verstopft: die Automatik bleibt stehen und wartet
     const clogged = this.clog > 0;
     if (clogged) this.clog = Math.max(0, this.clog - dt);
     if (this.freeing) {
@@ -2203,7 +2204,7 @@ class SliceSim {
       R.debris[di] = 0;
       if (T.clogs || bomb) {
         this.clog = a.on ? CONFIG.auto.clogSeconds[lvl] : (CONFIG.debrisInfo[d - 1]?.clog ?? CONFIG.debris.clogSeconds);
-        if (!a.on) this._startFreeing(d - 1);
+        this._startFreeing(d - 1); // das Freispülen kommt immer, auch bei Automatik (sonst wartet die Pumpe die Zeit ab)
         this.suctioning = false;
         this.say('clog', `${T.clogs ? 'Pumpe verstopft' : 'Löffel blockiert'}: ${DEBRIS[d - 1]}!`, { item: DEBRIS[d - 1], bomb });
         return ZERO;

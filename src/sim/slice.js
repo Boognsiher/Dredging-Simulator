@@ -246,6 +246,7 @@ export class SliceSim {
         }
       } else ctl = this._autoControl(dt);
     }
+    if (a.on && this.clog > 0) ctl = { dx: 0, dy: 0, suction: false }; // verstopft: die Automatik bleibt stehen und wartet
     const clogged = this.clog > 0;
     if (clogged) this.clog = Math.max(0, this.clog - dt);
     if (this.freeing) {
@@ -306,7 +307,7 @@ export class SliceSim {
       R.debris[di] = 0;
       if (T.clogs || bomb) {
         this.clog = a.on ? CONFIG.auto.clogSeconds[lvl] : (CONFIG.debrisInfo[d - 1]?.clog ?? CONFIG.debris.clogSeconds);
-        if (!a.on) this._startFreeing(d - 1);
+        this._startFreeing(d - 1); // das Freispülen kommt immer, auch bei Automatik (sonst wartet die Pumpe die Zeit ab)
         this.suctioning = false;
         this.say('clog', `${T.clogs ? 'Pumpe verstopft' : 'Löffel blockiert'}: ${DEBRIS[d - 1]}!`, { item: DEBRIS[d - 1], bomb });
         return ZERO;
