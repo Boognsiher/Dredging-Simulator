@@ -239,8 +239,7 @@ test('Querschnitt: Automatik-Bereich (von/bis) beschränkt die Arbeit', () => {
   sim.x = 20; sim.y = 12; sim.setTargetDepth(3.0); sim.setPumpSpeed(1);
   assert.ok(sim.anchor());
   const sl = sim.slice;
-  sl.x = sl.x0 + 5.5; sim.setAutoRange('from');
-  sl.x = sl.x0 + 9.5; sim.setAutoRange('to');
+  sim.setAutoBounds(sl.x0 + 5, sl.x0 + 9);
   const [a, b] = sim.autoRange;
   assert.ok(a < b);
   assert.ok(sim.toggleAuto());
@@ -252,7 +251,7 @@ test('Querschnitt: Automatik-Bereich (von/bis) beschränkt die Arbeit', () => {
     if (row >= a && row <= b) assert.ok(deep, `Zeile ${row} im Bereich ist auf Solltiefe`);
     else assert.ok(!deep, `Zeile ${row} ausserhalb bleibt unberührt`);
   }
-  sim.setAutoRange('clear'); assert.equal(sim.autoRange, null);
+  sim.setAutoBounds(sl.x0, sl.x0 + SLICE.cols - 1); assert.equal(sim.autoRange, null);
 });
 
 test('Automatik: Verstopfung stoppt die Pumpe, Minispiel kommt, Wartezeit sinkt mit Stufe', () => {

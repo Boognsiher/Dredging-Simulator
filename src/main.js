@@ -18,7 +18,7 @@ import { fitSize, renderQuality } from './ui/layout.js';
 import { hintsFor } from './ui/hints.js';
 import { Fx } from './ui/fx.js';
 import { createAudio } from './ui/audio.js';
-import { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, sliceHeadScreen, sliceMouthScreen, sliceY } from './ui/render.js';
+import { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } from './ui/render.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
@@ -468,7 +468,7 @@ function syncMode() {
   $('btn-zone').hidden = mode !== 'map';
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
-  if (mode !== 'slice') { for (const id of ['btn-afrom', 'btn-ato', 'btn-aclr']) $(id).hidden = true; $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
+  if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
   updateHints(); fitCanvas();
 }
 function anchor() {
@@ -502,12 +502,6 @@ function togglePump() {
   if (sim.togglePump()) audio.toggle(sim.pumpOn);
 }
 function fixAuto() { sim.fixAuto(); }
-function autoRange(which) {
-  if (sim.mode !== 'slice' || !sim.setAutoRange(which)) return;
-  game.autoRange = sim.autoRange;
-  const R = sim.autoRange;
-  toast(R ? `Automatik fährt von Zeile ${R[0] + 1} bis ${R[1] + 1}` : 'Automatik: ganzer Korridor', 'info', true);
-}
 function toggleTool() {
   const to = sim.nextTool();
   if (to === sim.tool) { toast('Kein weiteres Gerät: Löffelbagger oder Betoniergerät unter Ausrüstung kaufen', 'bad', true); return; }
@@ -663,9 +657,27 @@ canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfer
   const r = canvas.getBoundingClientRect();
   zoneClick(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH);
 });
+// Automatik-Linien ziehen (Maus und Touch)
+let lineDrag = null;
+const logicalPos = (e) => { const r = canvas.getBoundingClientRect(); return { x: ((e.clientX - r.left) / r.width) * canvas.logicalW, y: ((e.clientY - r.top) / r.height) * canvas.logicalH }; };
+canvas.addEventListener('pointerdown', (e) => {
+  if (sim.mode !== 'slice' || sim.stats.autoLevel <= 0 || paused || sim.slice.freeing) return;
+  const p = logicalPos(e), [xa, xb] = autoLineX(sim.slice), grab = e.pointerType === 'touch' ? 34 : 20;
+  const da = Math.abs(p.x - xa), db = Math.abs(p.x - xb);
+  if (Math.min(da, db) > grab || p.y > 150) return; // nur am oberen Griff greifen, damit das Steuern nicht stört
+  lineDrag = da <= db ? 'a' : 'b';
+  canvas.setPointerCapture(e.pointerId); e.stopImmediatePropagation(); e.preventDefault();
+}, true);
+canvas.addEventListener('pointermove', (e) => {
+  if (!lineDrag) return;
+  const sl = sim.slice, [xa, xb] = autoLineX(sl), x = logicalPos(e).x, U = canvas.logicalW / 16;
+  const a = sl.x0 + (lineDrag === 'a' ? Math.round(x / U) : Math.round(xa / U)), b = sl.x0 + (lineDrag === 'b' ? Math.round(x / U) - 1 : Math.round(xb / U) - 1);
+  const k = lineDrag === 'a' ? Math.min(a, b) : a, m = lineDrag === 'b' ? Math.max(b, a) : b;
+  sim.setAutoBounds(k, m); game.autoRange = sim.autoRange;
+});
+addEventListener('pointerup', () => { lineDrag = null; });
 $('btn-leave').onclick = leave;
 $('btn-auto').onclick = toggleAuto;
-$('btn-afrom').onclick = () => autoRange('from'); $('btn-ato').onclick = () => autoRange('to'); $('btn-aclr').onclick = () => autoRange('clear');
 $('btn-fix').onclick = fixAuto;
 $('btn-tool').onclick = toggleTool;
 $('btn-tow').onclick = startTow;
@@ -711,9 +723,6 @@ function frame(now) {
       if (readInput.tap('Escape', 'KeyQ')) leave();
       if (readInput.tap('KeyT')) toggleAuto();
       if (readInput.tap('KeyR')) fixAuto();
-      if (readInput.tap('BracketLeft')) autoRange('from');
-      if (readInput.tap('BracketRight')) autoRange('to');
-      if (readInput.tap('Backslash')) autoRange('clear');
       if (readInput.tap('KeyV')) toggleTool();
       if (readInput.tap('Space')) togglePump();
       inp.suction = sim.pumpOn;
@@ -739,7 +748,7 @@ function frame(now) {
     game.collect(d);
     advisor.observe(dt, d, game, sim);
     for (const n of sim.notes.splice(0)) {
-      toast(n.text, n.kind);
+      if (n.kind !== 'clog') toast(n.text, n.kind); // beim Verstopfen zeigt das Minispiel selbst den Gegenstand
       if (sim.mode === 'slice' && (n.kind === 'clog' || n.kind === 'tip')) {
         const m = sliceMouthScreen(sim.slice);
         fx.burst(m.x, m.y, n.kind === 'tip' ? 40 : 18, n.kind === 'tip' ? 'dust' : 'hard');
@@ -752,11 +761,7 @@ function frame(now) {
       fx.feed(m, sliceY(sl.surfaceAt(sl.mouth().x), game.wl), d, dt, Math.max(0, game.money - before));
       audio.hum(sim.pumpOn && sl.suctioning, load);
       $('btn-auto').hidden = sim.stats.autoLevel <= 0;
-      $('btn-auto').textContent = sl.auto.on ? '🤖 Automatik aus (T)' : '🤖 Automatik an (T)';
-      for (const id of ['btn-afrom', 'btn-ato']) $(id).hidden = sim.stats.autoLevel <= 0;
-      $('btn-aclr').hidden = sim.stats.autoLevel <= 0 || !sim.autoRange;
-      $('btn-afrom').textContent = `⇤ Auto-Start hier ([)${sim.autoRange ? ` · ab ${sim.autoRange[0] + 1}` : ''}`;
-      $('btn-ato').textContent = `⇥ Auto-Ende hier (])${sim.autoRange ? ` · bis ${sim.autoRange[1] + 1}` : ''}`;
+      $('btn-auto').textContent = sl.auto.on ? '🤖 AN (T)' : '🤖 Auto (T)';
       $('btn-fix').hidden = !sl.auto.error;
       const tl = sl.tool;
       $('btn-pump').textContent = sl.freeing ? '🔧 Freispülen! (Leertaste)' : tl === 'beton' ? (sim.pumpOn ? '🧱 Beton: AN (Leertaste)' : '🧱 Beton: AUS (Leertaste)') : tl === 'loeffel' ? (sim.pumpOn ? '⛏ Löffel: AN (Leertaste)' : '⛏ Löffel: AUS (Leertaste)') : sim.pumpOn ? '🌀 Pumpe: AN (Leertaste)' : '🌀 Pumpe: AUS (Leertaste)';

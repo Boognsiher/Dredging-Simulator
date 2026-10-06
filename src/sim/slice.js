@@ -181,12 +181,12 @@ export class SliceSim {
     return true;
   }
 
-  // Automatik-Bereich: Anfang/Ende an der Position des Saugkopfs setzen (Zeilen quer zum Fluss, absolut)
-  setAutoEdge(which) {
-    const row = clamp(Math.floor(this.mouth().x), 0, this.river.rows - 1), rows = this.river.rows;
-    let [a, b] = this.autoRange || [0, rows - 1];
-    if (which === 'from') { a = row; if (b < a) b = rows - 1; } else { b = row; if (a > b) a = 0; }
-    this.autoRange = (a <= 0 && b >= rows - 1) ? null : [a, b];
+  // Automatik-Bereich aus zwei Linien (absolute Zeilen); über das ganze Fenster = unbegrenzt
+  setAutoBounds(a, b) {
+    const lo = this.x0, hi = this.x0 + SLICE.cols - 1;
+    a = clamp(Math.round(a), lo, hi); b = clamp(Math.round(b), lo, hi);
+    if (b < a) [a, b] = [b, a];
+    this.autoRange = (a <= lo && b >= hi) ? null : [a, b];
     return this.autoRange;
   }
 

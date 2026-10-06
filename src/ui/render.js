@@ -318,6 +318,12 @@ function turbidityVeil(ctx, sim) {
 }
 
 // ---------- Querschnitt ----------
+// Pixel-Positionen der beiden Automatik-Linien (linker und rechter Rand des Arbeitsbereichs)
+export function autoLineX(sl) {
+  const n = SLICE.cols, R = sl.autoRange;
+  const a = R ? Math.max(R[0], sl.x0) : sl.x0, b = R ? Math.min(R[1], sl.x0 + n - 1) : sl.x0 + n - 1;
+  return [(a - sl.x0) * U, (b + 1 - sl.x0) * U];
+}
 export function sliceHeadScreen(sl) {
   const wl = sl.wl;
   return { x: (sl.x - sl.x0) * U, y: sliceY(sl.h, wl) };
@@ -408,15 +414,20 @@ export function drawSlice(ctx, game, sim, ui = {}) {
     }
     ctx.textAlign = 'start';
   }
-  // Automatik-Bereich: Streifen ausserhalb abdunkeln, Start/Ende markieren
-  if (sl.autoRange) {
-    const [ra, rb] = sl.autoRange, xa = Math.max(0, (ra - sl.x0) * U), xb = Math.min(W, (rb + 1 - sl.x0) * U);
+  // Automatik-Begrenzung: zwei ziehbare Linien (nur mit Automatik), ausserhalb abgedunkelt
+  if (sl.stats.autoLevel > 0) {
+    const [xa, xb] = autoLineX(sl);
     ctx.fillStyle = 'rgba(0,0,0,.35)';
     if (xa > 0) ctx.fillRect(0, SURF, xa, H - SURF);
     if (xb < W) ctx.fillRect(xb, SURF, W - xb, H - SURF);
-    ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.font = font(12);
-    if (ra >= sl.x0) { ctx.beginPath(); ctx.moveTo(xa, SURF); ctx.lineTo(xa, H); ctx.stroke(); ctx.fillStyle = '#7fe3ff'; ctx.fillText('▶ Auto-Start', xa + 4, SURF + 32); }
-    if (rb < sl.x0 + n) { ctx.beginPath(); ctx.moveTo(xb, SURF); ctx.lineTo(xb, H); ctx.stroke(); ctx.fillStyle = '#7fe3ff'; ctx.textAlign = 'right'; ctx.fillText('Auto-Ende ◀', xb - 4, SURF + 32); ctx.textAlign = 'start'; }
+    ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+    for (const [x, dir] of [[xa, 1], [xb, -1]]) {
+      ctx.beginPath(); ctx.moveTo(x, SURF); ctx.lineTo(x, H); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle = '#7fe3ff'; // Griff: Fähnchen oben, gut greifbar
+      ctx.beginPath(); ctx.moveTo(x, SURF + 4); ctx.lineTo(x + dir * 24, SURF + 16); ctx.lineTo(x, SURF + 28); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#06324a'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText('🤖', x + dir * 9, SURF + 20); ctx.textAlign = 'start';
+      ctx.setLineDash([4, 4]);
+    }
     ctx.setLineDash([]);
   }
   // Profilkanten: dick = engste Stelle (höchster Punkt), dünn = tiefster Punkt im Kasten
@@ -555,7 +566,7 @@ function drawBucket(ctx, game, sim, ui) {
 }
 
 function drawFreeing(ctx, sl) {
-  const f = sl.freeing, bw = 360, bh = 26, x = (W - bw) / 2, y = H - 78;
+  const f = sl.freeing, bw = 360, bh = 26, x = (W - bw) / 2, y = 118;
   ctx.fillStyle = '#000c'; ctx.fillRect(x - 12, y - 34, bw + 24, bh + 50);
   ctx.fillStyle = '#fff'; ctx.font = font(15); ctx.textAlign = 'center'; ctx.fillText(`Freispülen: ${f.item ?? 'Fremdstoff'}`, W / 2, y - 12);
   ctx.fillStyle = '#34495e'; ctx.fillRect(x, y, bw, bh);

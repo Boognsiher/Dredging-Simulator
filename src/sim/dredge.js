@@ -94,12 +94,10 @@ export class DredgeSim {
     if (this.slice.auto.on && !this.pumpOn) { this.pumpOn = true; this.autoStartedPump = true; }
     return true;
   }
-  // Automatik-Bereich ('from' | 'to' = an der Position des Saugkopfs, 'clear' = ganzer Korridor); gilt auch für die nächsten Verankerungen
-  setAutoRange(which) {
-    if (which === 'clear') this.autoRange = null;
-    else if (this.mode === 'slice') this.autoRange = this.slice.setAutoEdge(which);
-    else return false;
-    if (this.slice) this.slice.autoRange = this.autoRange;
+  // Automatik-Bereich (zwei Linien im Querschnitt); gilt auch für die nächsten Verankerungen
+  setAutoBounds(a, b) {
+    if (this.mode !== 'slice') return false;
+    this.autoRange = this.slice.setAutoBounds(a, b);
     return true;
   }
   fixAuto() { return this.mode === 'slice' && this.slice.fixAuto(); }
