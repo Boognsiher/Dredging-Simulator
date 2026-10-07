@@ -145,3 +145,10 @@ Im Levelmenü gibt es unten **«♾ Endlos: Flussnetz»**: Du gibst eine **Seed-
 **Container:** Neben Kies und Öl gibt es Containerfracht. Im Hafen baust du ein **Containerterminal** (32 000 CHF, 3 Stufen, 300 / 800 / 1 800 t Lager); durchfahrende Containerschiffe erzeugen dort Umschlagaufträge (Minispiel). In der Reederei gibt es das **Containerschiff** (380 000 CHF, 1 000 t, braucht eine tiefe Rinne und ein tiefes Hafenbecken). Container haben je Karte eigene Preise wie Kies und Öl.
 
 **Grössere Karte:** Die Karte hat jetzt 36 statt 24 Zeilen: der Fluss bleibt gleich, beiderseits liegt mehr Land (Platz für Hafen und später Strassen und Lager). Im Hochformat wird die Karte dadurch höher, im Vollbild folgt sie dem Ponton auch in der Höhe. Spielstände von vorher (Version 5/6) lassen sich wegen der neuen Kartengrösse nicht mehr laden.
+
+## Landseite des Hafens: Strassen und Lagerhallen
+Im Kartenvollbild öffnet `L` (Knopf «🛣 Land», sobald das Hafengelände erworben ist) die Baugerätschaft für die Landseite des Hafens, je Karte:
+- **Strassen** (350 CHF je Zelle) nur auf Land. Eine Strasse ist **angebunden**, wenn sie über Nachbarzellen ans Hafenbecken anschliesst. Jede angebundene Strassenzelle beschleunigt den Umschlag der Mannschaft um 5 % (höchstens +80 %).
+- **Lagerhallen** (2×2 Zellen, 9 000 CHF plus Erdarbeiten: das Gelände wird eingeebnet, 400 CHF je m Höhenunterschied und Zelle, 2 Ausbaustufen 14 000 / 26 000 CHF). Nur **angebundene** Hallen zählen: sie erweitern die Zwischenlager für Container (300 / 700 / 1 500 t) und Kies (200 / 500 / 1 100 t).
+- **Strasse automatisch:** Halle antippen, der kürzeste Weg über freies Land zum Hafenbecken wird gebaut. **Abriss** entfernt Strassen und Hallen. Das Hafen-Panel zeigt Strassen, Anbindung, Umschlagsfaktor und Hallen mit Ausbau.
+- **Hafenzone:** Das Flachwasser (Naturschutz) neben dem Hafenbecken gehört zur Hafenzone: dort gibt es beim Baggern keine Schutzbusse. Weitere Schutzstreifen lassen sich weiter getrennt unter «Uferstreifen» kaufen.

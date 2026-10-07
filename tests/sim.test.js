@@ -288,6 +288,7 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
 
 const fullLane = (g, id) => { carveFairway(g.river, g.wl, shipById(id), CONFIG.partialDepth + 0.1); g.analyze(true); }; // Rinne gleich auf volle Ladetiefe
 import { ENDLESS } from '../src/config.js';
+import { isLand, buildRoad, buildHall, autoRoad, connectedRoads, hallConnected, hallCapacity, roadFactor, landOf, upgradeHall, demolishAt, LAND } from '../src/sim/land.js';
 import { ensurePort } from '../src/sim/port.js';
 import { buyShip, sellShip, setRoute, routeInfo, updateShipping, SHIPPING, withMap } from '../src/sim/shipping.js';
 import { setAvoid, cellAllowed } from '../src/sim/fleet.js';
@@ -1474,4 +1475,35 @@ test('Container-Fracht: Terminal, Lager, eigenes Containerschiff, alte Stände w
   assert.ok(s.trips >= 1, 'Containerschiff fährt');
   const old = { stock: { kies: 5, oel: 0 }, cost: { kies: 1, oel: 0 }, auto: {} };
   ensurePort(old); assert.equal(old.stock.container, 0); assert.ok(old.auto.container);
+});
+
+test('Landseite: Strassen, Lagerhallen, Anbindung, Zusatzlager und schnellerer Umschlag', () => {
+  const g = new Game(4242, 'endlos'); g.eventsOn = false; g.money = 1e6; g.port.open = true;
+  const r = g.river, cols = r.cols, bay = new Set(g.port.bay.cells);
+  assert.equal(roadFactor(g), 1); assert.equal(hallCapacity(g, 'container'), 0);
+  // Randzelle am Hafenbecken (Land) suchen
+  const rim = []; for (const c of bay) { const x = c % cols, y = (c / cols) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (isLand(g, x + dx, y + dy)) rim.push([x + dx, y + dy]); }
+  assert.ok(rim.length > 0, 'Land am Becken');
+  const [rx, ry] = rim[0]; assert.ok(buildRoad(g, rx, ry)); assert.equal(buildRoad(g, rx, ry), false, 'belegt');
+  assert.equal(connectedRoads(g).size, 1); assert.ok(roadFactor(g) > 1);
+  assert.equal(buildRoad(g, 0, r.rows - 1) || isLand(g, 0, r.rows - 1) === false, true);
+  // Halle ein Stück entfernt: erst nicht angebunden, dann per Auto-Strasse
+  const side = ry < r.rows / 2 ? -1 : 1; let hx = -1, hy = -1;
+  search: for (let d = 3; d < 12; d++) for (let dx = -3; dx <= 3; dx++) { const x = rx + dx, y = ry + side * d; if (isLand(g, x, y) && isLand(g, x + 1, y) && isLand(g, x, y + 1) && isLand(g, x + 1, y + 1) && ![x, x + 1].some((q) => bay.has(y * cols + q))) { hx = x; hy = y; break search; } }
+  assert.ok(hx >= 0, 'Platz für Halle'); const m0 = g.money;
+  assert.ok(buildHall(g, hx, hy)); assert.ok(g.money < m0 - LAND.hall.cost + 1);
+  const h = landOf(g).halls[0]; assert.equal(hallConnected(g, h), false); assert.equal(hallCapacity(g, 'container'), 0, 'nicht angebunden: kein Lager');
+  const res = autoRoad(g, h.id); assert.ok(res.ok, res.why); assert.ok(hallConnected(g, h));
+  assert.equal(hallCapacity(g, 'container'), LAND.hall.cap.container[0]);
+  assert.ok(upgradeHall(g, h.id)); assert.equal(hallCapacity(g, 'container'), LAND.hall.cap.container[1]);
+  assert.equal(demolishAt(g, rx, ry), 'road');
+  for (const i of [...landOf(g).roads]) demolishAt(g, i % cols, (i / cols) | 0);
+  assert.equal(landOf(g).roads.length, 0); assert.equal(hallConnected(g, h), false);
+});
+
+test('Hafen: Naturschutz-Flachwasser neben dem Becken gehört zur Hafenzone (keine Schutzbusse)', () => {
+  const g = new Game(4242, 'endlos'), r = g.river, bay = g.port.bay;
+  const near = []; for (const c of bay.cells) { const x = c % r.cols, y = (c / r.cols) | 0; for (let dx = -2; dx <= 2; dx++) { const j = y * r.cols + x + dx; if (x + dx >= 0 && x + dx < r.cols && r.isWater(j)) near.push(j); } }
+  assert.ok(near.length > 0);
+  assert.ok(near.every((j) => r.zone[j] || r.ext[j] !== 2), 'kein Schutz-Flachwasser um das Becken');
 });

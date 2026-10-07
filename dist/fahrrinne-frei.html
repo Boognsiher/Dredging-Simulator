@@ -438,6 +438,13 @@ body.mode-map #map-select { order: 4; flex: none; }
   body:not(.mode-map) #shift-actions button { font-size: 12px; padding: 4px 6px; }
 }
 
+/* Landseite bauen: Werkzeugleiste über den Aktionsknöpfen */
+#land-bar { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 12; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 12px); }
+#land-bar[hidden] { display: none; }
+#land-bar button { margin: 0; width: auto; padding: 6px 10px; font-size: 13px; background: #12283bdd; white-space: nowrap; min-height: 0; } #land-bar button.on { background: var(--accent); color: #04222b; font-weight: 700; } #land-bar .primary { position: static; width: auto; }
+@media (max-width: 860px) and (orientation: portrait) { #land-bar { bottom: auto; top: 6px; position: absolute; } }
+#land-bar button.primary { background: var(--accent); color: #04222b; font-weight: 700; }
+
 </style>
 </head>
 <body>
@@ -475,6 +482,7 @@ body.mode-map #map-select { order: 4; flex: none; }
         <button id="btn-auto">🤖 Auto (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
         <button id="btn-area" hidden>▭ Gebiet (G)</button>
+        <button id="btn-land" hidden>🛣 Land (L)</button>
         <button id="btn-zone">↔ Kreuzung (K)</button>
         <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
         <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
@@ -483,6 +491,7 @@ body.mode-map #map-select { order: 4; flex: none; }
         <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
         <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="5.5" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
       </div>
+      <div id="land-bar" hidden><button data-tool="road" class="on">🛣 Strasse</button><button data-tool="hall">🏭 Lagerhalle</button><button data-tool="auto">➜ Strasse automatisch</button><button data-tool="demo">✖ Abriss</button><button id="land-done" class="primary">Fertig</button></div>
       <div id="toast"></div>
       <div id="port-page" hidden></div>
       <div id="overlay"></div>
@@ -562,28 +571,30 @@ const __defs = [
 function(){
 const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } = __m(1);
 const { PORT, buyPrice, sellPrice } = __m(4);
+const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(5);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } = __m(2);
-const { Game } = __m(6);
-const { acceptContract } = __m(14);
-const { waitingByClass } = __m(13);
-const { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(15);
-const { bayCapacity, maxZones, zoneClasses } = __m(13);
-const { materialPrice } = __m(16);
-const { TowSim, groundedNear } = __m(17);
-const { toolName } = __m(9);
-const { priceOf, trend } = __m(5);
+const { Game } = __m(7);
+const { acceptContract } = __m(15);
+const { waitingByClass } = __m(14);
+const { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(16);
+const { bayCapacity, maxZones, zoneClasses } = __m(14);
+const { materialPrice } = __m(17);
+const { TowSim, groundedNear } = __m(18);
+const { toolName } = __m(10);
+const { priceOf, trend } = __m(6);
 const { needDepth, minNeedDepth } = __m(3);
-const { Advisor } = __m(18);
-const { serializeGame, restoreGame, savedSummary } = __m(19);
-const { createInput } = __m(20);
-const { setupTouch } = __m(22);
-const { steerToward } = __m(21);
-const { setupPort } = __m(23);
-const { fitSize, renderQuality } = __m(24);
-const { hintsFor } = __m(25);
-const { Fx } = __m(26);
-const { createAudio } = __m(27);
-const { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(28);
+const { Advisor } = __m(19);
+const { serializeGame, restoreGame, savedSummary } = __m(20);
+const { createInput } = __m(21);
+const { setupTouch } = __m(23);
+const { steerToward } = __m(22);
+const { setupPort } = __m(24);
+const { fitSize, renderQuality } = __m(25);
+const { hintsFor } = __m(26);
+const { Fx } = __m(27);
+const { createAudio } = __m(28);
+const { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(29);
+
 
 
 
@@ -646,6 +657,7 @@ sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false, menuOpen = false, mapFull = false, panYm = 0;
+let landMode = false, landTool = 'road'; // Landseite des Hafens bauen (Karte)
 let areaMode = false; // Arbeitsgebiet für gemietete Pontons aufziehen (Karte): zwei Ecken antippen
 let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
@@ -944,9 +956,29 @@ function toggleZoneMode() {
   updateTrafficPanel();
   if (zoneMode) { const c = shipById(game.zoneClassId); toast(`Planen für ${c.name}: Spalte antippen, die Zahl zeigt den fehlenden Aushub`, 'info', true); }
 }
+function toggleLandMode() {
+  if (tow || sim.mode !== 'map') { toast('Die Landseite baust du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
+  if (!game.port.open) { toast('Erst das Hafengelände erwerben (Hafen, H)', 'bad', true); return; }
+  if (zoneMode) toggleZoneMode(); if (areaMode) toggleAreaMode();
+  landMode = !landMode; ui.landMode = landMode; ui.landTool = landTool; ui.hoverCell = null; mapTarget = null;
+  $('btn-land').textContent = landMode ? '✔ Land: fertig (L)' : '🛣 Land (L)'; $('land-bar').hidden = !landMode;
+  if (landMode) toast(`Landseite: Strasse ${chf(LAND.road.cost)} je Zelle, Lagerhalle ${chf(LAND.hall.cost)} plus Erdarbeiten`, 'info', true);
+}
+function setLandTool(t) { landTool = t; ui.landTool = t; for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.classList.toggle('on', b.dataset.tool === t); }
+function landClick(px, py) {
+  const c = cellAt(px, py), x = Math.floor(c.x), y = Math.floor(c.y);
+  if (landTool === 'road') { const why = roadBlock(game, x, y); if (why) toast(why, 'bad', true); else buildRoad(game, x, y); }
+  else if (landTool === 'hall') { const why = hallBlock(game, x, y); if (why) toast(why, 'bad', true); else { buildHall(game, x, y); toast('Lagerhalle gebaut: mit einer Strasse ans Hafenbecken anbinden', 'good', true); } }
+  else if (landTool === 'auto') {
+    const h = landOf(game).halls.find((q) => x >= q.x && x < q.x + LAND.hall.w && y >= q.y && y < q.y + LAND.hall.h);
+    if (!h) { toast('Auf eine Lagerhalle tippen', 'bad', true); return; }
+    const res = autoRoad(game, h.id); toast(res.ok ? `Strasse gebaut: ${res.cells} Zellen (−${chf(res.cost)})` : res.why, res.ok ? 'good' : 'bad', true);
+  } else if (landTool === 'demo') { if (!demolishAt(game, x, y)) toast('Hier steht nichts', 'info', true); }
+  updatePanel();
+}
 function toggleAreaMode() {
   if (tow || sim.mode !== 'map') { toast('Arbeitsgebiete gibst du auf der Karte vor (Anker lichten mit Q)', 'info', true); return; }
-  if (zoneMode) toggleZoneMode();
+  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode();
   areaMode = !areaMode; ui.areaMode = areaMode; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
   $('btn-area').textContent = areaMode ? '✔ Gebiet: fertig (G)' : '▭ Gebiet (G)';
   if (areaMode) toast(`Zwei Ecken antippen: das Rechteck wird von den gemieteten Pontons auf die Gebietstiefe gebaggert (max. ${MAX_AREAS} Gebiete)`, 'info', true);
@@ -993,6 +1025,7 @@ function updateConcrete() {
 let fleetSig = null;
 function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1;
+  $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
   const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, areaWork(game, a)]), areaMode, F.noNature, F.noAltlast]);
   if (sig === fleetSig) return;
@@ -1215,7 +1248,7 @@ function syncMode() {
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
   document.body.classList.toggle('mode-slice', mode === 'slice'); applyLayoutMode(); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
-  $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
+  $('btn-land').hidden = mode !== 'map' || !game.port.open; $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
   if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
@@ -1376,7 +1409,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; areaMode = false; ui.areaMode = false; ui.areaA = null; tow = null;
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; areaMode = false; ui.areaMode = false; ui.areaA = null; landMode = false; ui.landMode = false; $('land-bar').hidden = true; $('btn-land').textContent = '🛣 Land (L)'; tow = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -1404,6 +1437,7 @@ addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); 
 
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
 readInput.onTap((px, py) => {
+  if (landMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { landClick(px, py); return; }
   if (areaMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { areaClick(px, py); return; }
   if (zoneMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { zoneClick(px, py); return; }
   if (sim.mode !== 'map' || paused || sheetOpen || overlayOpen()) return;
@@ -1411,14 +1445,17 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
-$('btn-area').onclick = toggleAreaMode;
+$('btn-area').onclick = toggleAreaMode; $('btn-land').onclick = toggleLandMode;
+for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
+$('land-done').onclick = toggleLandMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
-  if (areaMode) { const r = canvas.getBoundingClientRect(); ui.hoverCell = cellAt(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH); return; }
+  if (areaMode || landMode) { const r = canvas.getBoundingClientRect(); ui.hoverCell = cellAt(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH); return; }
   if (!zoneMode) { ui.hoverX = null; return; }
   const r = canvas.getBoundingClientRect();
   ui.hoverX = Math.floor((((e.clientX - r.left) / r.width) * canvas.logicalW - OX) / CELL);
 });
 canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfernt eine Kreuzungsstelle (Touch läuft über onTap)
+  if (landMode && e.pointerType !== 'touch' && sim.mode === 'map' && !tow) { const r1 = canvas.getBoundingClientRect(); landClick(((e.clientX - r1.left) / r1.width) * canvas.logicalW, ((e.clientY - r1.top) / r1.height) * canvas.logicalH); return; }
   if (areaMode && e.pointerType !== 'touch' && sim.mode === 'map' && !tow) { const r0 = canvas.getBoundingClientRect(); areaClick(((e.clientX - r0.left) / r0.width) * canvas.logicalW, ((e.clientY - r0.top) / r0.height) * canvas.logicalH); return; }
   if (!zoneMode || e.pointerType === 'touch' || sim.mode !== 'map' || tow) return;
   const r = canvas.getBoundingClientRect();
@@ -1480,7 +1517,7 @@ function frame(now) {
     const inMap = sim.mode === 'map';
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
-    if (tow || zoneMode || areaMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    if (tow || zoneMode || areaMode || landMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
     ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {
@@ -1497,6 +1534,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyT')) startTow();
       if (!tow && readInput.tap('KeyK')) toggleZoneMode();
       if (!tow && readInput.tap('KeyG')) toggleAreaMode();
+      if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
       if (readInput.tap('Escape', 'KeyQ')) leave();
@@ -2268,7 +2306,9 @@ return { needDepth: needDepth, minNeedDepth: minNeedDepth, crossColumns: crossCo
 function(){
 const { CONFIG, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
-const { priceOf, ratioOf } = __m(5);
+const { hallCapacity, roadFactor } = __m(5);
+const { priceOf, ratioOf } = __m(6);
+
 
 
 
@@ -2313,6 +2353,16 @@ function carveBay(river, wl) {
       river.cap[i] = river.top[i] + 0.6; river.kind[i] = 1; river.hard[i] = 0; river.debris[i] = 0; river.dep[i] = 0; river.armor[i] = 0; cells.push(i);
     }
   }
+  // Hafenzone: das Schutz-Flachwasser neben dem Becken gehört dazu (kein Naturschutz beim Baggern am Hafen)
+  for (let x = bx - 2; x < bx + B.w + 2; x++) {
+    if (x < 0 || x >= river.cols) continue;
+    const [a, b] = edge(x); if (a < 0) continue;
+    for (let k = 1; k <= B.h + 1; k++) {
+      const y = side < 0 ? a - k : b + k; if (y < 0 || y >= river.rows) continue;
+      const i = y * river.cols + x;
+      if (!river.zone[i] && river.ext[i] === 2 && !river.bay[i]) { river.zone[i] = 1; river.bay[i] = 1; river.ext[i] = 0; }
+    }
+  }
   for (const i of cells) { // Kaimauer: Rand ausser zur Wasserseite betoniert, damit die Bucht nicht zurutscht
     const x = i % river.cols, y = (i / river.cols) | 0;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, side]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= river.cols || ny >= river.rows) continue; const j = ny * river.cols + nx; if (!river.bay[j] && !river.zone[j]) river.armor[j] = rimArmor; }
@@ -2340,7 +2390,7 @@ const slotsOf = (p, type) => p.slots.filter((s) => s?.type === type);
 // ältere Spielstände: neue Waren nachrüsten
 function ensurePort(p) { for (const id of Object.keys(PORT.commodities)) { p.stock[id] ??= 0; p.cost[id] ??= 0; p.auto[id] ??= { on: false, buyBelow: 0.85, sellAbove: 1.2 }; } return p; }
 const hasKai = (g) => g.port.open && slotsOf(g.port, 'kai').length > 0;
-const capacity = (g, id) => slotsOf(g.port, PORT.storage[id]).reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0);
+const capacity = (g, id) => slotsOf(g.port, PORT.storage[id]).reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0) + hallCapacity(g, id); // plus angebundene Lagerhallen (Landseite)
 const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => { const s = slotsOf(m.port, 'sanierung')[0]; return s ? PORT.buildings.sanierung.refund[s.level - 1] : 0; })); // beste Sanierungsanlage aller Karten
 const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
 const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
@@ -2510,7 +2560,7 @@ function updatePort(g, dt) {
   const p = g.port; for (const st of p.sites ?? []) if (st && st.busy > 0) st.busy = Math.max(0, st.busy - dt);
   if (!p.jobs?.length) return;
   for (const j of p.jobs) j.left -= dt;
-  const first = p.jobs[0]; moveGoods(g, first, PORT.jobs.crewRate[first.cargo] * dt);
+  const first = p.jobs[0]; moveGoods(g, first, PORT.jobs.crewRate[first.cargo] * dt * roadFactor(g)); // Strassenanbindung beschleunigt den Umschlag
   for (let k = p.jobs.length - 1; k >= 0; k--) if (p.jobs[k].done >= p.jobs[k].tons - 1e-6) { finishJob(g, p.jobs[k]); p.jobs.splice(k, 1); }
 }
 
@@ -2526,6 +2576,149 @@ function portDay(g) {
 }
 
 return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, buy: buy, sell: sell, machineOf: machineOf, portShip: portShip, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+},
+function(){
+
+// Landseite des Hafens (pro Karte): Strassen und Lagerhallen auf dem Land neben dem Hafenbecken.
+// Strassen verbinden Lagerhallen mit dem Hafenbecken (Kai); nur angebundene Hallen zählen. Hallen erweitern die Zwischenlager (Container, Kies),
+// jede angebundene Strassenzelle beschleunigt den Umschlag der Mannschaft. Erdarbeiten (Einebnen) sind im Bau enthalten.
+const LAND = {
+  road: { cost: 350 },
+  hall: { name: 'Lagerhalle', icon: '🏭', w: 2, h: 2, cost: 9000, up: [14000, 26000], cap: { container: [300, 700, 1500], kies: [200, 500, 1100] } },
+  earthwork: 400, // CHF je m Höhenunterschied und Zelle beim Einebnen
+  roadBoost: 0.05, maxBoost: 0.8, maxPath: 40,
+};
+const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+const landOf = (g) => (g.port.land ??= { roads: [], halls: [], seq: 0 });
+const idx = (g, x, y) => y * g.river.cols + x;
+const inMap = (g, x, y) => x >= 0 && y >= 0 && x < g.river.cols && y < g.river.rows;
+// Land: nicht Wasser, kein Becken, kein Korridor, kein Rohstoffvorkommen
+function isLand(g, x, y) {
+  if (!inMap(g, x, y)) return false;
+  const r = g.river, i = idx(g, x, y);
+  return !r.isWater(i) && !r.zone[i] && !r.bay[i] && !r.dep[i];
+}
+function occupied(g) {
+  const L = landOf(g), set = new Map();
+  for (const i of L.roads) set.set(i, 'road');
+  for (const h of L.halls) for (let dy = 0; dy < LAND.hall.h; dy++) for (let dx = 0; dx < LAND.hall.w; dx++) set.set(idx(g, h.x + dx, h.y + dy), h.id);
+  return set;
+}
+const bayCells = (g) => new Set(g.port.bay?.cells ?? []);
+const touchesBay = (g, x, y, bay) => N4.some(([dx, dy]) => inMap(g, x + dx, y + dy) && bay.has(idx(g, x + dx, y + dy)));
+
+// Strassenzellen, die über Nachbarzellen mit dem Hafenbecken verbunden sind
+function connectedRoads(g) {
+  const L = landOf(g), bay = bayCells(g), roads = new Set(L.roads), seen = new Set(), queue = [];
+  for (const i of L.roads) { const x = i % g.river.cols, y = (i / g.river.cols) | 0; if (touchesBay(g, x, y, bay)) { seen.add(i); queue.push(i); } }
+  while (queue.length) {
+    const i = queue.pop(), x = i % g.river.cols, y = (i / g.river.cols) | 0;
+    for (const [dx, dy] of N4) { const nx = x + dx, ny = y + dy; if (!inMap(g, nx, ny)) continue; const j = idx(g, nx, ny); if (roads.has(j) && !seen.has(j)) { seen.add(j); queue.push(j); } }
+  }
+  return seen;
+}
+function hallConnected(g, h, conn = connectedRoads(g)) {
+  const bay = bayCells(g);
+  for (let dy = 0; dy < LAND.hall.h; dy++) for (let dx = 0; dx < LAND.hall.w; dx++) {
+    const x = h.x + dx, y = h.y + dy;
+    if (touchesBay(g, x, y, bay)) return true;
+    for (const [ax, ay] of N4) if (inMap(g, x + ax, y + ay) && conn.has(idx(g, x + ax, y + ay))) return true;
+  }
+  return false;
+}
+// Zusatzlager durch angebundene Hallen
+function hallCapacity(g, id) {
+  if (!g.port.land) return 0;
+  const conn = connectedRoads(g);
+  return landOf(g).halls.reduce((a, h) => a + (hallConnected(g, h, conn) ? (LAND.hall.cap[id]?.[h.level - 1] ?? 0) : 0), 0);
+}
+// Umschlagstempo der Mannschaft: jede angebundene Strassenzelle gibt einen Zuschlag
+const roadFactor = (g) => (g.port.land ? 1 + Math.min(LAND.maxBoost, LAND.roadBoost * connectedRoads(g).size) : 1);
+
+const baseBlock = (g) => (!g.port.open ? 'Erst das Hafengelände erwerben (Hafen)' : g.status !== 'playing' ? 'Spiel beendet' : null);
+
+function roadBlock(g, x, y) {
+  const b = baseBlock(g); if (b) return b;
+  if (!isLand(g, x, y)) return 'Strassen gehen nur auf Land';
+  if (occupied(g).has(idx(g, x, y))) return 'Platz ist belegt';
+  return g.money < LAND.road.cost ? `Braucht ${LAND.road.cost} CHF` : null;
+}
+function buildRoad(g, x, y) {
+  if (roadBlock(g, x, y)) return false;
+  g.money -= LAND.road.cost; g.port.spent += LAND.road.cost; landOf(g).roads.push(idx(g, x, y)); return true;
+}
+// Erdarbeiten für die 2×2-Fläche: Höhenunterschied zum Mittel
+function earthwork(g, x, y) {
+  const r = g.river, cells = []; for (let dy = 0; dy < LAND.hall.h; dy++) for (let dx = 0; dx < LAND.hall.w; dx++) cells.push(idx(g, x + dx, y + dy));
+  const avg = cells.reduce((a, i) => a + r.top[i], 0) / cells.length;
+  return { cells, avg, fee: Math.round(cells.reduce((a, i) => a + Math.abs(r.top[i] - avg), 0) * LAND.earthwork) };
+}
+function hallBlock(g, x, y) {
+  const b = baseBlock(g); if (b) return b;
+  const occ = occupied(g);
+  for (let dy = 0; dy < LAND.hall.h; dy++) for (let dx = 0; dx < LAND.hall.w; dx++) {
+    if (!isLand(g, x + dx, y + dy)) return 'Die Halle braucht 2×2 Zellen Land';
+    if (occ.has(idx(g, x + dx, y + dy))) return 'Platz ist belegt';
+  }
+  const c = LAND.hall.cost + earthwork(g, x, y).fee;
+  return g.money < c ? `Braucht ${c.toLocaleString('de-CH')} CHF` : null;
+}
+const hallCost = (g, x, y) => LAND.hall.cost + earthwork(g, x, y).fee;
+function buildHall(g, x, y) {
+  if (hallBlock(g, x, y)) return false;
+  const e = earthwork(g, x, y), c = LAND.hall.cost + e.fee, r = g.river;
+  for (const i of e.cells) { r.top[i] = Math.max(e.avg, r.rock[i]); r.pending.add(i); }
+  g.money -= c; g.port.spent += c;
+  const L = landOf(g); L.halls.push({ id: `H${++L.seq}`, x, y, level: 1 });
+  return true;
+}
+function hallUpgradeBlock(g, id) {
+  const h = landOf(g).halls.find((q) => q.id === id);
+  if (!h) return 'Unbekannt';
+  if (h.level > LAND.hall.up.length) return 'Voll ausgebaut';
+  const c = LAND.hall.up[h.level - 1];
+  return g.money < c ? `Braucht ${c.toLocaleString('de-CH')} CHF` : g.status !== 'playing' ? 'Spiel beendet' : null;
+}
+function upgradeHall(g, id) {
+  if (hallUpgradeBlock(g, id)) return false;
+  const h = landOf(g).halls.find((q) => q.id === id), c = LAND.hall.up[h.level - 1];
+  g.money -= c; g.port.spent += c; h.level++; return true;
+}
+function demolishAt(g, x, y) {
+  const L = landOf(g), i = idx(g, x, y), ri = L.roads.indexOf(i);
+  if (ri >= 0) { L.roads.splice(ri, 1); return 'road'; }
+  const hi = L.halls.findIndex((h) => x >= h.x && x < h.x + LAND.hall.w && y >= h.y && y < h.y + LAND.hall.h);
+  if (hi >= 0) { L.halls.splice(hi, 1); return 'hall'; }
+  return null;
+}
+// Strasse automatisch: kürzester Weg über freies Land von der Halle zum Hafenbecken oder zu einer angebundenen Strasse
+function autoRoad(g, hallId) {
+  const L = landOf(g), h = L.halls.find((q) => q.id === hallId); if (!h) return { ok: false, why: 'Halle nicht gefunden' };
+  if (hallConnected(g, h)) return { ok: false, why: 'Halle ist schon angebunden' };
+  const occ = occupied(g), bay = bayCells(g), conn = connectedRoads(g), cols = g.river.cols;
+  const goal = (x, y) => touchesBay(g, x, y, bay) || N4.some(([dx, dy]) => inMap(g, x + dx, y + dy) && conn.has(idx(g, x + dx, y + dy)));
+  const prev = new Map(), queue = [];
+  for (let dy = 0; dy < LAND.hall.h; dy++) for (let dx = 0; dx < LAND.hall.w; dx++) for (const [ax, ay] of N4) {
+    const x = h.x + dx + ax, y = h.y + dy + ay, i = idx(g, x, y);
+    if (isLand(g, x, y) && !occ.has(i) && !prev.has(i)) { prev.set(i, -1); queue.push(i); }
+  }
+  let found = -1;
+  for (let q = 0; q < queue.length && found < 0; q++) {
+    const i = queue[q], x = i % cols, y = (i / cols) | 0;
+    if (goal(x, y)) { found = i; break; }
+    for (const [dx, dy] of N4) { const nx = x + dx, ny = y + dy, j = idx(g, nx, ny); if (inMap(g, nx, ny) && isLand(g, nx, ny) && !occ.has(j) && !prev.has(j)) { prev.set(j, i); queue.push(j); } }
+  }
+  if (found < 0) return { ok: false, why: 'Kein Weg über freies Land zum Hafenbecken' };
+  const path = []; for (let i = found; i !== -1; i = prev.get(i)) path.push(i);
+  if (path.length > LAND.maxPath) return { ok: false, why: 'Zu weit vom Hafenbecken' };
+  const cost = path.length * LAND.road.cost;
+  if (g.money < cost) return { ok: false, why: `Braucht ${cost.toLocaleString('de-CH')} CHF` };
+  g.money -= cost; g.port.spent += cost; for (const i of path) L.roads.push(i);
+  return { ok: true, cells: path.length, cost };
+}
+
+return { LAND: LAND, landOf: landOf, isLand: isLand, connectedRoads: connectedRoads, hallConnected: hallConnected, hallCapacity: hallCapacity, roadFactor: roadFactor, roadBlock: roadBlock, buildRoad: buildRoad, hallBlock: hallBlock, hallCost: hallCost, buildHall: buildHall, hallUpgradeBlock: hallUpgradeBlock, upgradeHall: upgradeHall, demolishAt: demolishAt, autoRoad: autoRoad };
 },
 function(){
 const { CONFIG, CARGOS } = __m(2);
@@ -2577,20 +2770,20 @@ return { createMarket: createMarket, priceOf: priceOf, ratioOf: ratioOf, stepMar
 },
 function(){
 const { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, levelById } = __m(2);
-const { toolAvailable } = __m(7);
-const { River } = __m(8);
+const { toolAvailable } = __m(8);
+const { River } = __m(9);
 const { carveFairway, analyzeFairway, zonePlan } = __m(3);
-const { DredgeSim } = __m(9);
-const { EVENTS } = __m(10);
-const { computeStats, upgradeCost } = __m(11);
-const { createRng } = __m(12);
-const { createMarket, stepMarket } = __m(5);
+const { DredgeSim } = __m(10);
+const { EVENTS } = __m(11);
+const { computeStats, upgradeCost } = __m(12);
+const { createRng } = __m(13);
+const { createMarket, stepMarket } = __m(6);
 const { createPort, portDay, refundFrac, updatePort, carveBay } = __m(4);
 const { createShipping, updateShipping } = __m(1);
-const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(13);
-const { processPlant, stockTotal, materialPrice } = __m(16);
-const { updateContracts } = __m(14);
-const { createFleet, updateFleet } = __m(15);
+const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(14);
+const { processPlant, stockTotal, materialPrice } = __m(17);
+const { updateContracts } = __m(15);
+const { createFleet, updateFleet } = __m(16);
 
 
 
@@ -3716,7 +3909,7 @@ return { River: River };
 },
 function(){
 const { CONFIG, KIND } = __m(2);
-const { SliceSim, TOOLS, toolAvailable, toolName } = __m(7);
+const { SliceSim, TOOLS, toolAvailable, toolName } = __m(8);
 
 
 
@@ -3875,7 +4068,7 @@ return { DredgeSim: DredgeSim, TOOLS: TOOLS, toolName: toolName };
 },
 function(){
 const { CONFIG } = __m(2);
-const { shockMarket } = __m(5);
+const { shockMarket } = __m(6);
 
 
 
@@ -3976,10 +4169,10 @@ return { createRng: createRng };
 function(){
 const { portShip } = __m(4);
 const { CONFIG, SHIPS, CARGOS, DEBRIS, shipById, cargoById } = __m(2);
-const { priceOf, ratioOf } = __m(5);
+const { priceOf, ratioOf } = __m(6);
 const { minDepthAt, pointOnPath } = __m(3);
-const { creditContracts } = __m(14);
-const { fleetSites } = __m(15);
+const { creditContracts } = __m(15);
+const { fleetSites } = __m(16);
 
 
 
@@ -4258,8 +4451,8 @@ return { createTraffic: createTraffic, bayCapacity: bayCapacity, maxZones: maxZo
 },
 function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(2);
-const { priceOf } = __m(5);
-const { activeClasses } = __m(13);
+const { priceOf } = __m(6);
+const { activeClasses } = __m(14);
 
 
 
@@ -4327,8 +4520,8 @@ return { makeContract: makeContract, acceptContract: acceptContract, creditContr
 },
 function(){
 const { CONFIG, SHIPS, KIND, shipById } = __m(2);
-const { toolAvailable } = __m(7);
-const { zoneSupports } = __m(13);
+const { toolAvailable } = __m(8);
+const { zoneSupports } = __m(14);
 
 
 
@@ -4725,7 +4918,7 @@ return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBl
 },
 function(){
 const { CONFIG } = __m(2);
-const { priceOf } = __m(5);
+const { priceOf } = __m(6);
 
 
 
@@ -4763,7 +4956,7 @@ return { stockTotal: stockTotal, materialPrice: materialPrice, processPlant: pro
 },
 function(){
 const { CONFIG, shipById } = __m(2);
-const { shipPos } = __m(13);
+const { shipPos } = __m(14);
 
 
 
@@ -4830,10 +5023,10 @@ return { TowSim: TowSim, groundedNear: groundedNear };
 },
 function(){
 const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(2);
-const { upgradeCost } = __m(11);
-const { waitingByClass, bayCapacity, activeClasses } = __m(13);
-const { ratioOf } = __m(5);
-const { hireBlock, nextHireCost } = __m(15);
+const { upgradeCost } = __m(12);
+const { waitingByClass, bayCapacity, activeClasses } = __m(14);
+const { ratioOf } = __m(6);
+const { hireBlock, nextHireCost } = __m(16);
 
 
 
@@ -4995,12 +5188,12 @@ class Advisor {
 return { Advisor: Advisor };
 },
 function(){
-const { Game, endlessRiver } = __m(6);
-const { createRng } = __m(12);
-const { createMarket } = __m(5);
+const { Game, endlessRiver } = __m(7);
+const { createRng } = __m(13);
+const { createMarket } = __m(6);
 const { createPort, ensurePort } = __m(4);
 const { levelById } = __m(2);
-const { River } = __m(8);
+const { River } = __m(9);
 
 
 
@@ -5079,7 +5272,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(21);
+const { isTap } = __m(22);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -5173,7 +5366,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(21);
+const { snapStick } = __m(22);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -5254,8 +5447,10 @@ return { setupTouch: setupTouch };
 function(){
 const { CONFIG, shipById } = __m(2);
 const { needDepth, minNeedDepth } = __m(3);
+const { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } = __m(5);
 const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } = __m(4);
-const { priceOf, ratioOf } = __m(5);
+const { priceOf, ratioOf } = __m(6);
+
 
 
 
@@ -5329,6 +5524,9 @@ function setupPort(root, getGame, onChange) {
           ${up ? `<button data-act="up" data-slot="${i}" ${upgradeBlock(g, i) ? 'disabled' : ''}>Ausbauen · ${chf(B.up[sl.level - 1])}</button>` : ''}<button class="ghost" data-act="demo" data-slot="${i}">Abreissen</button></div>`;
       });
       h += `</div>`;
+      { const L = landOf(g), conn = connectedRoads(g);
+        h += `<div class="port-card"><b>🛣 Landseite</b> <small>${L.roads.length} Strassenzellen (${conn.size} angebunden) · Umschlag ×${roadFactor(g).toFixed(2)} · Bau auf der Karte (L): Strassen ans Hafenbecken, Lagerhallen für Container und Kies</small>` +
+          (L.halls.length ? L.halls.map((hl) => { const ok = hallConnected(g, hl, conn), up = hl.level <= LAND.hall.up.length; return `<div class="row"><span>🏭 ${hl.id} · Stufe ${hl.level} · ${ok ? `+${LAND.hall.cap.container[hl.level - 1]} t Container, +${LAND.hall.cap.kies[hl.level - 1]} t Kies` : '<span class="warn">nicht angebunden</span>'}</span>${up ? `<button data-act="hallup" data-hall="${hl.id}" ${hallUpgradeBlock(g, hl.id) ? 'disabled' : ''}>Ausbauen · ${chf(LAND.hall.up[hl.level - 1])}</button>` : ''}</div>`; }).join('') : '<small>Noch keine Lagerhalle.</small>') + `</div>`; }
       { const d = bayDepth(g), T = PORT.bay.target, ok = d >= T - 0.05;
         h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>${ok ? `tief genug (${d.toFixed(1)} m): alle Schiffe können anlegen` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: Schiffe legen nur an, wenn das Becken tief genug für sie ist (Lastkahn ab ${minNeedDepth(shipById('kahn')).toFixed(1)} m, Motorschiff ${minNeedDepth(shipById('motor')).toFixed(1)}–${needDepth(shipById('motor')).toFixed(1)} m). Die Bucht ist auf der Karte markiert: dort mit dem Ponton ankern und ausbaggern.`}</small></div>`; }
       if (!hasKai(g)) h += `<div class="port-card"><b>Ohne Kai kein Handel.</b> Baue zuerst einen Kai mit Verladestation.</div>`;
@@ -5363,6 +5561,7 @@ function setupPort(root, getGame, onChange) {
     const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT') return;
     const g = getGame(), a = b.dataset.act, slot = +b.dataset.slot, id = b.dataset.id;
     if (a === 'hit') { hit(); return; }
+    if (a === 'hallup') { upgradeHall(g, b.dataset.hall); render(true); onChange?.(); return; }
     if (a === 'site') siteOpen = slot;
     else if (a === 'siteclose') siteOpen = null;
     else if (a === 'autolevel') { autoLevel(g, slot); siteOpen = null; }
@@ -5561,15 +5760,17 @@ function createAudio() {
 return { createAudio: createAudio };
 },
 function(){
-const { SLICE } = __m(7);
+const { SLICE } = __m(8);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
-const { shipPos, queuePos, bayCapacity } = __m(13);
+const { shipPos, queuePos, bayCapacity } = __m(14);
 const { needDepth, minNeedDepth } = __m(3);
 const { PORT, bayDepth, bayReady } = __m(4);
-const { areaWork } = __m(15);
-const { Chain, drawChain } = __m(29);
-const { groundedNear } = __m(17);
+const { areaWork } = __m(16);
+const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(5);
+const { Chain, drawChain } = __m(30);
+const { groundedNear } = __m(18);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
+
 
 
 
@@ -5665,6 +5866,7 @@ function drawMap(ctx, game, sim, ui = {}) {
   drawZones(ctx, game, ui);
   drawHarbor(ctx, game);
   drawAreas(ctx, game, ui);
+  drawLandSide(ctx, game, ui);
   drawShips(ctx, game, ui);
   drawFleet(ctx, game);
   if (sim) drawPontoon(ctx, game, sim, ui);
@@ -5818,6 +6020,37 @@ function drawZoneWindows(ctx, game, plan, alpha = 0.45) {
   }
   ctx.strokeStyle = 'rgba(255,230,120,.9)'; ctx.lineWidth = 1.5;
   for (const w of plan.wins ?? []) for (const a of [w.a, w.b]) ctx.strokeRect(OX + w.x * CELL + 1, a * CELL + 1, CELL - 2, plan.beam * CELL - 2);
+}
+
+// Landseite des Hafens: Strassen (grau, angebunden heller), Lagerhallen (2×2) und im Baumodus die Vorschau
+function drawLandSide(ctx, game, ui) {
+  const L = game.port?.land, cols = game.river.cols;
+  if (L && (L.roads.length || L.halls.length)) {
+    const conn = connectedRoads(game);
+    for (const i of L.roads) {
+      const x = OX + (i % cols) * CELL, y = ((i / cols) | 0) * CELL, on = conn.has(i);
+      ctx.fillStyle = on ? '#8d929b' : '#5f636b'; ctx.fillRect(x, y, CELL, CELL);
+      ctx.fillStyle = on ? '#b9bec7' : '#7b7f87'; ctx.fillRect(x + 3, y + 3, CELL - 6, CELL - 6);
+    }
+    for (const h of L.halls) {
+      const x = OX + h.x * CELL, y = h.y * CELL, w = LAND.hall.w * CELL, hh = LAND.hall.h * CELL, ok = hallConnected(game, h, conn);
+      ctx.fillStyle = ok ? '#9a7550' : '#6f5a46'; ctx.fillRect(x + 1, y + 1, w - 2, hh - 2);
+      ctx.fillStyle = ok ? '#c29a68' : '#8a7560'; ctx.fillRect(x + 3, y + 3, w - 6, hh - 6);
+      ctx.strokeStyle = '#3d2c1b'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, hh - 2);
+      ctx.font = font(14); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText('🏭', x + w / 2, y + hh / 2 + fs(14) * 0.35);
+      ctx.font = font(11); ctx.fillStyle = ok ? '#c7f5c9' : '#ffb4a8'; ctx.fillText(ok ? `Lager ${h.level} ✓` : 'nicht angebunden', x + w / 2, y - 3); ctx.textAlign = 'start';
+    }
+  }
+  if (!ui.landMode) return;
+  const H = ui.hoverCell, tool = ui.landTool;
+  if (H) {
+    const x = Math.floor(H.x), y = Math.floor(H.y), size = tool === 'hall' ? LAND.hall.w : 1;
+    const why = tool === 'road' ? roadBlock(game, x, y) : tool === 'hall' ? hallBlock(game, x, y) : null, bad = !!why && (tool === 'road' || tool === 'hall');
+    ctx.fillStyle = bad ? 'rgba(255,90,80,.35)' : 'rgba(120,255,160,.30)'; ctx.fillRect(OX + x * CELL, y * CELL, size * CELL, size * CELL);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(OX + x * CELL + 1, y * CELL + 1, size * CELL - 2, size * CELL - 2);
+  }
+  ctx.font = font(13); const t = { road: 'Strasse: Zellen antippen (nur Land, muss ans Hafenbecken anschliessen)', hall: 'Lagerhalle (2×2): Land antippen, Erdarbeiten sind inbegriffen', auto: 'Halle antippen: Strasse zum Hafenbecken wird automatisch gebaut', demo: 'Antippen: Strasse oder Halle abreissen' }[tool] ?? '';
+  ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H0() - fs(13) - 14 - 40, Math.min(ctx.measureText(t).width + 18, W - OX - 12), fs(13) + 8); ctx.fillStyle = '#ffe9b0'; ctx.fillText(t, OX + 14, H0() - 12 - 40);
 }
 
 // Arbeitsgebiete der gemieteten Pontons (Rechtecke) und die gerade aufgezogene Ecke

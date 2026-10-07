@@ -429,3 +429,10 @@ body.mode-map #map-select { order: 4; flex: none; }
   body:not(.mode-slice):not(.mode-map) #shift-hud { display: none; }
   body:not(.mode-map) #shift-actions button { font-size: 12px; padding: 4px 6px; }
 }
+
+/* Landseite bauen: Werkzeugleiste über den Aktionsknöpfen */
+#land-bar { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 12; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 12px); }
+#land-bar[hidden] { display: none; }
+#land-bar button { margin: 0; width: auto; padding: 6px 10px; font-size: 13px; background: #12283bdd; white-space: nowrap; min-height: 0; } #land-bar button.on { background: var(--accent); color: #04222b; font-weight: 700; } #land-bar .primary { position: static; width: auto; }
+@media (max-width: 860px) and (orientation: portrait) { #land-bar { bottom: auto; top: 6px; position: absolute; } }
+#land-bar button.primary { background: var(--accent); color: #04222b; font-weight: 700; }

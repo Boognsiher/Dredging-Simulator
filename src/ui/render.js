@@ -5,6 +5,7 @@ import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
 import { PORT, bayDepth, bayReady } from '../sim/port.js';
 import { areaWork } from '../sim/fleet.js';
+import { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } from '../sim/land.js';
 import { Chain, drawChain } from './chain.js';
 import { groundedNear } from '../sim/tow.js';
 
@@ -94,6 +95,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   drawZones(ctx, game, ui);
   drawHarbor(ctx, game);
   drawAreas(ctx, game, ui);
+  drawLandSide(ctx, game, ui);
   drawShips(ctx, game, ui);
   drawFleet(ctx, game);
   if (sim) drawPontoon(ctx, game, sim, ui);
@@ -247,6 +249,37 @@ function drawZoneWindows(ctx, game, plan, alpha = 0.45) {
   }
   ctx.strokeStyle = 'rgba(255,230,120,.9)'; ctx.lineWidth = 1.5;
   for (const w of plan.wins ?? []) for (const a of [w.a, w.b]) ctx.strokeRect(OX + w.x * CELL + 1, a * CELL + 1, CELL - 2, plan.beam * CELL - 2);
+}
+
+// Landseite des Hafens: Strassen (grau, angebunden heller), Lagerhallen (2×2) und im Baumodus die Vorschau
+function drawLandSide(ctx, game, ui) {
+  const L = game.port?.land, cols = game.river.cols;
+  if (L && (L.roads.length || L.halls.length)) {
+    const conn = connectedRoads(game);
+    for (const i of L.roads) {
+      const x = OX + (i % cols) * CELL, y = ((i / cols) | 0) * CELL, on = conn.has(i);
+      ctx.fillStyle = on ? '#8d929b' : '#5f636b'; ctx.fillRect(x, y, CELL, CELL);
+      ctx.fillStyle = on ? '#b9bec7' : '#7b7f87'; ctx.fillRect(x + 3, y + 3, CELL - 6, CELL - 6);
+    }
+    for (const h of L.halls) {
+      const x = OX + h.x * CELL, y = h.y * CELL, w = LAND.hall.w * CELL, hh = LAND.hall.h * CELL, ok = hallConnected(game, h, conn);
+      ctx.fillStyle = ok ? '#9a7550' : '#6f5a46'; ctx.fillRect(x + 1, y + 1, w - 2, hh - 2);
+      ctx.fillStyle = ok ? '#c29a68' : '#8a7560'; ctx.fillRect(x + 3, y + 3, w - 6, hh - 6);
+      ctx.strokeStyle = '#3d2c1b'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, hh - 2);
+      ctx.font = font(14); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText('🏭', x + w / 2, y + hh / 2 + fs(14) * 0.35);
+      ctx.font = font(11); ctx.fillStyle = ok ? '#c7f5c9' : '#ffb4a8'; ctx.fillText(ok ? `Lager ${h.level} ✓` : 'nicht angebunden', x + w / 2, y - 3); ctx.textAlign = 'start';
+    }
+  }
+  if (!ui.landMode) return;
+  const H = ui.hoverCell, tool = ui.landTool;
+  if (H) {
+    const x = Math.floor(H.x), y = Math.floor(H.y), size = tool === 'hall' ? LAND.hall.w : 1;
+    const why = tool === 'road' ? roadBlock(game, x, y) : tool === 'hall' ? hallBlock(game, x, y) : null, bad = !!why && (tool === 'road' || tool === 'hall');
+    ctx.fillStyle = bad ? 'rgba(255,90,80,.35)' : 'rgba(120,255,160,.30)'; ctx.fillRect(OX + x * CELL, y * CELL, size * CELL, size * CELL);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(OX + x * CELL + 1, y * CELL + 1, size * CELL - 2, size * CELL - 2);
+  }
+  ctx.font = font(13); const t = { road: 'Strasse: Zellen antippen (nur Land, muss ans Hafenbecken anschliessen)', hall: 'Lagerhalle (2×2): Land antippen, Erdarbeiten sind inbegriffen', auto: 'Halle antippen: Strasse zum Hafenbecken wird automatisch gebaut', demo: 'Antippen: Strasse oder Halle abreissen' }[tool] ?? '';
+  ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H0() - fs(13) - 14 - 40, Math.min(ctx.measureText(t).width + 18, W - OX - 12), fs(13) + 8); ctx.fillStyle = '#ffe9b0'; ctx.fillText(t, OX + 14, H0() - 12 - 40);
 }
 
 // Arbeitsgebiete der gemieteten Pontons (Rechtecke) und die gerade aufgezogene Ecke

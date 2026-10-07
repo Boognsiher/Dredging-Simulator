@@ -1,5 +1,6 @@
 import { CONFIG, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
+import { hallCapacity, roadFactor } from './land.js';
 import { priceOf, ratioOf } from './market.js';
 
 // Hafen an Land: Kai mit Verladestation plus Lager (Kies, Tanklager) und Sanierungsanlage (Altlasten). Reine Daten und Logik, speicherbar.
@@ -42,6 +43,16 @@ export function carveBay(river, wl) {
       river.cap[i] = river.top[i] + 0.6; river.kind[i] = 1; river.hard[i] = 0; river.debris[i] = 0; river.dep[i] = 0; river.armor[i] = 0; cells.push(i);
     }
   }
+  // Hafenzone: das Schutz-Flachwasser neben dem Becken gehört dazu (kein Naturschutz beim Baggern am Hafen)
+  for (let x = bx - 2; x < bx + B.w + 2; x++) {
+    if (x < 0 || x >= river.cols) continue;
+    const [a, b] = edge(x); if (a < 0) continue;
+    for (let k = 1; k <= B.h + 1; k++) {
+      const y = side < 0 ? a - k : b + k; if (y < 0 || y >= river.rows) continue;
+      const i = y * river.cols + x;
+      if (!river.zone[i] && river.ext[i] === 2 && !river.bay[i]) { river.zone[i] = 1; river.bay[i] = 1; river.ext[i] = 0; }
+    }
+  }
   for (const i of cells) { // Kaimauer: Rand ausser zur Wasserseite betoniert, damit die Bucht nicht zurutscht
     const x = i % river.cols, y = (i / river.cols) | 0;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, side]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= river.cols || ny >= river.rows) continue; const j = ny * river.cols + nx; if (!river.bay[j] && !river.zone[j]) river.armor[j] = rimArmor; }
@@ -69,7 +80,7 @@ const slotsOf = (p, type) => p.slots.filter((s) => s?.type === type);
 // ältere Spielstände: neue Waren nachrüsten
 export function ensurePort(p) { for (const id of Object.keys(PORT.commodities)) { p.stock[id] ??= 0; p.cost[id] ??= 0; p.auto[id] ??= { on: false, buyBelow: 0.85, sellAbove: 1.2 }; } return p; }
 export const hasKai = (g) => g.port.open && slotsOf(g.port, 'kai').length > 0;
-export const capacity = (g, id) => slotsOf(g.port, PORT.storage[id]).reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0);
+export const capacity = (g, id) => slotsOf(g.port, PORT.storage[id]).reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0) + hallCapacity(g, id); // plus angebundene Lagerhallen (Landseite)
 export const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => { const s = slotsOf(m.port, 'sanierung')[0]; return s ? PORT.buildings.sanierung.refund[s.level - 1] : 0; })); // beste Sanierungsanlage aller Karten
 export const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
 export const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
@@ -239,7 +250,7 @@ export function updatePort(g, dt) {
   const p = g.port; for (const st of p.sites ?? []) if (st && st.busy > 0) st.busy = Math.max(0, st.busy - dt);
   if (!p.jobs?.length) return;
   for (const j of p.jobs) j.left -= dt;
-  const first = p.jobs[0]; moveGoods(g, first, PORT.jobs.crewRate[first.cargo] * dt);
+  const first = p.jobs[0]; moveGoods(g, first, PORT.jobs.crewRate[first.cargo] * dt * roadFactor(g)); // Strassenanbindung beschleunigt den Umschlag
   for (let k = p.jobs.length - 1; k >= 0; k--) if (p.jobs[k].done >= p.jobs[k].tons - 1e-6) { finishJob(g, p.jobs[k]); p.jobs.splice(k, 1); }
 }
 

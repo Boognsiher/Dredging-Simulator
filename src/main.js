@@ -1,5 +1,6 @@
 import { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } from './sim/shipping.js';
 import { PORT, buyPrice, sellPrice } from './sim/port.js';
+import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } from './sim/land.js';
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } from './config.js';
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
@@ -60,6 +61,7 @@ sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false, menuOpen = false, mapFull = false, panYm = 0;
+let landMode = false, landTool = 'road'; // Landseite des Hafens bauen (Karte)
 let areaMode = false; // Arbeitsgebiet für gemietete Pontons aufziehen (Karte): zwei Ecken antippen
 let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
@@ -358,9 +360,29 @@ function toggleZoneMode() {
   updateTrafficPanel();
   if (zoneMode) { const c = shipById(game.zoneClassId); toast(`Planen für ${c.name}: Spalte antippen, die Zahl zeigt den fehlenden Aushub`, 'info', true); }
 }
+function toggleLandMode() {
+  if (tow || sim.mode !== 'map') { toast('Die Landseite baust du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
+  if (!game.port.open) { toast('Erst das Hafengelände erwerben (Hafen, H)', 'bad', true); return; }
+  if (zoneMode) toggleZoneMode(); if (areaMode) toggleAreaMode();
+  landMode = !landMode; ui.landMode = landMode; ui.landTool = landTool; ui.hoverCell = null; mapTarget = null;
+  $('btn-land').textContent = landMode ? '✔ Land: fertig (L)' : '🛣 Land (L)'; $('land-bar').hidden = !landMode;
+  if (landMode) toast(`Landseite: Strasse ${chf(LAND.road.cost)} je Zelle, Lagerhalle ${chf(LAND.hall.cost)} plus Erdarbeiten`, 'info', true);
+}
+function setLandTool(t) { landTool = t; ui.landTool = t; for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.classList.toggle('on', b.dataset.tool === t); }
+function landClick(px, py) {
+  const c = cellAt(px, py), x = Math.floor(c.x), y = Math.floor(c.y);
+  if (landTool === 'road') { const why = roadBlock(game, x, y); if (why) toast(why, 'bad', true); else buildRoad(game, x, y); }
+  else if (landTool === 'hall') { const why = hallBlock(game, x, y); if (why) toast(why, 'bad', true); else { buildHall(game, x, y); toast('Lagerhalle gebaut: mit einer Strasse ans Hafenbecken anbinden', 'good', true); } }
+  else if (landTool === 'auto') {
+    const h = landOf(game).halls.find((q) => x >= q.x && x < q.x + LAND.hall.w && y >= q.y && y < q.y + LAND.hall.h);
+    if (!h) { toast('Auf eine Lagerhalle tippen', 'bad', true); return; }
+    const res = autoRoad(game, h.id); toast(res.ok ? `Strasse gebaut: ${res.cells} Zellen (−${chf(res.cost)})` : res.why, res.ok ? 'good' : 'bad', true);
+  } else if (landTool === 'demo') { if (!demolishAt(game, x, y)) toast('Hier steht nichts', 'info', true); }
+  updatePanel();
+}
 function toggleAreaMode() {
   if (tow || sim.mode !== 'map') { toast('Arbeitsgebiete gibst du auf der Karte vor (Anker lichten mit Q)', 'info', true); return; }
-  if (zoneMode) toggleZoneMode();
+  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode();
   areaMode = !areaMode; ui.areaMode = areaMode; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
   $('btn-area').textContent = areaMode ? '✔ Gebiet: fertig (G)' : '▭ Gebiet (G)';
   if (areaMode) toast(`Zwei Ecken antippen: das Rechteck wird von den gemieteten Pontons auf die Gebietstiefe gebaggert (max. ${MAX_AREAS} Gebiete)`, 'info', true);
@@ -407,6 +429,7 @@ function updateConcrete() {
 let fleetSig = null;
 function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1;
+  $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
   const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, areaWork(game, a)]), areaMode, F.noNature, F.noAltlast]);
   if (sig === fleetSig) return;
@@ -629,7 +652,7 @@ function syncMode() {
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
   document.body.classList.toggle('mode-slice', mode === 'slice'); applyLayoutMode(); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
-  $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
+  $('btn-land').hidden = mode !== 'map' || !game.port.open; $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
   if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
@@ -790,7 +813,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; areaMode = false; ui.areaMode = false; ui.areaA = null; tow = null;
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; areaMode = false; ui.areaMode = false; ui.areaA = null; landMode = false; ui.landMode = false; $('land-bar').hidden = true; $('btn-land').textContent = '🛣 Land (L)'; tow = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -818,6 +841,7 @@ addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); 
 
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
 readInput.onTap((px, py) => {
+  if (landMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { landClick(px, py); return; }
   if (areaMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { areaClick(px, py); return; }
   if (zoneMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { zoneClick(px, py); return; }
   if (sim.mode !== 'map' || paused || sheetOpen || overlayOpen()) return;
@@ -825,14 +849,17 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
-$('btn-area').onclick = toggleAreaMode;
+$('btn-area').onclick = toggleAreaMode; $('btn-land').onclick = toggleLandMode;
+for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
+$('land-done').onclick = toggleLandMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
-  if (areaMode) { const r = canvas.getBoundingClientRect(); ui.hoverCell = cellAt(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH); return; }
+  if (areaMode || landMode) { const r = canvas.getBoundingClientRect(); ui.hoverCell = cellAt(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH); return; }
   if (!zoneMode) { ui.hoverX = null; return; }
   const r = canvas.getBoundingClientRect();
   ui.hoverX = Math.floor((((e.clientX - r.left) / r.width) * canvas.logicalW - OX) / CELL);
 });
 canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfernt eine Kreuzungsstelle (Touch läuft über onTap)
+  if (landMode && e.pointerType !== 'touch' && sim.mode === 'map' && !tow) { const r1 = canvas.getBoundingClientRect(); landClick(((e.clientX - r1.left) / r1.width) * canvas.logicalW, ((e.clientY - r1.top) / r1.height) * canvas.logicalH); return; }
   if (areaMode && e.pointerType !== 'touch' && sim.mode === 'map' && !tow) { const r0 = canvas.getBoundingClientRect(); areaClick(((e.clientX - r0.left) / r0.width) * canvas.logicalW, ((e.clientY - r0.top) / r0.height) * canvas.logicalH); return; }
   if (!zoneMode || e.pointerType === 'touch' || sim.mode !== 'map' || tow) return;
   const r = canvas.getBoundingClientRect();
@@ -894,7 +921,7 @@ function frame(now) {
     const inMap = sim.mode === 'map';
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
-    if (tow || zoneMode || areaMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    if (tow || zoneMode || areaMode || landMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
     ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {
@@ -911,6 +938,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyT')) startTow();
       if (!tow && readInput.tap('KeyK')) toggleZoneMode();
       if (!tow && readInput.tap('KeyG')) toggleAreaMode();
+      if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
       if (readInput.tap('Escape', 'KeyQ')) leave();
