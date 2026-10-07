@@ -525,6 +525,8 @@ body.mode-map #map-select { order: 4; flex: none; }
           <span><i style="background:rgba(205,208,214,.85)"></i>Beton</span>
           <span><i style="background:rgba(160,230,90,.6)"></i>Kreuzungsstelle</span>
           <span><i style="background:rgba(255,70,60,.7)"></i>zu flach (Klasse)</span>
+        <span><i style="background:#ffb04d"></i>zweite Rinne</span>
+        <span><i style="background:rgba(190,255,90,.8)"></i>Kreuzung möglich (Marke oben)</span>
           <span><i style="background:rgba(150,90,200,.7)"></i>Fels im Weg</span>
         </div>
       </details>
@@ -2252,6 +2254,7 @@ function analyzeClass(river, wl, cls) {
       let m2 = 0;
       for (const i of covered(river, second, beam)) m2 += def[i];
       res.twoWay = m2 <= 1e-6;
+      if (res.twoWay) res.secondPath = smoothPath(river, second, beam); // zweite Rinne zum Einzeichnen
     }
   }
   return res;
@@ -5896,6 +5899,20 @@ function drawClassOverlay(ctx, game, cls) {
       ctx.fillStyle = r.rock[i] > needTop ? `rgba(150,90,200,${a})` : stage2 ? `rgba(255,190,60,${a})` : `rgba(255,70,60,${a})`; // lila = Fels im Weg
       ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL);
     }
+  }
+  // Kreuzungsmöglichkeit: Spalten, in denen zwei Rinnen nebeneinander Platz haben (limegrüne Marke am oberen Rand)
+  if (f.cross && f.path) { // limegrüne Marken über der Rinne dort, wo zwei Rinnen nebeneinander Platz haben
+    ctx.fillStyle = 'rgba(190,255,90,.85)';
+    for (let x = 0; x < r.cols; x++) { if (!f.cross[x]) continue; const q = f.path.points.find((pt) => Math.floor(pt.x) >= x) ?? f.path.points[f.path.points.length - 1]; ctx.fillRect(OX + x * CELL + 1, q.y * CELL - (cls.beam * CELL) / 2 - 9, CELL - 2, 5); }
+  }
+  if (f.secondPath) { // zweite, getrennte Rinne (Gegenverkehr ohne Warten): orange
+    const sp = f.secondPath.points;
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(255,170,70,.28)'; ctx.lineWidth = cls.beam * CELL * 0.9;
+    ctx.beginPath(); sp.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); ctx.stroke();
+    ctx.strokeStyle = '#ffb04d'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.restore();
+    const mid = sp[Math.floor(sp.length / 2)]; ctx.font = font(11); const t = '2. Rinne', tw = ctx.measureText(t).width + 8;
+    ctx.fillStyle = '#000b'; ctx.fillRect(OX + mid.x * CELL - tw / 2, mid.y * CELL - fs(11) - 6, tw, fs(11) + 4); ctx.fillStyle = '#ffd9a8'; ctx.fillText(t, OX + mid.x * CELL - tw / 2 + 4, mid.y * CELL - 8);
   }
   if (f.path) {
     const pts = f.path.points;

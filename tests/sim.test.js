@@ -1507,3 +1507,11 @@ test('Hafen: Naturschutz-Flachwasser neben dem Becken gehört zur Hafenzone (kei
   assert.ok(near.length > 0);
   assert.ok(near.every((j) => r.zone[j] || r.ext[j] !== 2), 'kein Schutz-Flachwasser um das Becken');
 });
+
+test('Zweite Rinne: bei Gegenverkehr gibt es einen eigenen Pfad zum Einzeichnen', () => {
+  const g = emptyGame(2); // breite, tiefe Rinne
+  const f = g.fair.kahn; assert.ok(f.twoWay && f.secondPath?.points.length > 2);
+  assert.ok(f.cross.some((v) => v === 1), 'Kreuzungsmöglichkeit in breiten Bereichen');
+  const a = f.path.points[Math.floor(f.path.points.length / 2)], b = f.secondPath.points[Math.floor(f.secondPath.points.length / 2)];
+  assert.ok(Math.abs(a.y - b.y) >= 2, 'die Rinnen liegen getrennt nebeneinander');
+});

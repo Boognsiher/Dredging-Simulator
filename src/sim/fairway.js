@@ -189,6 +189,7 @@ export function analyzeClass(river, wl, cls) {
       let m2 = 0;
       for (const i of covered(river, second, beam)) m2 += def[i];
       res.twoWay = m2 <= 1e-6;
+      if (res.twoWay) res.secondPath = smoothPath(river, second, beam); // zweite Rinne zum Einzeichnen
     }
   }
   return res;
