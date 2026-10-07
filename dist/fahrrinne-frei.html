@@ -401,9 +401,25 @@ body.touch.mode-map #topbar #btn-pause2 { display: block; }
   body.mode-map #touch-ui { bottom: 4px; }
 }
 
+/* ---- Kartenvollbild, reduziert: eine Schiffsklasse (Antippen schaltet um), Aktionsknöpfe unten nebeneinander ---- */
+body.mode-map #classbar .cls { display: none; }
+body.mode-map #classbar .cls.pick { display: block; flex: 0 1 280px; max-width: 280px; position: relative; padding-right: 26px; cursor: pointer; }
+body.mode-map #classbar .cls.pick::after { content: '⇄'; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 15px; }
+body.mode-map #shift-hud { display: none; }
+body.mode-map #shift-actions { top: auto; bottom: 8px; left: 50%; transform: translateX(-50%); flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; width: max-content; max-width: calc(100vw - 16px); gap: 6px; }
+body.mode-map #shift-actions button { padding: 7px 12px; font-size: 13px; }
+body.mode-map #touch-ui { bottom: 52px; }
+@media (max-width: 860px) and (orientation: landscape) and (max-height: 560px) {
+  body.mode-map #shift-actions { top: auto; bottom: 4px; max-width: calc(100vw - 300px); gap: 4px; }
+  body.mode-map #shift-actions button { padding: 3px 8px; font-size: 12px; }
+  body.mode-map #touch-ui { bottom: 4px; }
+  body.mode-map #classbar .cls.pick small { display: block; }
+}
+body.mode-map #toast { top: calc(var(--hdr-h) + 62px); }
+
 </style>
 </head>
-<body class="mode-map">
+<body>
   <header id="header-bar">
     <h1 id="title">Fahrrinne frei! <small id="level-name"></small></h1>
     <button id="btn-menu" aria-label="Menü">☰ Menü</button>
@@ -413,6 +429,7 @@ body.touch.mode-map #topbar #btn-pause2 { display: block; }
       <span>Fracht <b id="h-tons"></b></span>
       <span>Pegel <b id="h-wl"></b></span>
       <span>Puffer <b id="h-buf"></b></span>
+      <span id="h-shipsbox">Schiffe <b id="h-ships"></b></span>
       <span>Rekord <b id="h-best">–</b></span>
     </div>
   </header>
@@ -620,16 +637,24 @@ function buildClassbar() {
   bar.replaceChildren(...nodes);
 }
 function chooseClass(id) {
+  if (mapFull && sim.mode !== 'slice') { // Kartenvollbild: nur eine Klasse sichtbar, Antippen schaltet zur nächsten um
+    const ids = game.level.classes, cur = pickedClass(); id = ids[(ids.indexOf(cur) + 1) % ids.length];
+    classSel = id; ui.classSel = id; updateClassbar(); return;
+  }
   if (sim.mode === 'slice') { classSel = id; setDepthValue(Math.round((needDepth(shipById(id)) + 0.25) * 10) / 10); } // im Querschnitt: Solltiefe für diese Klasse
   else classSel = classSel === id ? null : id; // auf der Karte: Engstellen ein/aus
   ui.classSel = classSel;
   updateClassbar();
 }
+function pickedClass() { // die eine Klasse, die das Kartenvollbild anzeigt
+  const ids = game.level.classes;
+  return classSel && ids.includes(classSel) ? classSel : ids.find((id) => game.fair?.[id] && !game.fair[id].passable) ?? ids[ids.length - 1];
+}
 function updateClassbar() {
-  const wait = waitingByClass(game);
+  const wait = waitingByClass(game), pick = pickedClass();
   for (const b of $('classbar').children) {
     const id = b.dataset.id, f = game.fair?.[id], cls = shipById(id);
-    b.classList.toggle('ok', !!f?.passable); b.classList.toggle('on', classSel === id);
+    b.classList.toggle('ok', !!f?.passable); b.classList.toggle('on', classSel === id); b.classList.toggle('pick', id === pick);
     const small = b.querySelector('small'), w = b.querySelector('.wait');
     const need = `${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)}`;
     small.textContent = !f ? '' : f.passable ? `${Math.round(f.loadFactor * 100)} % Ladung${f.twoWay ? ' · ⇄' : ''}${f.loadFrac < 0.999 ? ` · +${num(f.fullVolume)} m³ bis voll` : ' · voll'}` : `${game.unlocked[id] ? '⚠ gesperrt' : '🔒'} ${need} m · ${f.volume === Infinity ? 'Korridor zu schmal' : `fehlt ${num(f.volume)} m³`}`;
@@ -1006,7 +1031,13 @@ function focusY(lh, h) {
   if (sim.mode === 'slice') return (sliceHeadScreen(sim.slice).y / lh) * h;
   return ((sim.y * CELL) / lh) * h;
 }
+// Kartenvollbild nur auf Rechner und Handy quer; Handy hochkant behält das bisherige Layout (Karte oben, Bedienung unten)
+function applyLayoutMode() {
+  const want = curMode() !== 'slice' && !(narrow() && matchMedia('(orientation: portrait)').matches);
+  if (document.body.classList.contains('mode-map') !== want) { document.body.classList.toggle('mode-map', want); if (!want) setMenu(false); layoutSig = ''; }
+}
 function panCanvas(dt) {
+  applyLayoutMode();
   const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('topbar').offsetHeight}/${$('header-bar').offsetHeight}/${innerHeight}/${innerWidth}`;
   if (sig !== layoutSig) { layoutSig = sig; fitCanvas(); }
   const stageW = $('stage').clientWidth, cw = parseFloat(canvas.style.width) || stageW, ch = parseFloat(canvas.style.height) || 0;
@@ -1087,7 +1118,7 @@ function syncMode() {
   const mode = curMode();
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
-  document.body.classList.toggle('mode-slice', mode === 'slice'); document.body.classList.toggle('mode-map', mode !== 'slice'); if (mode === 'slice') setMenu(false); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
+  document.body.classList.toggle('mode-slice', mode === 'slice'); applyLayoutMode(); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
   $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
@@ -1421,6 +1452,7 @@ function frame(now) {
     $('s-removed').textContent = tow ? `Schleppen: ${Math.round((tow.progress / tow.need) * 100)} % · noch ${Math.ceil(tow.timeLeft)} s` : sim.mode === 'slice'
       ? `${game.totals.removed.toFixed(0)} m³ gebaggert · ${sim.slice.restCount()} Zellen über Solltiefe${sim.bufferFull ? ' · Puffer voll, Pumpe pausiert!' : ''}`
       : `${game.traffic.ships.filter((s) => s.state === 'sail').length} Schiffe unterwegs · ${game.traffic.ships.filter((s) => s.state === 'queue').length} wartend`;
+    $('h-ships').textContent = `${game.traffic.ships.filter((s) => s.state === 'sail').length} unterwegs · ${game.traffic.ships.filter((s) => s.state === 'queue').length} wartend`;
     $('s-turb').value = sim.turbidity;
     $('s-buf').value = Math.min(1, game.stockTotal / game.stats.bufferCapacity); $('s-buf').classList.toggle('hot', game.stockTotal >= game.stats.bufferCapacity * 0.9);
     $('s-open').textContent = sim.mode === 'slice' ? `${sim.slice.restCount()} offen` : '';
