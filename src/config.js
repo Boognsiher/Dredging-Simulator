@@ -205,8 +205,8 @@ export const cargoById = (id) => CARGOS.find((c) => c.id === id);
 // der Aufschlag wird sofort bar bezahlt). Neue Vorkommen müssen erst erkundet werden. kind = Material der Zellen, cost = Konzession in CHF.
 export const DEPOSITS = [
   { id: 'kiesbank', name: 'Kiesbank (Premium-Kies)', kind: 2, mult: 3.0, cost: 2500, color: '#e6cf86' },
-  { id: 'quarz', name: 'Quarzsand (Glasindustrie)', kind: 1, mult: 4.5, cost: 6000, color: '#f4f2e8' },
-  { id: 'seife', name: 'Erzseife (Schwermineralsand)', kind: 1, mult: 9, cost: 12000, color: '#f0b838' },
+  { id: 'quarz', name: 'Quarzsand (Glasindustrie)', kind: 1, mult: 4.5, cost: 6000, color: '#7fd4ff' },
+  { id: 'seife', name: 'Erzseife (Schwermineralsand)', kind: 1, mult: 9, cost: 12000, color: '#ff9a2e' },
 ];
 export const depositType = (id) => DEPOSITS.find((d) => d.id === id);
 

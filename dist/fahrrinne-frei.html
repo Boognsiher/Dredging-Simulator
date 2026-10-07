@@ -489,6 +489,7 @@ body.mode-map #map-select { order: 4; flex: none; }
         <button id="btn-auto">🤖 Auto (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
         <button id="btn-area" hidden>▭ Gebiet (G)</button>
+        <button id="btn-route" hidden>〰 Route (N)</button>
         <button id="btn-land" hidden>🛣 Land (L)</button>
         <button id="btn-zone">↔ Kreuzung (K)</button>
         <button id="btn-goto" hidden>📍 Zum Aufläufer</button>
@@ -529,7 +530,9 @@ body.mode-map #map-select { order: 4; flex: none; }
           <span><i style="background:repeating-linear-gradient(45deg,#2a3a4a,#2a3a4a 2px,#8fa6ba 2px,#8fa6ba 3px)"></i>harte Schicht</span>
           <span><i style="background:#fff;border:1px solid #222"></i>Fremdstoff</span>
           <span><i style="background:rgba(235,200,70,.6)"></i>Ausbaustreifen (Löffel)</span>
-          <span><i style="background:rgba(255,215,80,.7)"></i>Rohstoffgebiet</span>
+          <span><i style="background:#e6cf86"></i>Kiesbank</span>
+          <span><i style="background:#7fd4ff"></i>Quarzsand</span>
+          <span><i style="background:#ff9a2e"></i>Erzseife</span>
           <span><i style="background:rgba(205,208,214,.85)"></i>Beton</span>
           <span><i style="background:rgba(160,230,90,.6)"></i>Kreuzungsstelle</span>
           <span><i style="background:rgba(255,70,60,.7)"></i>zu flach (Klasse)</span>
@@ -588,11 +591,11 @@ function(){
 const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } = __m(1);
 const { PORT, buyPrice, sellPrice } = __m(4);
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(5);
-const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } = __m(2);
+const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
 const { Game } = __m(7);
 const { acceptContract } = __m(15);
 const { waitingByClass, shipPos } = __m(14);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(16);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(16);
 const { bayCapacity, maxZones, zoneClasses } = __m(14);
 const { materialPrice } = __m(17);
 const { TowSim, groundedNear } = __m(18);
@@ -674,6 +677,7 @@ let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false, menuOpen = false, mapFull = false, panYm = 0;
 let landMode = false, landTool = 'road'; // Landseite des Hafens bauen (Karte)
+let areaKind = 'rect'; // 'rect' = Rechteck, 'route' = Linie mit Wegpunkten (beide über areaMode)
 let areaMode = false; // Arbeitsgebiet für gemietete Pontons aufziehen (Karte): zwei Ecken antippen
 let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
@@ -858,7 +862,7 @@ function updateDeposits() {
   const box = $('deposits'), unknown = rows.filter(({ d }) => !d.known).length, eb = game.exploreBlock();
   const items = rows.filter(({ d }) => d.known).map(({ d, rest }) => {
     const worth = rest * price(d) * (d.mult - 1), block = game.concessionBlock(d.id);
-    return `<div class="unit"><div><b>${d.name}</b> <small>Spalte ${Math.round(d.cx) + 1} · Aufschlag ×${d.mult} · Rest ${num(rest)} m³ (Mehrwert ca. ${chf(worth)})<br>${d.owned ? '✓ Konzession erworben: Abbau wird mit Aufschlag bezahlt' : 'ohne Konzession kein Aufschlag'}</small></div>${d.owned ? '' : `<button data-conc="${d.id}" ${block ? 'disabled' : ''} title="${block ?? ''}">Konzession ${chf(d.cost)}</button>`}</div>`;
+    return `<div class="unit"><div><i style="display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;background:${depositType(d.type).color}"></i><b>${d.name}</b> <small>Spalte ${Math.round(d.cx) + 1} · Aufschlag ×${d.mult} · Rest ${num(rest)} m³ (Mehrwert ca. ${chf(worth)})<br>${d.owned ? '✓ Konzession erworben: Abbau wird mit Aufschlag bezahlt' : 'ohne Konzession kein Aufschlag'}</small></div>${d.owned ? '' : `<button data-conc="${d.id}" ${block ? 'disabled' : ''} title="${block ?? ''}">Konzession ${chf(d.cost)}</button>`}</div>`;
   }).join('');
   box.innerHTML = `<small>Hochwertige Vorkommen im Flussbett (Kies, Quarzsand, Erz): Mit Konzession wird der Abbau sofort mit Preisaufschlag bezahlt, zusätzlich zu Baggerentgelt und Verkauf. Das erste Vorkommen gehört dir schon: baggere dort zuerst. Bisher Aufschlag: ${chf(game.totals.premium)}.</small>
     ${items}
@@ -874,7 +878,7 @@ function changeMap(i) {
   if (sim.mode === 'slice') sim.leave();
   game.site = null; game.switchMap(i);
   sim = game.createSession(); sim.autoRange = game.autoRange ?? null;
-  mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; ui.areaA = null; ui.hoverX = null;
+  mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null; ui.areaA = null; ui.hoverX = null;
   const first = game.level.classes.find((id) => game.fair?.[id] && !game.fair[id].passable); classSel = first ?? null; ui.classSel = classSel;
   fleetSig = null; trafficSig = null; hazardSig = null; depositSig = null; shoreSig = null; mapsSig = null;
   fx.clear(); syncMode(); updatePanel(); applyLevel(); fitCanvas();
@@ -996,14 +1000,44 @@ function landClick(px, py) {
 }
 function toggleAreaMode() {
   if (tow || sim.mode !== 'map') { toast('Arbeitsgebiete gibst du auf der Karte vor (Anker lichten mit Q)', 'info', true); return; }
+  if (areaMode && areaKind === 'route') { finishRoute(); return; }
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode();
+  areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null;
   areaMode = !areaMode; ui.areaMode = areaMode; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
-  $('btn-area').textContent = areaMode ? '✔ Gebiet: fertig (G)' : '▭ Gebiet (G)';
+  syncAreaButtons();
   if (areaMode) toast(`Zwei Ecken antippen: das Rechteck wird von den gemieteten Pontons auf die Gebietstiefe gebaggert (max. ${MAX_AREAS} Gebiete)`, 'info', true);
+}
+function syncAreaButtons() {
+  const rect = areaMode && areaKind === 'rect', route = areaMode && areaKind === 'route';
+  $('btn-area').textContent = rect ? '✔ Gebiet: fertig (G)' : '▭ Gebiet (G)';
+  $('btn-route').textContent = route ? `✔ Route: fertig (N)${ui.routePts?.length ? ` · ${ui.routePts.length} Punkte` : ''}` : '〰 Route (N)';
+}
+// Baggerroute: Wegpunkte antippen, «fertig» legt die Route an; die Flotte baggert sie auf Tiefe aus (auch Ufer und Land im Ausbaustreifen mit Löffelbagger)
+function toggleRouteMode() {
+  if (tow || sim.mode !== 'map') { toast('Routen zeichnest du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
+  if (areaMode && areaKind === 'route') { finishRoute(); return; }
+  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) toggleAreaMode();
+  areaKind = 'route'; ui.areaKind = 'route'; ui.routePts = []; areaMode = true; ui.areaMode = true; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
+  syncAreaButtons();
+  toast(`Wegpunkte der Route antippen, zuletzt «Route: fertig» (N) oder den letzten Punkt nochmals antippen (max. ${MAX_AREAS} Gebiete/Routen)`, 'info', true);
+}
+function finishRoute() {
+  const pts = ui.routePts ?? []; areaMode = false; ui.areaMode = false; areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null; ui.hoverCell = null;
+  syncAreaButtons();
+  if (pts.length < 2) { toast('Route abgebrochen: mindestens zwei Punkte nötig', 'info', true); return; }
+  const a = addRoute(game, pts);
+  if (!a) { toast(`Hier geht nichts: höchstens ${MAX_AREAS} Gebiete/Routen, und die Linie muss abbaubare Zellen berühren`, 'bad', true); return; }
+  toast(`Route ${a.id} angelegt: Breite ${a.w}, Tiefe ${a.depth.toFixed(1)} m${a.lost ? ` · ${a.lost} Zellen auf nicht abbaubarem Land bleiben stehen` : ''}${game.stats.loeffel > 0 ? '' : ' · Land braucht den Löffelbagger'}`, 'good', true);
+  fleetSig = null; updateFleet();
 }
 function cellAt(px, py) { return { x: (px - OX) / CELL, y: py / CELL }; }
 function areaClick(px, py) {
   const c = cellAt(px, py);
+  if (areaKind === 'route') {
+    const pts = ui.routePts ??= [], last = pts[pts.length - 1], p = { x: Math.floor(c.x) + 0.5, y: Math.floor(c.y) + 0.5 };
+    if (last && Math.hypot(last.x - p.x, last.y - p.y) < 0.6) { if (pts.length >= 2) finishRoute(); return; } // letzten Punkt nochmals antippen = fertig
+    pts.push(p); syncAreaButtons(); return;
+  }
   if (!ui.areaA) { ui.areaA = c; toast('Zweite Ecke antippen', 'info', true); return; }
   const a = addArea(game, ui.areaA.x, ui.areaA.y, c.x, c.y);
   ui.areaA = null;
@@ -1042,10 +1076,10 @@ function updateConcrete() {
 
 let fleetSig = null;
 function updateFleet() {
-  $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1;
+  $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden;
   $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, areaWork(game, a)]), areaMode, F.noNature, F.noAltlast, !!lentUnit(game)]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
@@ -1056,8 +1090,9 @@ function updateFleet() {
     <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-mine" ${F.mine ? 'checked' : ''}> Rohstoffe abbauen: freie Pontons baggern Vorkommen mit Konzession (Preisaufschlag)</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-pour" ${F.pour ? 'checked' : ''} ${game.stats.betonrohr > 0 ? '' : 'disabled'}> Rinne betonieren (Betoniergerät und Beton nötig): freie Pontons verhärten Rinne und Böschung</label>
-    ${(F.areas ?? []).map((a) => `<div class="unit"><div><b>▭ Gebiet ${a.id}</b> <small>Spalten ${a.x0 + 1}–${a.x1 + 1}, Zeilen ${a.y0 + 1}–${a.y1 + 1} · ${areaWork(game, a) ? `noch ${areaWork(game, a)} Spalten offen` : '✓ fertig'}</small>
-      <div class="row"><button data-area-d="${a.id}:-0.1">−</button> <b>${a.depth.toFixed(1)} m</b> <button data-area-d="${a.id}:0.1">+</button> <select data-area-u="${a.id}"><option value="">alle Pontons</option>${F.units.map((u) => `<option value="${u.id}" ${a.unit === u.id ? 'selected' : ''}>${u.name}</option>`).join('')}</select></div></div><button data-area-x="${a.id}">Löschen</button></div>`).join('')}
+    ${(F.areas ?? []).map((a) => `<div class="unit"><div><b>${a.route ? '〰 Route' : '▭ Gebiet'} ${a.id}</b> <small>Spalten ${a.x0 + 1}–${a.x1 + 1}${a.route ? ` · Breite ${a.w}` : `, Zeilen ${a.y0 + 1}–${a.y1 + 1}`} · ${areaWork(game, a) ? `noch ${areaWork(game, a)} Spalten offen` : '✓ fertig'}</small>
+      <div class="row"><button data-area-d="${a.id}:-0.1">−</button> <b>${a.depth.toFixed(1)} m</b> <button data-area-d="${a.id}:0.1">+</button>${a.route ? ` <button data-area-w="${a.id}:-1">schmaler</button> <button data-area-w="${a.id}:1">breiter</button>` : ''} <select data-area-u="${a.id}"><option value="">alle Pontons</option>${F.units.map((u) => `<option value="${u.id}" ${a.unit === u.id ? 'selected' : ''}>${u.name}</option>`).join('')}</select></div></div><button data-area-x="${a.id}">Löschen</button></div>`).join('')}
+    <button id="btn-route2" ${F.units.length ? '' : 'disabled'} title="Wegpunkte auf der Karte antippen">${areaMode && areaKind === 'route' ? '✔ Route: fertig (N)' : `〰 Baggerroute einzeichnen (N) · ${(F.areas ?? []).length}/${MAX_AREAS}`}</button>
     <button id="btn-area2" ${F.units.length ? '' : 'disabled'} title="Zwei Ecken auf der Karte antippen">${areaMode ? '✔ Gebiet: fertig (G)' : `▭ Arbeitsgebiet vorgeben (G) · ${(F.areas ?? []).length}/${MAX_AREAS}`}</button>
     <label class="fleet-widen"><input type="checkbox" id="fleet-nonat" ${F.noNature ? 'checked' : ''}> Naturschutzzonen meiden: Pontons tragen kein Flachwasser am Ufer ab</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-noalt" ${F.noAltlast ? 'checked' : ''}> Altlastenbereiche meiden: Pontons lassen belastetes Material liegen</label>
@@ -1075,7 +1110,8 @@ function updateFleet() {
   $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
   $('btn-lend').onclick = () => { if (sim.mode === 'slice') sim.leave(); if (lendPonton(game, sim.x, sim.y)) { syncMode(); fleetSig = null; updateFleet(); toast('Dein Ponton arbeitet für die Flotte', 'good', true); } };
   for (const b of box.querySelectorAll('[data-recall]')) b.onclick = () => { const pos = recallPonton(game); if (pos) { sim.x = pos.x; sim.y = pos.y; } fleetSig = null; updateFleet(); toast('Ponton zurückgerufen', 'info', true); };
-  $('btn-area2').onclick = toggleAreaMode;
+  $('btn-area2').onclick = toggleAreaMode; $('btn-route2').onclick = toggleRouteMode;
+  for (const b of box.querySelectorAll('[data-area-w]')) b.onclick = () => { const [id, d] = b.dataset.areaW.split(':'); const a = F.areas.find((q) => q.id === +id); setAreaWidth(game, +id, a.w + +d); fleetSig = null; updateFleet(); };
   for (const b of box.querySelectorAll('[data-area-d]')) b.onclick = () => { const [id, d] = b.dataset.areaD.split(':'); const a = F.areas.find((q) => q.id === +id); setAreaDepth(game, +id, a.depth + +d); fleetSig = null; updateFleet(); };
   for (const sEl of box.querySelectorAll('[data-area-u]')) sEl.onchange = () => { setAreaUnit(game, +sEl.dataset.areaU, sEl.value ? +sEl.value : null); fleetSig = null; updateFleet(); };
   for (const b of box.querySelectorAll('[data-area-x]')) b.onclick = () => { removeArea(game, +b.dataset.areaX); fleetSig = null; updateFleet(); };
@@ -1274,7 +1310,7 @@ function syncMode() {
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
   document.body.classList.toggle('mode-slice', mode === 'slice'); applyLayoutMode(); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
-  $('btn-land').hidden = mode !== 'map' || !game.port.open; $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
+  $('btn-land').hidden = mode !== 'map' || !game.port.open; $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden; syncAreaButtons();
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
   if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
@@ -1458,7 +1494,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; areaMode = false; ui.areaMode = false; ui.areaA = null; landMode = false; ui.landMode = false; $('land-bar').hidden = true; $('btn-land').textContent = '🛣 Land (L)'; tow = null;
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; areaMode = false; ui.areaMode = false; areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null; ui.areaA = null; landMode = false; ui.landMode = false; $('land-bar').hidden = true; $('btn-land').textContent = '🛣 Land (L)'; tow = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -1516,7 +1552,7 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
-$('btn-area').onclick = toggleAreaMode; $('btn-land').onclick = toggleLandMode;
+$('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
 for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
 $('land-done').onclick = toggleLandMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
@@ -1606,6 +1642,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyT')) startTow();
       if (!tow && readInput.tap('KeyK')) toggleZoneMode();
       if (!tow && readInput.tap('KeyG')) toggleAreaMode();
+      if (!tow && readInput.tap('KeyN')) toggleRouteMode();
       if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
@@ -2106,8 +2143,8 @@ const cargoById = (id) => CARGOS.find((c) => c.id === id);
 // der Aufschlag wird sofort bar bezahlt). Neue Vorkommen müssen erst erkundet werden. kind = Material der Zellen, cost = Konzession in CHF.
 const DEPOSITS = [
   { id: 'kiesbank', name: 'Kiesbank (Premium-Kies)', kind: 2, mult: 3.0, cost: 2500, color: '#e6cf86' },
-  { id: 'quarz', name: 'Quarzsand (Glasindustrie)', kind: 1, mult: 4.5, cost: 6000, color: '#f4f2e8' },
-  { id: 'seife', name: 'Erzseife (Schwermineralsand)', kind: 1, mult: 9, cost: 12000, color: '#f0b838' },
+  { id: 'quarz', name: 'Quarzsand (Glasindustrie)', kind: 1, mult: 4.5, cost: 6000, color: '#7fd4ff' },
+  { id: 'seife', name: 'Erzseife (Schwermineralsand)', kind: 1, mult: 9, cost: 12000, color: '#ff9a2e' },
 ];
 const depositType = (id) => DEPOSITS.find((d) => d.id === id);
 
@@ -4859,12 +4896,59 @@ function addArea(g, xa, ya, xb, yb, depth) {
 }
 function removeArea(g, id) { const F = g.fleet, i = (F.areas ?? []).findIndex((a) => a.id === id); if (i < 0) return false; F.areas.splice(i, 1); bump(g); return true; }
 function setAreaDepth(g, id, d) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.depth = Math.round(Math.min(CONFIG.echolot.maxDepth, Math.max(CONFIG.echolot.minDepth, d)) * 10) / 10; bump(g); return true; }
+// ---------- Baggerroute: eine gezeichnete Linie (Wegpunkte) mit Breite; die Pontons baggern sie auf Tiefe aus, auch durch Ufer und Land im Ausbaustreifen ----------
+// Zellen der Route: alle abbaubaren Zellen (Korridor, Ausbaustreifen) im Abstand w/2 von der Linie; lost = Zellen auf nicht abbaubarem Land
+function rasterRoute(r, pts, w) {
+  const cells = new Set(), seen = new Set(), rad = w / 2; let lost = 0;
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const a = pts[k], b = pts[k + 1], n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 0.25) + 1;
+    for (let s = 0; s <= n; s++) {
+      const px = a.x + ((b.x - a.x) * s) / n, py = a.y + ((b.y - a.y) * s) / n;
+      for (let y = Math.max(0, Math.floor(py - rad)); y <= Math.min(r.rows - 1, Math.floor(py + rad)); y++) for (let x = Math.max(0, Math.floor(px - rad)); x <= Math.min(r.cols - 1, Math.floor(px + rad)); x++) {
+        if (Math.hypot(x + 0.5 - px, y + 0.5 - py) > rad + 0.01) continue;
+        const i = y * r.cols + x; if (seen.has(i)) continue; seen.add(i);
+        if (r.zone[i] || r.ext[i]) cells.add(i); else lost++;
+      }
+    }
+  }
+  return { cells: [...cells].sort((p, q) => p - q), lost };
+}
+function addRoute(g, pts, depth, w) {
+  const r = g.river, F = g.fleet; F.areas ??= [];
+  if (F.areas.length >= MAX_AREAS || pts.length < 2) return null;
+  const cls = targetClass(g), width = Math.max(2, Math.min(9, Math.round(w ?? (cls ? cls.beam : 5))));
+  const ras = rasterRoute(r, pts, width);
+  if (!ras.cells.length) return null;
+  const xs = ras.cells.map((i) => i % r.cols), ys = ras.cells.map((i) => (i / r.cols) | 0);
+  const d = depth ?? Math.min(CONFIG.echolot.maxDepth, (cls ? cls.draught + CONFIG.clearance : CONFIG.echolot.defaultDepth) + 0.2);
+  const a = { id: ++F.areaSeq, route: true, pts: pts.map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })), w: width, cells: ras.cells, lost: ras.lost, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), depth: Math.round(d * 10) / 10, unit: null };
+  F.areas.push(a); bump(g);
+  return a;
+}
+function setAreaWidth(g, id, w) {
+  const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a?.route) return false;
+  const r = g.river, ras = rasterRoute(r, a.pts, Math.max(2, Math.min(9, Math.round(w)))); if (!ras.cells.length) return false;
+  const xs = ras.cells.map((i) => i % r.cols), ys = ras.cells.map((i) => (i / r.cols) | 0);
+  Object.assign(a, { w: Math.max(2, Math.min(9, Math.round(w))), cells: ras.cells, lost: ras.lost, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }); bump(g);
+  return true;
+}
 function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; bump(g); return true; }
 
 // Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
 // die Tiefe hat und "Ufer verbreitern" mit Löffelbagger an ist; vorher baggern die Pontons nur die Rinne.
 function openAreaColumns(g, a) {
   const r = g.river, needTop = g.wl - a.depth + 0.06;
+  if (a.route) { // Route: Zellen der Linie (Korridor und Ausbaustreifen), Land braucht den Löffelbagger
+    const cols = new Map();
+    for (const i of a.cells) {
+      if (r.top[i] <= needTop || !cellAllowed(g, i)) continue;
+      const x = i % r.cols, y = (i / r.cols) | 0, c = cols.get(x) ?? { x, rows: [y, y], rock: false, armor: false, land: false };
+      c.rows[0] = Math.min(c.rows[0], y); c.rows[1] = Math.max(c.rows[1], y);
+      if (!r.zone[i]) c.land = true; if (r.rock[i] > needTop) c.rock = true; if (r.armor[i] > 0) c.armor = true;
+      cols.set(x, c);
+    }
+    return [...cols.values()].sort((p, q) => p.x - q.x);
+  }
   const scan = (withLand) => {
     const out = [];
     for (let x = a.x0; x <= a.x1; x++) {
@@ -4901,10 +4985,10 @@ function pickArea(g, u) {
       if (c.rock && !canRock(g)) { note = 'Fels im Weg: braucht Felsfräse oder Löffelbagger'; continue; }
       const c0 = Math.min(Math.max(0, c.x), r.cols - B);
       if (overlaps(res, c0)) { note = 'Gebiet: Stelle ist vergeben'; continue; }
-      const px = c0 + Math.floor(B / 2), mid = (a.y0 + a.y1) / 2;
-      const cands = [mid + 0.5]; for (let d = 1; d <= a.y1 - a.y0 + 3; d++) cands.push(mid + 0.5 + d, mid + 0.5 - d);
+      const rr = a.route ? c.rows : [a.y0, a.y1], px = c0 + Math.floor(B / 2), mid = (rr[0] + rr[1]) / 2;
+      const cands = [mid + 0.5]; for (let d = 1; d <= rr[1] - rr[0] + 3; d++) cands.push(mid + 0.5 + d, mid + 0.5 - d);
       const y = cands.find((yy) => yy > 0 && yy < r.rows && r.depthAt(r.idx(px, Math.floor(yy))) >= 0.8) ?? r.centerY(px);
-      return { area: true, aid: a.id, land: c.land, c0, col: c.x, y, rows: [a.y0, a.y1], cls: g.level.classes[0], depth: a.depth, tool: c.land || c.rock || c.armor ? 'loeffel' : 'pump', rock: c.rock || c.armor };
+      return { area: true, aid: a.id, land: c.land, c0, col: c.x, y, rows: rr, cls: g.level.classes[0], depth: a.depth, tool: c.land || c.rock || c.armor ? 'loeffel' : 'pump', rock: c.rock || c.armor };
     }
   }
   return { none: note };
@@ -5149,7 +5233,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);
@@ -6241,8 +6325,10 @@ function drawPontoon(ctx, game, sim, ui) {
   }
 }
 
-// Rohstoffgebiete: bekannte Vorkommen goldgelb getönt, mit Konzession durchgezogener Rand; Name und Aufschlag darüber
-function drawDeposits(ctx, game, ui) {
+// Rohstoffgebiete: ohne Beschriftung, je Art eine eigene Farbe (Kiesbank sandgelb, Quarzsand hellblau, Erzseife orange); mit Konzession kräftig und
+// durchgezogener Rand, ohne Konzession blass und gestrichelt. Name, Aufschlag und Rest stehen im Panel «Rohstoffgebiete».
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+function drawDeposits(ctx, game) {
   const r = game.river;
   for (const d of r.deposits ?? []) {
     if (!d.known || d.depleted) continue;
@@ -6250,15 +6336,11 @@ function drawDeposits(ctx, game, ui) {
     for (let i = 0; i < r.dep.length; i++) {
       if (r.dep[i] !== d.id) continue;
       const x = i % r.cols, y = (i / r.cols) | 0;
-      ctx.fillStyle = d.owned ? 'rgba(255,215,80,.38)' : 'rgba(255,215,80,.18)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL);
-      if ((x + y) % 3 === 0) { ctx.fillStyle = d.owned ? '#fff4b8' : '#e8d27a'; ctx.beginPath(); ctx.arc(OX + x * CELL + CELL / 2, y * CELL + CELL / 2, 2.2, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = rgba(T.color, d.owned ? 0.5 : 0.24); ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL);
+      if ((x + y) % 3 === 0) { ctx.fillStyle = rgba(T.color, d.owned ? 1 : 0.6); ctx.beginPath(); ctx.arc(OX + x * CELL + CELL / 2, y * CELL + CELL / 2, 2.2, 0, Math.PI * 2); ctx.fill(); }
     }
-    const px = OX + d.cx * CELL, py = d.cy * CELL;
-    ctx.strokeStyle = T.color; ctx.lineWidth = 2; ctx.setLineDash(d.owned ? [] : [6, 5]);
-    ctx.beginPath(); ctx.ellipse(px, py, d.rx * CELL, d.ry * CELL, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-    const label = `${d.name.split(' (')[0]} ×${d.mult}${d.owned ? ' ✓' : ' (Konzession fehlt)'}`;
-    ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(label).width + 10;
-    ctx.fillStyle = '#000b'; ctx.fillRect(px - tw / 2, py - d.ry * CELL - fs(12) - 8, tw, fs(12) + 6); ctx.fillStyle = d.owned ? '#ffe9a0' : '#e8d9a0'; ctx.fillText(label, px, py - d.ry * CELL - 7); ctx.textAlign = 'start';
+    ctx.strokeStyle = T.color; ctx.lineWidth = d.owned ? 2.5 : 1.5; ctx.setLineDash(d.owned ? [] : [6, 5]);
+    ctx.beginPath(); ctx.ellipse(OX + d.cx * CELL, d.cy * CELL, d.rx * CELL, d.ry * CELL, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
   }
 }
 
@@ -6309,13 +6391,31 @@ function drawLandSide(ctx, game, ui) {
 function drawAreas(ctx, game, ui) {
   ctx.font = font(12);
   for (const a of game.fleet.areas ?? []) {
+    if (a.route) { // Baggerroute: betroffene Zellen schraffiert, Linie mit Wegpunkten
+      const left = areaWork(game, a);
+      ctx.fillStyle = left ? 'rgba(90,200,255,.22)' : 'rgba(120,230,150,.2)';
+      for (const i of a.cells) ctx.fillRect(OX + (i % game.river.cols) * CELL, ((i / game.river.cols) | 0) * CELL, CELL, CELL);
+      ctx.strokeStyle = left ? '#5ac8ff' : '#7be39a'; ctx.lineWidth = 2; ctx.setLineDash([7, 4]); ctx.beginPath();
+      a.pts.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); ctx.stroke(); ctx.setLineDash([]);
+      for (const p of a.pts) { ctx.fillStyle = left ? '#5ac8ff' : '#7be39a'; ctx.beginPath(); ctx.arc(OX + p.x * CELL, p.y * CELL, 3, 0, Math.PI * 2); ctx.fill(); }
+      const t = `〰 ${a.id} · ${a.depth.toFixed(1)} m${left ? '' : ' ✓'}`, tw = ctx.measureText(t).width + 8, p0 = a.pts[0], ty = Math.max(0, p0.y * CELL - fs(12) - 6);
+      ctx.fillStyle = '#000b'; ctx.fillRect(OX + p0.x * CELL, ty, tw, fs(12) + 3); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, OX + p0.x * CELL + 4, ty + fs(12));
+      continue;
+    }
     const x = OX + a.x0 * CELL, y = a.y0 * CELL, w = (a.x1 - a.x0 + 1) * CELL, h = (a.y1 - a.y0 + 1) * CELL, left = areaWork(game, a);
     ctx.fillStyle = left ? 'rgba(90,200,255,.14)' : 'rgba(120,230,150,.14)'; ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = left ? '#5ac8ff' : '#7be39a'; ctx.lineWidth = 2; ctx.setLineDash([7, 4]); ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); ctx.setLineDash([]);
     const t = `▭ ${a.id} · ${a.depth.toFixed(1)} m${left ? '' : ' ✓'}`, tw = ctx.measureText(t).width + 8;
     ctx.fillStyle = '#000b'; ctx.fillRect(x, y - fs(12) - 3 < 0 ? y : y - fs(12) - 3, tw, fs(12) + 3); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, x + 4, (y - fs(12) - 3 < 0 ? y : y - fs(12) - 3) + fs(12));
   }
-  if (ui.areaMode) {
+  if (ui.areaMode && ui.areaKind === 'route') { // Route im Entstehen: Punkte, Linie, Vorschau zur Maus
+    const P = ui.routePts ?? [], H = ui.hoverCell;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.beginPath();
+    P.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); if (P.length && H) ctx.lineTo(OX + (Math.floor(H.x) + 0.5) * CELL, (Math.floor(H.y) + 0.5) * CELL); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#fff'; for (const p of P) { ctx.beginPath(); ctx.arc(OX + p.x * CELL, p.y * CELL, 4, 0, Math.PI * 2); ctx.fill(); }
+    ctx.font = font(13); const t = P.length ? 'Nächsten Punkt antippen · letzten Punkt nochmals antippen oder «Route: fertig» (N)' : 'Baggerroute: ersten Punkt antippen (auch über Ufer und Land im Ausbaustreifen)';
+    ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H0() - fs(13) - 14, Math.min(ctx.measureText(t).width + 18, W - OX - 12), fs(13) + 8); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, OX + 14, H0() - 12);
+  } else if (ui.areaMode) {
     const A = ui.areaA, H = ui.hoverCell;
     if (A && H) {
       const x0 = Math.floor(Math.min(A.x, H.x)), x1 = Math.floor(Math.max(A.x, H.x)), y0 = Math.floor(Math.min(A.y, H.y)), y1 = Math.floor(Math.max(A.y, H.y));

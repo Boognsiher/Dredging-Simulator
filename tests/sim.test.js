@@ -597,7 +597,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
-import { setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+import { addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
 
 function bankSlice(levels = { loeffel: 3 }) {
   const g = new Game(3, 'hochrhein'), r = g.river;
@@ -1636,4 +1636,19 @@ test('Endlos: Hallen aller Karten zählen für den Anlagenausbau (bis Stufe 24)'
   for (let i = 12; i < 24; i++) assert.ok(g.buyUpgrade('plant'), 'Stufe ' + (i + 1));
   assert.equal(g.levels.plant, 24); assert.equal(g.nextUpgradeCost('plant'), null);
   assert.ok(g.stats.plantCapacity > 150);
+});
+
+test('Baggerroute: Zellen entlang der Linie, Pontons baggern sie auch über das Ufer', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false;
+  g.money = 1e6; for (const id of ['auto', 'auto', 'loeffel']) g.buyUpgrade(id); hireUnit(g);
+  const r = g.river, cy = Math.round(r.centerY(20));
+  // Linie quer vom Fahrwasser über das Ufer (Ausbaustreifen)
+  const a = addRoute(g, [{ x: 20.5, y: cy + 0.5 }, { x: 20.5, y: 2.5 }, { x: 24.5, y: 2.5 }], 2.5, 3);
+  assert.ok(a && a.route && a.cells.length > 10);
+  assert.ok(a.cells.some((i) => !r.zone[i] && r.ext[i]), 'enthält Ufer/Land im Ausbaustreifen');
+  assert.ok(openAreaColumns(g, a).some((c) => c.land), 'Land zählt als offen');
+  const w0 = a.w; assert.ok(setAreaWidth(g, a.id, w0 + 2) && a.w === w0 + 2);
+  for (let t = 0; t < 300; t += 0.1) updateFleet(g, 0.1);
+  assert.ok(g.totals.landRemoved > 20, 'Flotte trägt Ufer/Land entlang der Route ab');
+  assert.equal(addRoute(g, [{ x: 1, y: 1 }], 2), null);
 });

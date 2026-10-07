@@ -164,12 +164,59 @@ export function addArea(g, xa, ya, xb, yb, depth) {
 }
 export function removeArea(g, id) { const F = g.fleet, i = (F.areas ?? []).findIndex((a) => a.id === id); if (i < 0) return false; F.areas.splice(i, 1); bump(g); return true; }
 export function setAreaDepth(g, id, d) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.depth = Math.round(Math.min(CONFIG.echolot.maxDepth, Math.max(CONFIG.echolot.minDepth, d)) * 10) / 10; bump(g); return true; }
+// ---------- Baggerroute: eine gezeichnete Linie (Wegpunkte) mit Breite; die Pontons baggern sie auf Tiefe aus, auch durch Ufer und Land im Ausbaustreifen ----------
+// Zellen der Route: alle abbaubaren Zellen (Korridor, Ausbaustreifen) im Abstand w/2 von der Linie; lost = Zellen auf nicht abbaubarem Land
+export function rasterRoute(r, pts, w) {
+  const cells = new Set(), seen = new Set(), rad = w / 2; let lost = 0;
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const a = pts[k], b = pts[k + 1], n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 0.25) + 1;
+    for (let s = 0; s <= n; s++) {
+      const px = a.x + ((b.x - a.x) * s) / n, py = a.y + ((b.y - a.y) * s) / n;
+      for (let y = Math.max(0, Math.floor(py - rad)); y <= Math.min(r.rows - 1, Math.floor(py + rad)); y++) for (let x = Math.max(0, Math.floor(px - rad)); x <= Math.min(r.cols - 1, Math.floor(px + rad)); x++) {
+        if (Math.hypot(x + 0.5 - px, y + 0.5 - py) > rad + 0.01) continue;
+        const i = y * r.cols + x; if (seen.has(i)) continue; seen.add(i);
+        if (r.zone[i] || r.ext[i]) cells.add(i); else lost++;
+      }
+    }
+  }
+  return { cells: [...cells].sort((p, q) => p - q), lost };
+}
+export function addRoute(g, pts, depth, w) {
+  const r = g.river, F = g.fleet; F.areas ??= [];
+  if (F.areas.length >= MAX_AREAS || pts.length < 2) return null;
+  const cls = targetClass(g), width = Math.max(2, Math.min(9, Math.round(w ?? (cls ? cls.beam : 5))));
+  const ras = rasterRoute(r, pts, width);
+  if (!ras.cells.length) return null;
+  const xs = ras.cells.map((i) => i % r.cols), ys = ras.cells.map((i) => (i / r.cols) | 0);
+  const d = depth ?? Math.min(CONFIG.echolot.maxDepth, (cls ? cls.draught + CONFIG.clearance : CONFIG.echolot.defaultDepth) + 0.2);
+  const a = { id: ++F.areaSeq, route: true, pts: pts.map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })), w: width, cells: ras.cells, lost: ras.lost, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), depth: Math.round(d * 10) / 10, unit: null };
+  F.areas.push(a); bump(g);
+  return a;
+}
+export function setAreaWidth(g, id, w) {
+  const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a?.route) return false;
+  const r = g.river, ras = rasterRoute(r, a.pts, Math.max(2, Math.min(9, Math.round(w)))); if (!ras.cells.length) return false;
+  const xs = ras.cells.map((i) => i % r.cols), ys = ras.cells.map((i) => (i / r.cols) | 0);
+  Object.assign(a, { w: Math.max(2, Math.min(9, Math.round(w))), cells: ras.cells, lost: ras.lost, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }); bump(g);
+  return true;
+}
 export function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; bump(g); return true; }
 
 // Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
 // die Tiefe hat und "Ufer verbreitern" mit Löffelbagger an ist; vorher baggern die Pontons nur die Rinne.
 export function openAreaColumns(g, a) {
   const r = g.river, needTop = g.wl - a.depth + 0.06;
+  if (a.route) { // Route: Zellen der Linie (Korridor und Ausbaustreifen), Land braucht den Löffelbagger
+    const cols = new Map();
+    for (const i of a.cells) {
+      if (r.top[i] <= needTop || !cellAllowed(g, i)) continue;
+      const x = i % r.cols, y = (i / r.cols) | 0, c = cols.get(x) ?? { x, rows: [y, y], rock: false, armor: false, land: false };
+      c.rows[0] = Math.min(c.rows[0], y); c.rows[1] = Math.max(c.rows[1], y);
+      if (!r.zone[i]) c.land = true; if (r.rock[i] > needTop) c.rock = true; if (r.armor[i] > 0) c.armor = true;
+      cols.set(x, c);
+    }
+    return [...cols.values()].sort((p, q) => p.x - q.x);
+  }
   const scan = (withLand) => {
     const out = [];
     for (let x = a.x0; x <= a.x1; x++) {
@@ -206,10 +253,10 @@ function pickArea(g, u) {
       if (c.rock && !canRock(g)) { note = 'Fels im Weg: braucht Felsfräse oder Löffelbagger'; continue; }
       const c0 = Math.min(Math.max(0, c.x), r.cols - B);
       if (overlaps(res, c0)) { note = 'Gebiet: Stelle ist vergeben'; continue; }
-      const px = c0 + Math.floor(B / 2), mid = (a.y0 + a.y1) / 2;
-      const cands = [mid + 0.5]; for (let d = 1; d <= a.y1 - a.y0 + 3; d++) cands.push(mid + 0.5 + d, mid + 0.5 - d);
+      const rr = a.route ? c.rows : [a.y0, a.y1], px = c0 + Math.floor(B / 2), mid = (rr[0] + rr[1]) / 2;
+      const cands = [mid + 0.5]; for (let d = 1; d <= rr[1] - rr[0] + 3; d++) cands.push(mid + 0.5 + d, mid + 0.5 - d);
       const y = cands.find((yy) => yy > 0 && yy < r.rows && r.depthAt(r.idx(px, Math.floor(yy))) >= 0.8) ?? r.centerY(px);
-      return { area: true, aid: a.id, land: c.land, c0, col: c.x, y, rows: [a.y0, a.y1], cls: g.level.classes[0], depth: a.depth, tool: c.land || c.rock || c.armor ? 'loeffel' : 'pump', rock: c.rock || c.armor };
+      return { area: true, aid: a.id, land: c.land, c0, col: c.x, y, rows: rr, cls: g.level.classes[0], depth: a.depth, tool: c.land || c.rock || c.armor ? 'loeffel' : 'pump', rock: c.rock || c.armor };
     }
   }
   return { none: note };

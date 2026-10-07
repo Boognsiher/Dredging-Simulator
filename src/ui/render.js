@@ -232,8 +232,10 @@ function drawPontoon(ctx, game, sim, ui) {
   }
 }
 
-// Rohstoffgebiete: bekannte Vorkommen goldgelb getönt, mit Konzession durchgezogener Rand; Name und Aufschlag darüber
-function drawDeposits(ctx, game, ui) {
+// Rohstoffgebiete: ohne Beschriftung, je Art eine eigene Farbe (Kiesbank sandgelb, Quarzsand hellblau, Erzseife orange); mit Konzession kräftig und
+// durchgezogener Rand, ohne Konzession blass und gestrichelt. Name, Aufschlag und Rest stehen im Panel «Rohstoffgebiete».
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+function drawDeposits(ctx, game) {
   const r = game.river;
   for (const d of r.deposits ?? []) {
     if (!d.known || d.depleted) continue;
@@ -241,15 +243,11 @@ function drawDeposits(ctx, game, ui) {
     for (let i = 0; i < r.dep.length; i++) {
       if (r.dep[i] !== d.id) continue;
       const x = i % r.cols, y = (i / r.cols) | 0;
-      ctx.fillStyle = d.owned ? 'rgba(255,215,80,.38)' : 'rgba(255,215,80,.18)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL);
-      if ((x + y) % 3 === 0) { ctx.fillStyle = d.owned ? '#fff4b8' : '#e8d27a'; ctx.beginPath(); ctx.arc(OX + x * CELL + CELL / 2, y * CELL + CELL / 2, 2.2, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = rgba(T.color, d.owned ? 0.5 : 0.24); ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL);
+      if ((x + y) % 3 === 0) { ctx.fillStyle = rgba(T.color, d.owned ? 1 : 0.6); ctx.beginPath(); ctx.arc(OX + x * CELL + CELL / 2, y * CELL + CELL / 2, 2.2, 0, Math.PI * 2); ctx.fill(); }
     }
-    const px = OX + d.cx * CELL, py = d.cy * CELL;
-    ctx.strokeStyle = T.color; ctx.lineWidth = 2; ctx.setLineDash(d.owned ? [] : [6, 5]);
-    ctx.beginPath(); ctx.ellipse(px, py, d.rx * CELL, d.ry * CELL, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-    const label = `${d.name.split(' (')[0]} ×${d.mult}${d.owned ? ' ✓' : ' (Konzession fehlt)'}`;
-    ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(label).width + 10;
-    ctx.fillStyle = '#000b'; ctx.fillRect(px - tw / 2, py - d.ry * CELL - fs(12) - 8, tw, fs(12) + 6); ctx.fillStyle = d.owned ? '#ffe9a0' : '#e8d9a0'; ctx.fillText(label, px, py - d.ry * CELL - 7); ctx.textAlign = 'start';
+    ctx.strokeStyle = T.color; ctx.lineWidth = d.owned ? 2.5 : 1.5; ctx.setLineDash(d.owned ? [] : [6, 5]);
+    ctx.beginPath(); ctx.ellipse(OX + d.cx * CELL, d.cy * CELL, d.rx * CELL, d.ry * CELL, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
   }
 }
 
@@ -300,13 +298,31 @@ function drawLandSide(ctx, game, ui) {
 function drawAreas(ctx, game, ui) {
   ctx.font = font(12);
   for (const a of game.fleet.areas ?? []) {
+    if (a.route) { // Baggerroute: betroffene Zellen schraffiert, Linie mit Wegpunkten
+      const left = areaWork(game, a);
+      ctx.fillStyle = left ? 'rgba(90,200,255,.22)' : 'rgba(120,230,150,.2)';
+      for (const i of a.cells) ctx.fillRect(OX + (i % game.river.cols) * CELL, ((i / game.river.cols) | 0) * CELL, CELL, CELL);
+      ctx.strokeStyle = left ? '#5ac8ff' : '#7be39a'; ctx.lineWidth = 2; ctx.setLineDash([7, 4]); ctx.beginPath();
+      a.pts.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); ctx.stroke(); ctx.setLineDash([]);
+      for (const p of a.pts) { ctx.fillStyle = left ? '#5ac8ff' : '#7be39a'; ctx.beginPath(); ctx.arc(OX + p.x * CELL, p.y * CELL, 3, 0, Math.PI * 2); ctx.fill(); }
+      const t = `〰 ${a.id} · ${a.depth.toFixed(1)} m${left ? '' : ' ✓'}`, tw = ctx.measureText(t).width + 8, p0 = a.pts[0], ty = Math.max(0, p0.y * CELL - fs(12) - 6);
+      ctx.fillStyle = '#000b'; ctx.fillRect(OX + p0.x * CELL, ty, tw, fs(12) + 3); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, OX + p0.x * CELL + 4, ty + fs(12));
+      continue;
+    }
     const x = OX + a.x0 * CELL, y = a.y0 * CELL, w = (a.x1 - a.x0 + 1) * CELL, h = (a.y1 - a.y0 + 1) * CELL, left = areaWork(game, a);
     ctx.fillStyle = left ? 'rgba(90,200,255,.14)' : 'rgba(120,230,150,.14)'; ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = left ? '#5ac8ff' : '#7be39a'; ctx.lineWidth = 2; ctx.setLineDash([7, 4]); ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); ctx.setLineDash([]);
     const t = `▭ ${a.id} · ${a.depth.toFixed(1)} m${left ? '' : ' ✓'}`, tw = ctx.measureText(t).width + 8;
     ctx.fillStyle = '#000b'; ctx.fillRect(x, y - fs(12) - 3 < 0 ? y : y - fs(12) - 3, tw, fs(12) + 3); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, x + 4, (y - fs(12) - 3 < 0 ? y : y - fs(12) - 3) + fs(12));
   }
-  if (ui.areaMode) {
+  if (ui.areaMode && ui.areaKind === 'route') { // Route im Entstehen: Punkte, Linie, Vorschau zur Maus
+    const P = ui.routePts ?? [], H = ui.hoverCell;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.beginPath();
+    P.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); if (P.length && H) ctx.lineTo(OX + (Math.floor(H.x) + 0.5) * CELL, (Math.floor(H.y) + 0.5) * CELL); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#fff'; for (const p of P) { ctx.beginPath(); ctx.arc(OX + p.x * CELL, p.y * CELL, 4, 0, Math.PI * 2); ctx.fill(); }
+    ctx.font = font(13); const t = P.length ? 'Nächsten Punkt antippen · letzten Punkt nochmals antippen oder «Route: fertig» (N)' : 'Baggerroute: ersten Punkt antippen (auch über Ufer und Land im Ausbaustreifen)';
+    ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H0() - fs(13) - 14, Math.min(ctx.measureText(t).width + 18, W - OX - 12), fs(13) + 8); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, OX + 14, H0() - 12);
+  } else if (ui.areaMode) {
     const A = ui.areaA, H = ui.hoverCell;
     if (A && H) {
       const x0 = Math.floor(Math.min(A.x, H.x)), x1 = Math.floor(Math.max(A.x, H.x)), y0 = Math.floor(Math.min(A.y, H.y)), y1 = Math.floor(Math.max(A.y, H.y));
