@@ -597,7 +597,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
-import { addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+import { setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
 
 function bankSlice(levels = { loeffel: 3 }) {
   const g = new Game(3, 'hochrhein'), r = g.river;
@@ -1668,4 +1668,18 @@ test('Zwei Rinnen: bei einseitigem Andrang fahren beide Spuren, Gegenverkehr nut
   let s2 = null; for (let k = 0; k < 40 && !s2; k++) s2 = spawnShip(g2); s2.dir = -1; s2.cls = cid;
   for (let t = 0; t < 5; t += 0.1) updateTraffic(g2, 0.1);
   assert.equal(s2.state, 'sail'); assert.equal(s2.alt, true);
+});
+
+test('Kreuzung: zugeteiltes Ponton hat Vorrang und stoppt alles andere', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false;
+  g.money = 1e6; for (const id of ['auto', 'auto', 'loeffel', 'signals']) g.buyUpgrade(id);
+  hireUnit(g); hireUnit(g);
+  const [u1, u2] = g.fleet.units, x = Math.floor(g.river.cols * 0.7);
+  assert.ok(g.placeZone(x));
+  const z = g.zones[0]; z.cls = g.level.classes[g.level.classes.length - 1]; // grösste Klasse: Stelle ist noch nicht ausgebaut
+  assert.ok(setZoneUnit(g, z.id, u1.id));
+  for (let t = 0; t < 150; t += 0.1) updateFleet(g, 0.1);
+  assert.ok(/Kreuzungsstelle/.test(u1.note), u1.note);
+  assert.ok(u1.site?.zid === z.id || u1.state === 'idle', 'u1 arbeitet nur an der zugeteilten Kreuzung');
+  assert.ok(!u2.site || u2.site.zid !== z.id, 'u2 lässt die Kreuzung in Ruhe');
 });

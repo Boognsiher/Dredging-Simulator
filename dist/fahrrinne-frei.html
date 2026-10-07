@@ -609,7 +609,7 @@ const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipB
 const { Game } = __m(7);
 const { acceptContract } = __m(15);
 const { waitingByClass, shipPos } = __m(14);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(16);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(16);
 const { bayCapacity, maxZones, zoneClasses } = __m(14);
 const { materialPrice } = __m(17);
 const { TowSim, groundedNear } = __m(18);
@@ -969,12 +969,12 @@ let trafficSig = null;
 function updateTrafficPanel() {
   const st = game.stats, cap = bayCapacity(game), mz = maxZones(game), cid = game.zoneClassId, cls = shipById(cid);
   const plans = game.zones.map((z) => { const p = game.zonePlanFor(z.x, z.cls ?? cid); return [z.id, z.x, z.cls ?? cid, p.ready, Math.round(p.volume === Infinity ? -1 : p.volume)]; });
-  const sig = JSON.stringify([cap, mz, plans, cid, zoneMode, game.totals.turnedAway, st.signals, st.tugs, Math.floor(game.money / 500)]);
+  const sig = JSON.stringify([cap, mz, plans, game.zones.map((z) => z.unit ?? 0), game.fleet.units.map((u) => u.id), cid, zoneMode, game.totals.turnedAway, st.signals, st.tugs, Math.floor(game.money / 500)]);
   if (sig === trafficSig) return;
   trafficSig = sig;
   const box = $('trafficpanel');
   const opts = (sel) => game.level.classes.map((id) => `<option value="${id}" ${id === sel ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name} (${2 * shipById(id).beam + 1} Zellen)</option>`).join('');
-  const rows = game.zones.map((z, k) => { const [, , zc, ready, vol] = plans[k]; return `<div class="unit"><div><b>Kreuzung bei Spalte ${z.x + 1}</b> <small>${ready ? '✓ bereit: Schiffe begegnen sich hier' : vol < 0 ? 'kein Platz, auch nicht mit Uferstreifen' : `geplant: fehlt noch ${num(vol)} m³ Aushub`}<br><select data-zcls="${z.id}">${opts(zc)}</select></small></div><button data-zone="${z.id}">Entfernen</button></div>`; }).join('');
+  const rows = game.zones.map((z, k) => { const [, , zc, ready, vol] = plans[k]; return `<div class="unit"><div><b>Kreuzung bei Spalte ${z.x + 1}</b> <small>${ready ? '✓ bereit: Schiffe begegnen sich hier' : vol < 0 ? 'kein Platz, auch nicht mit Uferstreifen' : `geplant: fehlt noch ${num(vol)} m³ Aushub`}<br><select data-zcls="${z.id}">${opts(zc)}</select><br><select data-zunit="${z.id}" title="Zugeteiltes Ponton baut diese Stelle vorrangig und stoppt alles andere"><option value="">Ausbau: alle freien Pontons</option>${game.fleet.units.map((q) => `<option value="${q.id}" ${z.unit === q.id ? 'selected' : ''}>⚡ Vorrang: ${q.name}</option>`).join('')}</select></small></div><button data-zone="${z.id}">Entfernen</button></div>`; }).join('');
   box.innerHTML = `<div>Warteplatz: <b>${cap}</b> Schiff${cap > 1 ? 'e' : ''} je Seite · Kreuzungsstellen <b>${game.zones.length}/${mz}</b></div>
     <small>Wer keinen Platz im Warteplatz findet, dreht ab (bisher ${game.totals.turnedAway}). Rotlichter (Signalanlage) und Schlepper bauen den Warteplatz aus, Rotlichter erlauben weitere Kreuzungsstellen, Schlepper machen grosse Schiffe schneller.</small>
     <small>Kreuzen brauchen zwei Rinnen nebeneinander: <b>2 × Schiffsbreite + 1 Zelle</b> quer zum Fluss (Lastkahn und Motorschiff 5, Tanker und Container 7, Schubverband 9 Zellen), durchgehend so tief wie die Klasse braucht, auf 3 Spalten. Kreuzungsstellen lassen sich überall <b>planen</b>: die Karte zeigt, wie viel noch auszutragen ist (rot markiert). Die Flotte baut geplante Stellen aus.</small>
@@ -983,6 +983,7 @@ function updateTrafficPanel() {
   $('btn-zone2').onclick = toggleZoneMode;
   $('zone-cls').onchange = (e) => { game.zoneClass = e.target.value; trafficSig = null; updateTrafficPanel(); };
   for (const b of box.querySelectorAll('[data-zone]')) b.onclick = () => { game.removeZone(+b.dataset.zone); trafficSig = null; updateTrafficPanel(); };
+  for (const sel of box.querySelectorAll('[data-zunit]')) sel.onchange = () => { setZoneUnit(game, +sel.dataset.zunit, sel.value ? +sel.value : null); trafficSig = null; fleetSig = null; updateTrafficPanel(); };
   for (const sel of box.querySelectorAll('[data-zcls]')) sel.onchange = (e) => { game.setZoneClass(+sel.dataset.zcls, e.target.value); trafficSig = null; updateTrafficPanel(); };
 }
 function toggleZoneMode() {
@@ -5007,6 +5008,8 @@ function setAreaWidth(g, id, w) {
   Object.assign(a, { w: Math.max(2, Math.min(9, Math.round(w))), cells: ras.cells, lost: ras.lost, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }); bump(g);
   return true;
 }
+// Kreuzungsstelle einem Ponton zuteilen (Vorrang): dieses Ponton baut sie vor allem anderen aus und macht sonst nichts, bis sie fertig ist; andere Pontons lassen sie in Ruhe
+function setZoneUnit(g, zoneId, unitId) { const z = g.zones.find((q) => q.id === zoneId); if (!z) return false; z.unit = unitId ?? null; bump(g); return true; }
 function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; bump(g); return true; }
 
 // Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
@@ -5123,7 +5126,8 @@ function pickPour(g, u) {
 
 // Geplante Kreuzungsstellen ausbauen: die zwei Rinnen in den drei Spalten der Zone auf die Tiefe der geplanten Klasse bringen (Ufer abtragen, wo nötig)
 function pickZone(g, u) {
-  const open = g.zones.filter((z) => !zoneSupports(g, z, z.cls ?? g.zoneClassId));
+  const ids = new Set(g.fleet.units.map((q) => q.id));
+  const open = g.zones.filter((z) => !zoneSupports(g, z, z.cls ?? g.zoneClassId) && (z.unit == null || z.unit === u.id || !ids.has(z.unit))); // zugeteilte Stellen gehören ihrem Ponton
   if (!open.length) return { none: 'Keine geplante Kreuzungsstelle offen' };
   const res = reservedBy(g, u), B = CONFIG.box.cols, r = g.river;
   let note = 'Alle geplanten Kreuzungsstellen sind vergeben';
@@ -5178,6 +5182,8 @@ function pickMine(g, u) {
 
 function pickSite(g, u) {
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
+  const mine = g.zones.filter((z) => z.unit === u.id && !zoneSupports(g, z, z.cls ?? g.zoneClassId));
+  if (mine.length) { const s = pickZone(g, u); return s.none ? { none: `Kreuzungsstelle (Vorrang): ${s.none}` } : s; } // zugeteilte Kreuzung hat Vorrang: sonst nichts anderes bauen
   const order = [pickArea, ...(landRole ? [pickZone, pickLand, pickLane] : [pickLane, pickZone, pickLand]), pickMine, pickPour];
   const msgs = [];
   for (const f of order) { const s = f(g, u); if (!s.none) return s; msgs.push(s); }
@@ -5308,7 +5314,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);

@@ -200,6 +200,8 @@ export function setAreaWidth(g, id, w) {
   Object.assign(a, { w: Math.max(2, Math.min(9, Math.round(w))), cells: ras.cells, lost: ras.lost, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }); bump(g);
   return true;
 }
+// Kreuzungsstelle einem Ponton zuteilen (Vorrang): dieses Ponton baut sie vor allem anderen aus und macht sonst nichts, bis sie fertig ist; andere Pontons lassen sie in Ruhe
+export function setZoneUnit(g, zoneId, unitId) { const z = g.zones.find((q) => q.id === zoneId); if (!z) return false; z.unit = unitId ?? null; bump(g); return true; }
 export function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; bump(g); return true; }
 
 // Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
@@ -316,7 +318,8 @@ function pickPour(g, u) {
 
 // Geplante Kreuzungsstellen ausbauen: die zwei Rinnen in den drei Spalten der Zone auf die Tiefe der geplanten Klasse bringen (Ufer abtragen, wo nötig)
 function pickZone(g, u) {
-  const open = g.zones.filter((z) => !zoneSupports(g, z, z.cls ?? g.zoneClassId));
+  const ids = new Set(g.fleet.units.map((q) => q.id));
+  const open = g.zones.filter((z) => !zoneSupports(g, z, z.cls ?? g.zoneClassId) && (z.unit == null || z.unit === u.id || !ids.has(z.unit))); // zugeteilte Stellen gehören ihrem Ponton
   if (!open.length) return { none: 'Keine geplante Kreuzungsstelle offen' };
   const res = reservedBy(g, u), B = CONFIG.box.cols, r = g.river;
   let note = 'Alle geplanten Kreuzungsstellen sind vergeben';
@@ -371,6 +374,8 @@ function pickMine(g, u) {
 
 function pickSite(g, u) {
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
+  const mine = g.zones.filter((z) => z.unit === u.id && !zoneSupports(g, z, z.cls ?? g.zoneClassId));
+  if (mine.length) { const s = pickZone(g, u); return s.none ? { none: `Kreuzungsstelle (Vorrang): ${s.none}` } : s; } // zugeteilte Kreuzung hat Vorrang: sonst nichts anderes bauen
   const order = [pickArea, ...(landRole ? [pickZone, pickLand, pickLane] : [pickLane, pickZone, pickLand]), pickMine, pickPour];
   const msgs = [];
   for (const f of order) { const s = f(g, u); if (!s.none) return s; msgs.push(s); }

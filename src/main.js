@@ -5,7 +5,7 @@ import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, ship
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
-import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
+import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
@@ -340,12 +340,12 @@ let trafficSig = null;
 function updateTrafficPanel() {
   const st = game.stats, cap = bayCapacity(game), mz = maxZones(game), cid = game.zoneClassId, cls = shipById(cid);
   const plans = game.zones.map((z) => { const p = game.zonePlanFor(z.x, z.cls ?? cid); return [z.id, z.x, z.cls ?? cid, p.ready, Math.round(p.volume === Infinity ? -1 : p.volume)]; });
-  const sig = JSON.stringify([cap, mz, plans, cid, zoneMode, game.totals.turnedAway, st.signals, st.tugs, Math.floor(game.money / 500)]);
+  const sig = JSON.stringify([cap, mz, plans, game.zones.map((z) => z.unit ?? 0), game.fleet.units.map((u) => u.id), cid, zoneMode, game.totals.turnedAway, st.signals, st.tugs, Math.floor(game.money / 500)]);
   if (sig === trafficSig) return;
   trafficSig = sig;
   const box = $('trafficpanel');
   const opts = (sel) => game.level.classes.map((id) => `<option value="${id}" ${id === sel ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name} (${2 * shipById(id).beam + 1} Zellen)</option>`).join('');
-  const rows = game.zones.map((z, k) => { const [, , zc, ready, vol] = plans[k]; return `<div class="unit"><div><b>Kreuzung bei Spalte ${z.x + 1}</b> <small>${ready ? '✓ bereit: Schiffe begegnen sich hier' : vol < 0 ? 'kein Platz, auch nicht mit Uferstreifen' : `geplant: fehlt noch ${num(vol)} m³ Aushub`}<br><select data-zcls="${z.id}">${opts(zc)}</select></small></div><button data-zone="${z.id}">Entfernen</button></div>`; }).join('');
+  const rows = game.zones.map((z, k) => { const [, , zc, ready, vol] = plans[k]; return `<div class="unit"><div><b>Kreuzung bei Spalte ${z.x + 1}</b> <small>${ready ? '✓ bereit: Schiffe begegnen sich hier' : vol < 0 ? 'kein Platz, auch nicht mit Uferstreifen' : `geplant: fehlt noch ${num(vol)} m³ Aushub`}<br><select data-zcls="${z.id}">${opts(zc)}</select><br><select data-zunit="${z.id}" title="Zugeteiltes Ponton baut diese Stelle vorrangig und stoppt alles andere"><option value="">Ausbau: alle freien Pontons</option>${game.fleet.units.map((q) => `<option value="${q.id}" ${z.unit === q.id ? 'selected' : ''}>⚡ Vorrang: ${q.name}</option>`).join('')}</select></small></div><button data-zone="${z.id}">Entfernen</button></div>`; }).join('');
   box.innerHTML = `<div>Warteplatz: <b>${cap}</b> Schiff${cap > 1 ? 'e' : ''} je Seite · Kreuzungsstellen <b>${game.zones.length}/${mz}</b></div>
     <small>Wer keinen Platz im Warteplatz findet, dreht ab (bisher ${game.totals.turnedAway}). Rotlichter (Signalanlage) und Schlepper bauen den Warteplatz aus, Rotlichter erlauben weitere Kreuzungsstellen, Schlepper machen grosse Schiffe schneller.</small>
     <small>Kreuzen brauchen zwei Rinnen nebeneinander: <b>2 × Schiffsbreite + 1 Zelle</b> quer zum Fluss (Lastkahn und Motorschiff 5, Tanker und Container 7, Schubverband 9 Zellen), durchgehend so tief wie die Klasse braucht, auf 3 Spalten. Kreuzungsstellen lassen sich überall <b>planen</b>: die Karte zeigt, wie viel noch auszutragen ist (rot markiert). Die Flotte baut geplante Stellen aus.</small>
@@ -354,6 +354,7 @@ function updateTrafficPanel() {
   $('btn-zone2').onclick = toggleZoneMode;
   $('zone-cls').onchange = (e) => { game.zoneClass = e.target.value; trafficSig = null; updateTrafficPanel(); };
   for (const b of box.querySelectorAll('[data-zone]')) b.onclick = () => { game.removeZone(+b.dataset.zone); trafficSig = null; updateTrafficPanel(); };
+  for (const sel of box.querySelectorAll('[data-zunit]')) sel.onchange = () => { setZoneUnit(game, +sel.dataset.zunit, sel.value ? +sel.value : null); trafficSig = null; fleetSig = null; updateTrafficPanel(); };
   for (const sel of box.querySelectorAll('[data-zcls]')) sel.onchange = (e) => { game.setZoneClass(+sel.dataset.zcls, e.target.value); trafficSig = null; updateTrafficPanel(); };
 }
 function toggleZoneMode() {
