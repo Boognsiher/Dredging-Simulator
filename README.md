@@ -124,7 +124,7 @@ Im **Querschnitt** (Hochformat) liegt die Anzeige von Trübung, Puffer und offen
 Hinweis: Die frühere Schieflage (Umkippen der Pumpe) und das Upgrade «Pumpen-Ballast» sind entfernt.
 
 ## Arbeitsgebiete und Hafenbecken (Karte)
-- **Arbeitsgebiet vorgeben:** Auf der Karte `G` oder «▭ Arbeitsgebiet» (braucht die Automatik), dann zwei Ecken antippen. Gemietete Pontons baggern das Rechteck (Baggerkorridor, mit Löffelbagger auch Ausbaustreifen) auf die Gebietstiefe, bevor sie andere Stellen suchen. Im Panel «Flotte» stellst du je Gebiet die Tiefe ein, wählst «alle Pontons» oder ein bestimmtes Ponton und löschst Gebiete (höchstens 4).
+- **Arbeitsgebiet vorgeben:** Auf der Karte `G` oder «▭ Arbeitsgebiet» (braucht die Automatik), dann zwei Ecken antippen. Gemietete Pontons baggern das Rechteck (Baggerkorridor; das Ufer im Ausbaustreifen erst, wenn das Wasser im Gebiet die Tiefe hat und «Ufer verbreitern» mit Löffelbagger an ist) auf die Gebietstiefe, bevor sie andere Stellen suchen. Im Panel «Flotte» stellst du je Gebiet die Tiefe ein, wählst «alle Pontons» oder ein bestimmtes Ponton und löschst Gebiete (höchstens 4).
 - **Eigener Hafen auf der Karte:** Das Hafenbecken ist eine flache Bucht am Ufer (⚓ Hafen, mit Kaimauer). Die Bucht ist gelb markiert, bis 80 % davon die Zieltiefe (2,3 m) erreichen. Schiffe legen nur an, wenn das Becken tief genug für ihre Klasse ist; dafür vertiefst du die Bucht wie jede Rinne (Ponton dort ankern, ausbaggern). Das Becken zählt nicht zur Fahrrinne der Schiffe.
 
 ## Oberfläche: Kartenvollbild und Menü

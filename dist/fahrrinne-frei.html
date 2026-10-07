@@ -4762,22 +4762,30 @@ function removeArea(g, id) { const F = g.fleet, i = (F.areas ?? []).findIndex((a
 function setAreaDepth(g, id, d) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.depth = Math.round(Math.min(CONFIG.echolot.maxDepth, Math.max(CONFIG.echolot.minDepth, d)) * 10) / 10; return true; }
 function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; return true; }
 
-// Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt (Korridor; Ausbaustreifen nur mit Löffelbagger)
+// Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
+// die Tiefe hat und "Ufer verbreitern" mit Löffelbagger an ist; vorher baggern die Pontons nur die Rinne.
 function openAreaColumns(g, a) {
-  const r = g.river, needTop = g.wl - a.depth + 0.06, loeff = g.stats.loeffel > 0, out = [];
-  for (let x = a.x0; x <= a.x1; x++) {
-    let open = false, rock = false, armor = false, land = false, y0 = Infinity, y1 = -Infinity;
-    for (let y = a.y0; y <= a.y1; y++) {
-      const i = y * r.cols + x;
-      if (!(r.zone[i] || (loeff && r.ext[i])) || r.top[i] <= needTop || !cellAllowed(g, i)) continue;
-      open = true; y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-      if (!r.zone[i]) land = true;
-      if (r.rock[i] > needTop) rock = true;
-      if (r.armor[i] > 0) armor = true;
+  const r = g.river, needTop = g.wl - a.depth + 0.06;
+  const scan = (withLand) => {
+    const out = [];
+    for (let x = a.x0; x <= a.x1; x++) {
+      let open = false, rock = false, armor = false, land = false, y0 = Infinity, y1 = -Infinity;
+      for (let y = a.y0; y <= a.y1; y++) {
+        const i = y * r.cols + x;
+        if (!(r.zone[i] || (withLand && r.ext[i])) || r.top[i] <= needTop || !cellAllowed(g, i)) continue;
+        if (withLand && r.zone[i]) continue; // Landphase: nur das Ufer
+        open = true; y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+        if (!r.zone[i]) land = true;
+        if (r.rock[i] > needTop) rock = true;
+        if (r.armor[i] > 0) armor = true;
+      }
+      if (open) out.push({ x, rows: [y0, y1], rock, armor, land });
     }
-    if (open) out.push({ x, rows: [y0, y1], rock, armor, land });
-  }
-  return out;
+    return out;
+  };
+  const water = scan(false);
+  if (water.length || !(g.fleet.widen && g.stats.loeffel > 0)) return water;
+  return scan(true);
 }
 const areaWork = (g, a) => openAreaColumns(g, a).length;
 

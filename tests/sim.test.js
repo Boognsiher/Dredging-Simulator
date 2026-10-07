@@ -12,6 +12,7 @@ import { Game } from '../src/sim/game.js';
 import { updateTraffic, spawnShip, shipPos } from '../src/sim/traffic.js';
 import { computeStats, upgradeCost } from '../src/sim/stats.js';
 import { serializeGame, restoreGame } from '../src/sim/save.js';
+import { openAreaColumns } from '../src/sim/fleet.js';
 import { Advisor } from '../src/sim/advisor.js';
 import { acceptContract, makeContract } from '../src/sim/contracts.js';
 
@@ -1566,4 +1567,13 @@ test('Schlepper auf Maximalstufe schleppen aufgelaufene Schiffe frei', () => {
   assert.equal(ship.state, 'sail'); assert.equal(g.totals.freed, 1);
   const s2 = mk(2); s2.state = 'grounded'; s2.ground = 0.01; updateTraffic(g, 0.1);
   assert.notEqual(s2.state, 'grounded'); assert.ok(!(s2.state === 'sail' && g.totals.freed > 1));
+});
+
+test('Arbeitsgebiet: Ufer erst, wenn das Wasser die Tiefe hat und Verbreitern an ist', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.levels.loeffel = 1; g._stats = null;
+  const r = g.river, a = { id: 1, x0: 0, x1: r.cols - 1, y0: 0, y1: r.rows - 1, depth: 2.0, unit: null };
+  const cols = openAreaColumns(g, a);
+  assert.ok(cols.length > 0 && cols.every((c) => !c.land), 'ohne Verbreitern kein Ufer');
+  g.fleet.widen = true;
+  assert.ok(openAreaColumns(g, a).every((c) => !c.land), 'solange das Wasser nicht tief genug ist, kein Ufer');
 });
