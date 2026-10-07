@@ -163,7 +163,7 @@ export class River {
         if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
         const j = ny * cols + nx;
         const hi = this.top[i] > this.top[j] ? i : j, lo = hi === i ? j : i, diff = this.top[hi] - this.top[lo];
-        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0) continue; // Beton hält die Böschung
+        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0 || this.bay[hi] || this.bay[lo]) continue; // Beton und die Spundwände des Hafenbeckens halten die Böschung
         const sed = this.top[hi] - this.rock[hi];
         if (sed <= 1e-6) continue; // Fels rutscht nicht
         const m = Math.min(sed, (diff - S) / 2);
@@ -182,7 +182,7 @@ export class River {
     const S = CONFIG.sediment, a = S.rate * dt * mult;
     for (let i = 0; i < this.top.length; i++) {
       if (this.cap[i] <= 0 || this.top[i] >= this.cap[i]) continue;
-      const k = a * (1.1 - this.flow[i]) ** S.flowPower * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1);
+      const k = a * (1.1 - this.flow[i]) ** S.flowPower * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1) * (this.bay[i] ? 0.25 : 1); // Hafenbecken verlandet langsam
       if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
       this.top[i] = Math.min(this.cap[i], this.top[i] + k);
       this.pending.add(i);

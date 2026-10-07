@@ -578,7 +578,7 @@ const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipB
 const { Game } = __m(7);
 const { acceptContract } = __m(15);
 const { waitingByClass } = __m(14);
-const { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(16);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(16);
 const { bayCapacity, maxZones, zoneClasses } = __m(14);
 const { materialPrice } = __m(17);
 const { TowSim, groundedNear } = __m(18);
@@ -876,7 +876,7 @@ function updateShipping() {
     const T = SHIPPING.types[s.type], info = routeInfo(game, s);
     return `<div class="unit ship"><div><b>${T.icon} ${s.name}</b> <small>${s.state === 'sail' ? (s.leg === 'out' ? `unterwegs mit ${Math.round(s.load)} t` : 'Rückfahrt') : 'im Hafen'} · ${s.trips} Fahrten · ${s.profit >= 0 ? '+' : '−'}${chf(Math.abs(s.profit))}<br>${s.note}</small>
       <div class="row"><select data-sr="from" data-id="${s.id}">${mapOpts(s.from)}</select> ➜ <select data-sr="to" data-id="${s.id}">${mapOpts(s.to)}</select> <b>${PORT.label[s.cargo]}</b></div>
-      <label><input type="checkbox" data-sr="autoBuy" data-id="${s.id}" ${s.autoBuy ? 'checked' : ''}> im Starthafen einkaufen</label> <label><input type="checkbox" data-sr="toStock" data-id="${s.id}" ${s.toStock ? 'checked' : ''}> im Zielhafen einlagern</label>
+      <label title="Auf der Rückfahrt in die Gegenrichtung laden, wenn es sich lohnt"><input type="checkbox" data-sr="backhaul" data-id="${s.id}" ${s.backhaul !== false ? 'checked' : ''}> Rückfracht</label> <label><input type="checkbox" data-sr="autoBuy" data-id="${s.id}" ${s.autoBuy ? 'checked' : ''}> im Starthafen einkaufen</label> <label title="Das Schiff fährt nur, wenn die erwartete Marge mindestens so hoch ist">Mindestmarge <input type="number" step="1" min="-50" max="200" value="${s.minMargin ?? 0}" data-sr="minMargin" data-id="${s.id}" style="width:54px"> CHF/t</label> <label><input type="checkbox" data-sr="toStock" data-id="${s.id}" ${s.toStock ? 'checked' : ''}> im Zielhafen einlagern</label>
       <small class="${info.ok ? (info.margin > 0 ? '' : 'warn') : 'warn'}">${info.ok ? `Ladung ${Math.round(info.eff)} t (${Math.round(info.lf * 100)} % je nach Rinne) · Fracht ${info.perT.toFixed(1)} CHF/t · Kauf ${Math.round(info.priceFrom)} ➜ Verkauf ${Math.round(info.priceTo)} · Marge ${info.margin >= 0 ? '+' : ''}${info.margin.toFixed(1)} CHF/t` : info.reason}</small></div>
       <button data-sellship="${s.id}" ${s.state === 'sail' ? 'disabled' : ''} title="Verkauf: ${Math.round(SHIPPING.sellShare * 100)} % des Preises">Verkaufen</button></div>`;
   }).join('');
@@ -1029,11 +1029,11 @@ function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1;
   $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, areaWork(game, a)]), areaMode, F.noNature, F.noAltlast]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, areaWork(game, a)]), areaMode, F.noNature, F.noAltlast, !!lentUnit(game)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
-  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert</small></div><button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button></div>`).join('');
+  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
   const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
@@ -1045,6 +1045,7 @@ function updateFleet() {
     <button id="btn-area2" ${F.units.length ? '' : 'disabled'} title="Zwei Ecken auf der Karte antippen">${areaMode ? '✔ Gebiet: fertig (G)' : `▭ Arbeitsgebiet vorgeben (G) · ${(F.areas ?? []).length}/${MAX_AREAS}`}</button>
     <label class="fleet-widen"><input type="checkbox" id="fleet-nonat" ${F.noNature ? 'checked' : ''}> Naturschutzzonen meiden: Pontons tragen kein Flachwasser am Ufer ab</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-noalt" ${F.noAltlast ? 'checked' : ''}> Altlastenbereiche meiden: Pontons lassen belastetes Material liegen</label>
+    <button id="btn-lend" ${lentUnit(game) || lendBlock(game) ? 'disabled' : ''} title="${lendBlock(game) ?? ''}">🧑‍✈️ Meinen Ponton der Flotte zuteilen</button>
     <label class="fleet-goal">Ausbauziel <select id="fleet-goal">${opts}</select></label>
     <small>${cls ? `Aktuell: ${cls.icon} ${cls.name}` : 'Alle Klassen fahren'}</small>
     <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
@@ -1056,6 +1057,8 @@ function updateFleet() {
   $('fleet-widthsel').onchange = (e) => { setWiden(game, F.widen, +e.target.value); fleetSig = null; updateFleet(); };
   $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
   $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
+  $('btn-lend').onclick = () => { if (sim.mode === 'slice') sim.leave(); if (lendPonton(game, sim.x, sim.y)) { syncMode(); fleetSig = null; updateFleet(); toast('Dein Ponton arbeitet für die Flotte', 'good', true); } };
+  for (const b of box.querySelectorAll('[data-recall]')) b.onclick = () => { const pos = recallPonton(game); if (pos) { sim.x = pos.x; sim.y = pos.y; } fleetSig = null; updateFleet(); toast('Ponton zurückgerufen', 'info', true); };
   $('btn-area2').onclick = toggleAreaMode;
   for (const b of box.querySelectorAll('[data-area-d]')) b.onclick = () => { const [id, d] = b.dataset.areaD.split(':'); const a = F.areas.find((q) => q.id === +id); setAreaDepth(game, +id, a.depth + +d); fleetSig = null; updateFleet(); };
   for (const sEl of box.querySelectorAll('[data-area-u]')) sEl.onchange = () => { setAreaUnit(game, +sEl.dataset.areaU, sEl.value ? +sEl.value : null); fleetSig = null; updateFleet(); };
@@ -1257,6 +1260,7 @@ function syncMode() {
   updateHints(); fitCanvas();
 }
 function anchor() {
+  if (lentUnit(game)) { toast('Dein Ponton arbeitet für die Flotte: im Panel «Flotte» zurückrufen', 'bad', true); return; }
   if (!sim.canFloat(sim.x, sim.y)) { toast('Hier ist zu wenig Wasser für den Ponton', 'bad', true); return; }
   if (!sim.anchor()) return;
   syncMode();
@@ -1519,7 +1523,8 @@ function frame(now) {
     const inMap = sim.mode === 'map';
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
-    if (tow || zoneMode || areaMode || landMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    if (lentUnit(game) && sim.mode === 'map') { const lu = lentUnit(game); sim.x = lu.x; sim.y = lu.y; } // der eigene Ponton fährt als Flottenschiff mit
+    if (tow || zoneMode || areaMode || landMode || lentUnit(game)) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
     ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {
@@ -1681,7 +1686,7 @@ return {  };
 function(){
 const { CONFIG, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
-const { PORT, hasKai, capacity, bayDepth, buy: portBuy, buyPrice, sellPrice } = __m(4);
+const { PORT, hasKai, capacity, bayDepth, buy: portBuy, buyPrice, sellPrice, marketImpact } = __m(4);
 
 
 
@@ -1690,12 +1695,12 @@ const { PORT, hasKai, capacity, bayDepth, buy: portBuy, buyPrice, sellPrice } = 
 // der Gewinn ist der Preisunterschied minus Spread und Frachtkosten. Wie viel ein Schiff laden darf, hängt von der Tiefe der Fahrrinne auf beiden Karten ab
 // (Teilbeladung): bei Niedrigwasser sinkt die Ladung, die Fracht pro Tonne wird teurer. Zwischenlager = Lager im Hafen (Kies, Tank), ausbaubar.
 const SHIPPING = {
-  maxShips: 6, baseDays: 1.0, daysPerHop: 0.6, minLoad: 0.3, idleUpkeep: 0.4, sellShare: 0.6,
+  maxShips: 6, baseDays: 1.0, daysPerHop: 0.6, minLoad: 0.3, idleUpkeep: 0.3, sellShare: 0.6,
   types: {
-    kahn: { name: 'Frachtkahn', icon: '🛶', cost: 45000, cap: 240, perDay: 260, cargos: ['kies'] },
-    motor: { name: 'Motorfrachter', icon: '🚤', cost: 110000, cap: 640, perDay: 520, cargos: ['kies'] },
-    container: { name: 'Containerschiff', icon: '🚢', cost: 380000, cap: 1000, perDay: 1500, cargos: ['container'] },
-    tank: { name: 'Tankschiff', icon: '🛢️', cost: 200000, cap: 560, perDay: 900, cargos: ['oel'] },
+    kahn: { name: 'Frachtkahn', icon: '🛶', cost: 28000, cap: 240, perDay: 120, cargos: ['kies'] },
+    motor: { name: 'Motorfrachter', icon: '🚤', cost: 70000, cap: 640, perDay: 260, cargos: ['kies'] },
+    container: { name: 'Containerschiff', icon: '🚢', cost: 260000, cap: 700, perDay: 900, cargos: ['container'] },
+    tank: { name: 'Tankschiff', icon: '🛢️', cost: 200000, cap: 560, perDay: 700, cargos: ['oel'] },
   },
 };
 
@@ -1715,7 +1720,7 @@ function buyShip(g, type) {
   if (shipBlock(g, type)) return null;
   const T = SHIPPING.types[type], S = g.shipping;
   g.money -= T.cost;
-  const s = { id: ++S.seq, type, name: `${T.name} ${S.seq}`, from: 0, to: Math.min(1, g.maps.length - 1), cargo: T.cargos[0], autoBuy: true, toStock: false, state: 'idle', leg: 'out', t: 0, dur: 0, load: 0, basis: 0, trips: 0, profit: 0, note: 'startet' };
+  const s = { id: ++S.seq, type, name: `${T.name} ${S.seq}`, from: 0, to: Math.min(1, g.maps.length - 1), cargo: T.cargos[0], autoBuy: true, toStock: false, backhaul: true, minMargin: 1, state: 'idle', leg: 'out', t: 0, dur: 0, load: 0, basis: 0, trips: 0, profit: 0, note: 'startet' };
   S.ships.push(s);
   g.say(`${s.name} gekauft (−${T.cost.toLocaleString('de-CH')} CHF): Route im Menü unter «Reederei» einstellen.`, 'upgrade');
   return s;
@@ -1732,6 +1737,8 @@ function setRoute(g, id, r) {
   if (r.to !== undefined && g.maps[r.to]) s.to = r.to;
   if (r.autoBuy !== undefined) s.autoBuy = !!r.autoBuy;
   if (r.toStock !== undefined) s.toStock = !!r.toStock;
+  if (r.backhaul !== undefined) s.backhaul = !!r.backhaul;
+  if (r.minMargin !== undefined) s.minMargin = Math.max(-50, Math.min(200, +r.minMargin || 0));
   if (r.cargo !== undefined && SHIPPING.types[s.type].cargos.includes(r.cargo)) s.cargo = r.cargo;
   return true;
 }
@@ -1758,6 +1765,39 @@ function routeInfo(g, s) {
   return out;
 }
 
+// Ware im Hafen der Karte i aufnehmen (aus dem Lager, sonst einkaufen). Gibt die geladene Menge zurück (0 = zu wenig)
+function loadAt(g, s, i, info) {
+  return withMap(g, i, () => {
+    const p = g.port, id = s.cargo;
+    if (s.autoBuy && p.stock[id] < info.eff) portBuy(g, id, info.eff - p.stock[id]);
+    const take = Math.min(info.eff, p.stock[id]);
+    if (take < info.eff * SHIPPING.minLoad) return 0;
+    s.basis = p.cost[id] > 0 ? p.cost[id] : buyPrice(g, id);
+    p.stock[id] -= take; if (p.stock[id] < 1e-6) { p.stock[id] = 0; p.cost[id] = 0; }
+    return take;
+  });
+}
+// Ladung im Hafen der Karte i abliefern (verkaufen oder einlagern). Gibt den Erlös (bzw. Marktwert) zurück
+function unloadAt(g, s, i) {
+  return withMap(g, i, () => {
+    const p = g.port, id = s.cargo, price = sellPrice(g, id);
+    let rest = s.load;
+    if (s.toStock && hasKai(g)) {
+      const put = Math.max(0, Math.min(rest, capacity(g, id) - p.stock[id]));
+      if (put > 0) { p.cost[id] = (p.cost[id] * p.stock[id] + s.basis * put) / (p.stock[id] + put); p.stock[id] += put; rest -= put; }
+      g.money += rest * price; if (rest > 0) marketImpact(g, id, rest, -1);
+      return s.load * price; // eingelagerte Ware zählt zum Marktwert
+    }
+    g.money += rest * price; marketImpact(g, id, rest, -1); return rest * price;
+  });
+}
+function deliver(g, s, at) {
+  const S = g.shipping, revenue = unloadAt(g, s, at), gain = revenue - s.load * s.basis;
+  s.profit += gain; S.profit += gain; s.trips++; S.trips++; g.today.income += Math.max(0, gain);
+  s.note = `lieferte ${Math.round(s.load)} t (${gain >= 0 ? '+' : '−'}${Math.abs(Math.round(gain)).toLocaleString('de-CH')} CHF vor Unterhalt)`;
+  s.load = 0;
+}
+
 function updateShipping(g, dt) {
   const S = g.shipping; if (!S?.ships.length) return;
   const day = CONFIG.daySeconds;
@@ -1767,15 +1807,8 @@ function updateShipping(g, dt) {
     if (s.state === 'idle') {
       const info = routeInfo(g, s);
       if (!info.ok) { s.note = info.reason; continue; }
-      const q = withMap(g, s.from, () => {
-        const p = g.port, id = s.cargo;
-        if (s.autoBuy && p.stock[id] < info.eff) portBuy(g, id, info.eff - p.stock[id]);
-        const take = Math.min(info.eff, p.stock[id]);
-        if (take < info.eff * SHIPPING.minLoad) return 0;
-        s.basis = p.cost[id] > 0 ? p.cost[id] : buyPrice(g, id);
-        p.stock[id] -= take; if (p.stock[id] < 1e-6) { p.stock[id] = 0; p.cost[id] = 0; }
-        return take;
-      });
+      if (info.margin < (s.minMargin ?? 0)) { s.note = `Marge ${info.margin.toFixed(1)} CHF/t unter ${s.minMargin ?? 0}: wartet auf bessere Preise`; continue; } // Preise hängen von Marktwirkung und Schwankungen ab
+      const q = loadAt(g, s, s.from, info);
       if (q <= 0) { s.note = 'Zu wenig Ware im Lager (kaufen oder Auto-Einkauf, Geld/Lagerplatz prüfen)'; continue; }
       s.load = q; s.state = 'sail'; s.leg = 'out'; s.t = 0; s.dur = info.days * day;
       s.note = `fährt ${Math.round(q)} t ${g.maps[s.to].name}`;
@@ -1783,22 +1816,16 @@ function updateShipping(g, dt) {
       s.t += dt;
       if (s.t < s.dur) continue;
       if (s.leg === 'out') {
-        const revenue = withMap(g, s.to, () => {
-          const p = g.port, id = s.cargo, price = sellPrice(g, id);
-          let rest = s.load;
-          if (s.toStock && hasKai(g)) {
-            const put = Math.max(0, Math.min(rest, capacity(g, id) - p.stock[id]));
-            if (put > 0) { p.cost[id] = (p.cost[id] * p.stock[id] + s.basis * put) / (p.stock[id] + put); p.stock[id] += put; rest -= put; }
-            g.money += rest * price;
-            return s.load * price; // eingelagerte Ware zählt zum Marktwert
-          }
-          g.money += rest * price; return rest * price;
-        });
-        const gain = revenue - s.load * s.basis;
-        s.profit += gain; S.profit += gain; s.trips++; S.trips++; g.today.income += Math.max(0, gain);
-        s.note = `lieferte ${Math.round(s.load)} t (${gain >= 0 ? '+' : '−'}${Math.abs(Math.round(gain)).toLocaleString('de-CH')} CHF vor Unterhalt)`;
-        s.load = 0; s.leg = 'back'; s.t = 0;
-      } else { s.state = 'idle'; s.leg = 'out'; s.t = 0; }
+        deliver(g, s, s.to);
+        s.leg = 'back'; s.t = 0;
+        if (s.backhaul !== false) { // Rückfracht: in die Gegenrichtung laden, wenn sich das lohnt
+          const rev = { ...s, from: s.to, to: s.from }, ri = routeInfo(g, rev);
+          if (ri.ok && ri.margin >= (s.minMargin ?? 0)) { const q = loadAt(g, rev, s.to, ri); if (q > 0) { s.load = q; s.basis = rev.basis; s.note += ` · Rückfracht ${Math.round(q)} t`; } }
+        }
+      } else {
+        if (s.load > 0) deliver(g, s, s.from);
+        s.state = 'idle'; s.leg = 'out'; s.t = 0;
+      }
     }
   }
 }
@@ -2320,7 +2347,7 @@ const { priceOf, ratioOf } = __m(6);
 // Der Hafen handelt mit Waren: Schiffe der passenden Fracht laden bei hohen Preisen aus deinem Lager (du verkaufst) und entladen bei tiefen
 // Preisen in dein Lager (du kaufst). Zusätzlich kannst du von Hand kaufen/verkaufen oder den Handel automatisieren (Kauf-/Verkaufsschwelle).
 const PORT = {
-  openCost: 30000, slots: 6, spread: 0.06, reserve: 5000, shipShare: 0.15,
+  openCost: 30000, slots: 6, spread: 0.05, reserve: 5000, shipShare: 0.15,
   // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
   jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3, container: 2.5 }, fee: { kies: 5, oel: 6, container: 9 }, lateFactor: 0.5, bonusMax: 2 },
   // Baugrund: Jeder Bauplatz ist unebenes Gelände (Höhen relativ zur Sollhöhe) und muss mit der Baumaschine planiert werden, bevor gebaut werden darf
@@ -2499,6 +2526,12 @@ function demolish(g, slot) { // Abriss: Lagerinhalt, der nicht mehr reinpasst, w
 }
 
 // Von Hand kaufen/verkaufen (Tonnen)
+// Marktwirkung: grosse Käufe treiben den Preis der Karte hoch, grosse Verkäufe drücken ihn (je 1000 t); die Abweichung klingt täglich ab
+const IMPACT = { kies: 0.12, oel: 0.05, container: 0.04 };
+function marketImpact(g, id, tons, dir) {
+  const K = CONFIG.market, m = g.market; if (!m?.dev || !(id in IMPACT)) return;
+  m.dev[id] = Math.min(K.maxRatio - 1, Math.max(K.minRatio - 1, (m.dev[id] ?? 0) + dir * (tons / 1000) * IMPACT[id]));
+}
 function buy(g, id, tons) {
   const p = g.port; if (!hasKai(g) || !PORT.commodities[id]) return 0;
   const room = capacity(g, id) - p.stock[id], price = buyPrice(g, id);
@@ -2506,7 +2539,7 @@ function buy(g, id, tons) {
   if (q <= 0) return 0;
   const c = q * price;
   p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q;
-  g.money -= c; p.spent += c; g.today.costs += c;
+  g.money -= c; p.spent += c; g.today.costs += c; marketImpact(g, id, q, +1);
   return q;
 }
 function sell(g, id, tons) {
@@ -2514,7 +2547,7 @@ function sell(g, id, tons) {
   const q = Math.max(0, Math.min(tons, p.stock[id]));
   if (q <= 0) return 0;
   const r = q * sellPrice(g, id);
-  p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r;
+  p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; marketImpact(g, id, q, -1);
   if (p.stock[id] < 1e-6) { p.stock[id] = 0; p.cost[id] = 0; }
   return q;
 }
@@ -2578,7 +2611,7 @@ function portDay(g) {
   }
 }
 
-return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, buy: buy, sell: sell, machineOf: machineOf, portShip: portShip, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, machineOf: machineOf, portShip: portShip, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 
@@ -2816,6 +2849,13 @@ function endlessRiver(seed, k) {
   return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
     bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits };
 }
+// Regionale Preise (Endlos): dauerhafter Aufschlag/Abschlag je Fracht und Karte, aus Seed und Kartennummer
+const BIAS_SPAN = { kies: 0.4, oel: 0.25, container: 0.3 }; // max. Abweichung des regionalen Preises
+function regionBias(seed, k) {
+  const br = createRng(mapSeed(seed, k) ^ 0x9e3779b9), span = BIAS_SPAN, bias = {};
+  for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-span[id], span[id]).toFixed(2);
+  return bias;
+}
 const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0 });
 
 // Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
@@ -2845,7 +2885,7 @@ class Game {
     this.concrete = 0; // Betonvorrat in m³ (gekauft oder im Betonwerk gemischt)
     this.agg = { kies: 0, sand: 0 }; // Lager für das Betonwerk (m³)
     this.divertAgg = true; // Kies und Sand ins Betonwerk statt verkaufen
-    this.market = createMarket();
+    this.market = createMarket(L.endless ? regionBias(seed, 0) : {});
     this.traffic = createTraffic();
     this.fleet = createFleet();
     this.shipping = createShipping(); // eigene Reederei (global)
@@ -2895,7 +2935,7 @@ class Game {
     this.money -= cost;
     let name = MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
     const river = River.generate(createRng(seed), endlessRiver(this.seed, k)); river.wl = this.wl;
-    const br = createRng(seed ^ 0x9e3779b9), bias = {}; for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-0.28, 0.28).toFixed(2); // regionale Preise: Handel zwischen den Karten lohnt sich
+    const bias = regionBias(this.seed, k); // regionale Preise: Handel zwischen den Karten lohnt sich
     this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
     this.mapIdx = k;
     this.port.bay = carveBay(this.river, this.wl);
@@ -3177,7 +3217,7 @@ class Game {
   dayEnd() {
     const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
     const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
-    const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.length, 0);
+    const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
     this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;
     y.costs += cost + wages;
@@ -3218,7 +3258,7 @@ for (const key of ['market', 'port', 'river', 'traffic', 'fleet', 'zones', 'zone
   Object.defineProperty(Game.prototype, key, { get() { return this.maps[this.mapIdx][key]; }, set(v) { this.maps[this.mapIdx][key] = v; }, enumerable: false, configurable: true });
 }
 
-return { mapSeed: mapSeed, endlessRiver: endlessRiver, Game: Game };
+return { mapSeed: mapSeed, endlessRiver: endlessRiver, BIAS_SPAN: BIAS_SPAN, regionBias: regionBias, Game: Game };
 },
 function(){
 const { CONFIG, DEBRIS, KIND } = __m(2);
@@ -3706,7 +3746,7 @@ class River {
         if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
         const j = ny * cols + nx;
         const hi = this.top[i] > this.top[j] ? i : j, lo = hi === i ? j : i, diff = this.top[hi] - this.top[lo];
-        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0) continue; // Beton hält die Böschung
+        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0 || this.bay[hi] || this.bay[lo]) continue; // Beton und die Spundwände des Hafenbeckens halten die Böschung
         const sed = this.top[hi] - this.rock[hi];
         if (sed <= 1e-6) continue; // Fels rutscht nicht
         const m = Math.min(sed, (diff - S) / 2);
@@ -3725,7 +3765,7 @@ class River {
     const S = CONFIG.sediment, a = S.rate * dt * mult;
     for (let i = 0; i < this.top.length; i++) {
       if (this.cap[i] <= 0 || this.top[i] >= this.cap[i]) continue;
-      const k = a * (1.1 - this.flow[i]) ** S.flowPower * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1);
+      const k = a * (1.1 - this.flow[i]) ** S.flowPower * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1) * (this.bay[i] ? 0.25 : 1); // Hafenbecken verlandet langsam
       if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
       this.top[i] = Math.min(this.cap[i], this.top[i] + k);
       this.pending.add(i);
@@ -4536,12 +4576,13 @@ const { zoneSupports } = __m(14);
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
 const createFleet = () => ({ units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false });
 
-const nextHireCost = (g) => CONFIG.fleet.costs[g.fleet.units.length] ?? null;
+const hiredCount = (g) => g.fleet.units.filter((u) => !u.self).length; // dein eigener Ponton (self) zählt nicht zu den gemieteten
+const nextHireCost = (g) => CONFIG.fleet.costs[hiredCount(g)] ?? null;
 
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 function hireBlock(g) {
   if (g.status !== 'playing') return 'Spiel beendet';
-  if (g.fleet.units.length >= CONFIG.fleet.max) return 'Flotte ist voll';
+  if (hiredCount(g) >= CONFIG.fleet.max) return 'Flotte ist voll';
   if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
   const cost = nextHireCost(g);
   if (g.money < cost) return `Braucht ${cost.toLocaleString('de-CH')} CHF`;
@@ -4552,12 +4593,31 @@ function hireUnit(g) {
   if (hireBlock(g)) return null;
   const cost = nextHireCost(g), F = g.fleet;
   g.money -= cost;
-  const u = { id: ++F.seq, name: `Ponton ${F.units.length + 2}`, x: 1.5, y: g.river.centerY(1), state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
+  const u = { id: ++F.seq, name: `Ponton ${hiredCount(g) + 2}`, x: 1.5, y: g.river.centerY(1), state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
   F.units.push(u);
   g.say(`${u.name} gemietet (−${cost.toLocaleString('de-CH')} CHF): arbeitet selbstständig.`, 'upgrade');
   return u;
 }
 
+// Den eigenen Ponton der Flotte zuteilen (arbeitet dann wie ein gemieteter, ohne Lohn) und wieder zurückrufen
+const lentUnit = (g) => g.fleet.units.find((u) => u.self) ?? null;
+function lendBlock(g) {
+  if (g.status !== 'playing') return 'Spiel beendet';
+  if (lentUnit(g)) return 'Schon der Flotte zugeteilt';
+  return g.stats.autoLevel < 1 ? 'Braucht die Automatik (Ausrüstung)' : null;
+}
+function lendPonton(g, x, y) {
+  if (lendBlock(g)) return null;
+  const F = g.fleet, u = { id: ++F.seq, name: 'Dein Ponton', self: true, x, y, state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
+  F.units.push(u);
+  g.say('Dein Ponton arbeitet jetzt für die Flotte (kein Lohn). Zurückrufen im Panel «Flotte».', 'upgrade');
+  return u;
+}
+function recallPonton(g) {
+  const u = lentUnit(g); if (!u) return null;
+  u.sim?.leave(); g.fleet.units.splice(g.fleet.units.indexOf(u), 1);
+  return { x: u.x, y: u.y };
+}
 function dismissUnit(g, id) {
   const F = g.fleet, i = F.units.findIndex((u) => u.id === id);
   if (i < 0) return false;
@@ -4917,7 +4977,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);

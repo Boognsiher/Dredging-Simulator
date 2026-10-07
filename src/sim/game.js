@@ -27,6 +27,13 @@ export function endlessRiver(seed, k) {
   return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
     bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits };
 }
+// Regionale Preise (Endlos): dauerhafter Aufschlag/Abschlag je Fracht und Karte, aus Seed und Kartennummer
+export const BIAS_SPAN = { kies: 0.4, oel: 0.25, container: 0.3 }; // max. Abweichung des regionalen Preises
+export function regionBias(seed, k) {
+  const br = createRng(mapSeed(seed, k) ^ 0x9e3779b9), span = BIAS_SPAN, bias = {};
+  for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-span[id], span[id]).toFixed(2);
+  return bias;
+}
 const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0 });
 
 // Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
@@ -56,7 +63,7 @@ export class Game {
     this.concrete = 0; // Betonvorrat in m³ (gekauft oder im Betonwerk gemischt)
     this.agg = { kies: 0, sand: 0 }; // Lager für das Betonwerk (m³)
     this.divertAgg = true; // Kies und Sand ins Betonwerk statt verkaufen
-    this.market = createMarket();
+    this.market = createMarket(L.endless ? regionBias(seed, 0) : {});
     this.traffic = createTraffic();
     this.fleet = createFleet();
     this.shipping = createShipping(); // eigene Reederei (global)
@@ -106,7 +113,7 @@ export class Game {
     this.money -= cost;
     let name = MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
     const river = River.generate(createRng(seed), endlessRiver(this.seed, k)); river.wl = this.wl;
-    const br = createRng(seed ^ 0x9e3779b9), bias = {}; for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-0.28, 0.28).toFixed(2); // regionale Preise: Handel zwischen den Karten lohnt sich
+    const bias = regionBias(this.seed, k); // regionale Preise: Handel zwischen den Karten lohnt sich
     this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
     this.mapIdx = k;
     this.port.bay = carveBay(this.river, this.wl);
@@ -388,7 +395,7 @@ export class Game {
   dayEnd() {
     const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
     const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
-    const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.length, 0);
+    const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
     this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;
     y.costs += cost + wages;

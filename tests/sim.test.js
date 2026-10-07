@@ -292,6 +292,7 @@ import { isLand, buildRoad, buildHall, autoRoad, connectedRoads, hallConnected, 
 import { ensurePort } from '../src/sim/port.js';
 import { buyShip, sellShip, setRoute, routeInfo, updateShipping, SHIPPING, withMap } from '../src/sim/shipping.js';
 import { setAvoid, cellAllowed } from '../src/sim/fleet.js';
+import { lendPonton, recallPonton, lendBlock, lentUnit, nextHireCost } from '../src/sim/fleet.js';
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
 import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
@@ -1470,9 +1471,10 @@ test('Container-Fracht: Terminal, Lager, eigenes Containerschiff, alte Stände w
   const g = twoPorts();
   for (let i = 0; i < 2; i++) { g.maps[i].port.slots[3] = { type: 'container', level: 1 }; Object.assign(g.maps[i].fair.container, { passable: true, loadFactor: 0.8 }); g.maps[i].market.bias.container = i ? 0.25 : -0.25; }
   const s = buyShip(g, 'container'); assert.ok(s && s.cargo === 'container');
-  const info = routeInfo(g, s); assert.ok(info.ok, info.reason); assert.ok(info.eff > 700 && info.eff < 900);
+  const info = routeInfo(g, s); assert.ok(info.ok, info.reason); assert.ok(info.eff > 500 && info.eff < 650);
   for (let i = 0; i < 14 * 14 * 20; i++) updateShipping(g, 0.05);
   assert.ok(s.trips >= 1, 'Containerschiff fährt');
+  const dev0 = g.maps[1].market.dev.container; assert.ok(dev0 < 0.5, 'Verkäufe drücken den Preis im Zielhafen');
   const old = { stock: { kies: 5, oel: 0 }, cost: { kies: 1, oel: 0 }, auto: {} };
   ensurePort(old); assert.equal(old.stock.container, 0); assert.ok(old.auto.container);
 });
@@ -1514,4 +1516,14 @@ test('Zweite Rinne: bei Gegenverkehr gibt es einen eigenen Pfad zum Einzeichnen'
   assert.ok(f.cross.some((v) => v === 1), 'Kreuzungsmöglichkeit in breiten Bereichen');
   const a = f.path.points[Math.floor(f.path.points.length / 2)], b = f.secondPath.points[Math.floor(f.secondPath.points.length / 2)];
   assert.ok(Math.abs(a.y - b.y) >= 2, 'die Rinnen liegen getrennt nebeneinander');
+});
+
+test('Flotte: eigenen Ponton zuteilen und zurückrufen', () => {
+  const g = new Game(3, 'hochrhein'); g.money = 1e6; g.eventsOn = false; g.traffic.spawnIn = 1e9; g.fleet.mine = false;
+  assert.ok(lendBlock(g), 'ohne Automatik nicht möglich'); g.buyUpgrade('auto'); g.buyUpgrade('plant');
+  const cost0 = nextHireCost(g), u = lendPonton(g, 3, g.river.rows / 2); assert.ok(u && u.self);
+  assert.equal(lendPonton(g, 3, 3), null, 'nur einmal'); assert.equal(nextHireCost(g), cost0, 'zählt nicht zu den gemieteten');
+  const m0 = g.money; for (let i = 0; i < 14 * 30 * 20; i++) g.update(0.05);
+  assert.ok(u.removed > 0, 'arbeitet'); assert.ok(g.money > m0 - 5000, 'kein Lohn');
+  const pos = recallPonton(g); assert.ok(pos && lentUnit(g) === null); assert.equal(g.fleet.units.length, 0);
 });

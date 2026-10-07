@@ -1,17 +1,17 @@
 import { CONFIG, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
-import { PORT, hasKai, capacity, bayDepth, buy as portBuy, buyPrice, sellPrice } from './port.js';
+import { PORT, hasKai, capacity, bayDepth, buy as portBuy, buyPrice, sellPrice, marketImpact } from './port.js';
 
 // Eigene Reederei: Frachter fahren Ware zwischen den Häfen verschiedener Karten (Endlos-Modus). Jede Karte hat eigene Preise (Markt mit Bias),
 // der Gewinn ist der Preisunterschied minus Spread und Frachtkosten. Wie viel ein Schiff laden darf, hängt von der Tiefe der Fahrrinne auf beiden Karten ab
 // (Teilbeladung): bei Niedrigwasser sinkt die Ladung, die Fracht pro Tonne wird teurer. Zwischenlager = Lager im Hafen (Kies, Tank), ausbaubar.
 export const SHIPPING = {
-  maxShips: 6, baseDays: 1.0, daysPerHop: 0.6, minLoad: 0.3, idleUpkeep: 0.4, sellShare: 0.6,
+  maxShips: 6, baseDays: 1.0, daysPerHop: 0.6, minLoad: 0.3, idleUpkeep: 0.3, sellShare: 0.6,
   types: {
-    kahn: { name: 'Frachtkahn', icon: '🛶', cost: 45000, cap: 240, perDay: 260, cargos: ['kies'] },
-    motor: { name: 'Motorfrachter', icon: '🚤', cost: 110000, cap: 640, perDay: 520, cargos: ['kies'] },
-    container: { name: 'Containerschiff', icon: '🚢', cost: 380000, cap: 1000, perDay: 1500, cargos: ['container'] },
-    tank: { name: 'Tankschiff', icon: '🛢️', cost: 200000, cap: 560, perDay: 900, cargos: ['oel'] },
+    kahn: { name: 'Frachtkahn', icon: '🛶', cost: 28000, cap: 240, perDay: 120, cargos: ['kies'] },
+    motor: { name: 'Motorfrachter', icon: '🚤', cost: 70000, cap: 640, perDay: 260, cargos: ['kies'] },
+    container: { name: 'Containerschiff', icon: '🚢', cost: 260000, cap: 700, perDay: 900, cargos: ['container'] },
+    tank: { name: 'Tankschiff', icon: '🛢️', cost: 200000, cap: 560, perDay: 700, cargos: ['oel'] },
   },
 };
 
@@ -31,7 +31,7 @@ export function buyShip(g, type) {
   if (shipBlock(g, type)) return null;
   const T = SHIPPING.types[type], S = g.shipping;
   g.money -= T.cost;
-  const s = { id: ++S.seq, type, name: `${T.name} ${S.seq}`, from: 0, to: Math.min(1, g.maps.length - 1), cargo: T.cargos[0], autoBuy: true, toStock: false, state: 'idle', leg: 'out', t: 0, dur: 0, load: 0, basis: 0, trips: 0, profit: 0, note: 'startet' };
+  const s = { id: ++S.seq, type, name: `${T.name} ${S.seq}`, from: 0, to: Math.min(1, g.maps.length - 1), cargo: T.cargos[0], autoBuy: true, toStock: false, backhaul: true, minMargin: 1, state: 'idle', leg: 'out', t: 0, dur: 0, load: 0, basis: 0, trips: 0, profit: 0, note: 'startet' };
   S.ships.push(s);
   g.say(`${s.name} gekauft (−${T.cost.toLocaleString('de-CH')} CHF): Route im Menü unter «Reederei» einstellen.`, 'upgrade');
   return s;
@@ -48,6 +48,8 @@ export function setRoute(g, id, r) {
   if (r.to !== undefined && g.maps[r.to]) s.to = r.to;
   if (r.autoBuy !== undefined) s.autoBuy = !!r.autoBuy;
   if (r.toStock !== undefined) s.toStock = !!r.toStock;
+  if (r.backhaul !== undefined) s.backhaul = !!r.backhaul;
+  if (r.minMargin !== undefined) s.minMargin = Math.max(-50, Math.min(200, +r.minMargin || 0));
   if (r.cargo !== undefined && SHIPPING.types[s.type].cargos.includes(r.cargo)) s.cargo = r.cargo;
   return true;
 }
@@ -74,6 +76,39 @@ export function routeInfo(g, s) {
   return out;
 }
 
+// Ware im Hafen der Karte i aufnehmen (aus dem Lager, sonst einkaufen). Gibt die geladene Menge zurück (0 = zu wenig)
+function loadAt(g, s, i, info) {
+  return withMap(g, i, () => {
+    const p = g.port, id = s.cargo;
+    if (s.autoBuy && p.stock[id] < info.eff) portBuy(g, id, info.eff - p.stock[id]);
+    const take = Math.min(info.eff, p.stock[id]);
+    if (take < info.eff * SHIPPING.minLoad) return 0;
+    s.basis = p.cost[id] > 0 ? p.cost[id] : buyPrice(g, id);
+    p.stock[id] -= take; if (p.stock[id] < 1e-6) { p.stock[id] = 0; p.cost[id] = 0; }
+    return take;
+  });
+}
+// Ladung im Hafen der Karte i abliefern (verkaufen oder einlagern). Gibt den Erlös (bzw. Marktwert) zurück
+function unloadAt(g, s, i) {
+  return withMap(g, i, () => {
+    const p = g.port, id = s.cargo, price = sellPrice(g, id);
+    let rest = s.load;
+    if (s.toStock && hasKai(g)) {
+      const put = Math.max(0, Math.min(rest, capacity(g, id) - p.stock[id]));
+      if (put > 0) { p.cost[id] = (p.cost[id] * p.stock[id] + s.basis * put) / (p.stock[id] + put); p.stock[id] += put; rest -= put; }
+      g.money += rest * price; if (rest > 0) marketImpact(g, id, rest, -1);
+      return s.load * price; // eingelagerte Ware zählt zum Marktwert
+    }
+    g.money += rest * price; marketImpact(g, id, rest, -1); return rest * price;
+  });
+}
+function deliver(g, s, at) {
+  const S = g.shipping, revenue = unloadAt(g, s, at), gain = revenue - s.load * s.basis;
+  s.profit += gain; S.profit += gain; s.trips++; S.trips++; g.today.income += Math.max(0, gain);
+  s.note = `lieferte ${Math.round(s.load)} t (${gain >= 0 ? '+' : '−'}${Math.abs(Math.round(gain)).toLocaleString('de-CH')} CHF vor Unterhalt)`;
+  s.load = 0;
+}
+
 export function updateShipping(g, dt) {
   const S = g.shipping; if (!S?.ships.length) return;
   const day = CONFIG.daySeconds;
@@ -83,15 +118,8 @@ export function updateShipping(g, dt) {
     if (s.state === 'idle') {
       const info = routeInfo(g, s);
       if (!info.ok) { s.note = info.reason; continue; }
-      const q = withMap(g, s.from, () => {
-        const p = g.port, id = s.cargo;
-        if (s.autoBuy && p.stock[id] < info.eff) portBuy(g, id, info.eff - p.stock[id]);
-        const take = Math.min(info.eff, p.stock[id]);
-        if (take < info.eff * SHIPPING.minLoad) return 0;
-        s.basis = p.cost[id] > 0 ? p.cost[id] : buyPrice(g, id);
-        p.stock[id] -= take; if (p.stock[id] < 1e-6) { p.stock[id] = 0; p.cost[id] = 0; }
-        return take;
-      });
+      if (info.margin < (s.minMargin ?? 0)) { s.note = `Marge ${info.margin.toFixed(1)} CHF/t unter ${s.minMargin ?? 0}: wartet auf bessere Preise`; continue; } // Preise hängen von Marktwirkung und Schwankungen ab
+      const q = loadAt(g, s, s.from, info);
       if (q <= 0) { s.note = 'Zu wenig Ware im Lager (kaufen oder Auto-Einkauf, Geld/Lagerplatz prüfen)'; continue; }
       s.load = q; s.state = 'sail'; s.leg = 'out'; s.t = 0; s.dur = info.days * day;
       s.note = `fährt ${Math.round(q)} t ${g.maps[s.to].name}`;
@@ -99,22 +127,16 @@ export function updateShipping(g, dt) {
       s.t += dt;
       if (s.t < s.dur) continue;
       if (s.leg === 'out') {
-        const revenue = withMap(g, s.to, () => {
-          const p = g.port, id = s.cargo, price = sellPrice(g, id);
-          let rest = s.load;
-          if (s.toStock && hasKai(g)) {
-            const put = Math.max(0, Math.min(rest, capacity(g, id) - p.stock[id]));
-            if (put > 0) { p.cost[id] = (p.cost[id] * p.stock[id] + s.basis * put) / (p.stock[id] + put); p.stock[id] += put; rest -= put; }
-            g.money += rest * price;
-            return s.load * price; // eingelagerte Ware zählt zum Marktwert
-          }
-          g.money += rest * price; return rest * price;
-        });
-        const gain = revenue - s.load * s.basis;
-        s.profit += gain; S.profit += gain; s.trips++; S.trips++; g.today.income += Math.max(0, gain);
-        s.note = `lieferte ${Math.round(s.load)} t (${gain >= 0 ? '+' : '−'}${Math.abs(Math.round(gain)).toLocaleString('de-CH')} CHF vor Unterhalt)`;
-        s.load = 0; s.leg = 'back'; s.t = 0;
-      } else { s.state = 'idle'; s.leg = 'out'; s.t = 0; }
+        deliver(g, s, s.to);
+        s.leg = 'back'; s.t = 0;
+        if (s.backhaul !== false) { // Rückfracht: in die Gegenrichtung laden, wenn sich das lohnt
+          const rev = { ...s, from: s.to, to: s.from }, ri = routeInfo(g, rev);
+          if (ri.ok && ri.margin >= (s.minMargin ?? 0)) { const q = loadAt(g, rev, s.to, ri); if (q > 0) { s.load = q; s.basis = rev.basis; s.note += ` · Rückfracht ${Math.round(q)} t`; } }
+        }
+      } else {
+        if (s.load > 0) deliver(g, s, s.from);
+        s.state = 'idle'; s.leg = 'out'; s.t = 0;
+      }
     }
   }
 }

@@ -5,7 +5,7 @@ import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, ship
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass } from './sim/traffic.js';
-import { hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
+import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
@@ -278,7 +278,7 @@ function updateShipping() {
     const T = SHIPPING.types[s.type], info = routeInfo(game, s);
     return `<div class="unit ship"><div><b>${T.icon} ${s.name}</b> <small>${s.state === 'sail' ? (s.leg === 'out' ? `unterwegs mit ${Math.round(s.load)} t` : 'Rückfahrt') : 'im Hafen'} · ${s.trips} Fahrten · ${s.profit >= 0 ? '+' : '−'}${chf(Math.abs(s.profit))}<br>${s.note}</small>
       <div class="row"><select data-sr="from" data-id="${s.id}">${mapOpts(s.from)}</select> ➜ <select data-sr="to" data-id="${s.id}">${mapOpts(s.to)}</select> <b>${PORT.label[s.cargo]}</b></div>
-      <label><input type="checkbox" data-sr="autoBuy" data-id="${s.id}" ${s.autoBuy ? 'checked' : ''}> im Starthafen einkaufen</label> <label><input type="checkbox" data-sr="toStock" data-id="${s.id}" ${s.toStock ? 'checked' : ''}> im Zielhafen einlagern</label>
+      <label title="Auf der Rückfahrt in die Gegenrichtung laden, wenn es sich lohnt"><input type="checkbox" data-sr="backhaul" data-id="${s.id}" ${s.backhaul !== false ? 'checked' : ''}> Rückfracht</label> <label><input type="checkbox" data-sr="autoBuy" data-id="${s.id}" ${s.autoBuy ? 'checked' : ''}> im Starthafen einkaufen</label> <label title="Das Schiff fährt nur, wenn die erwartete Marge mindestens so hoch ist">Mindestmarge <input type="number" step="1" min="-50" max="200" value="${s.minMargin ?? 0}" data-sr="minMargin" data-id="${s.id}" style="width:54px"> CHF/t</label> <label><input type="checkbox" data-sr="toStock" data-id="${s.id}" ${s.toStock ? 'checked' : ''}> im Zielhafen einlagern</label>
       <small class="${info.ok ? (info.margin > 0 ? '' : 'warn') : 'warn'}">${info.ok ? `Ladung ${Math.round(info.eff)} t (${Math.round(info.lf * 100)} % je nach Rinne) · Fracht ${info.perT.toFixed(1)} CHF/t · Kauf ${Math.round(info.priceFrom)} ➜ Verkauf ${Math.round(info.priceTo)} · Marge ${info.margin >= 0 ? '+' : ''}${info.margin.toFixed(1)} CHF/t` : info.reason}</small></div>
       <button data-sellship="${s.id}" ${s.state === 'sail' ? 'disabled' : ''} title="Verkauf: ${Math.round(SHIPPING.sellShare * 100)} % des Preises">Verkaufen</button></div>`;
   }).join('');
@@ -431,11 +431,11 @@ function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1;
   $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, areaWork(game, a)]), areaMode, F.noNature, F.noAltlast]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, areaWork(game, a)]), areaMode, F.noNature, F.noAltlast, !!lentUnit(game)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
-  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert</small></div><button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button></div>`).join('');
+  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
   const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
@@ -447,6 +447,7 @@ function updateFleet() {
     <button id="btn-area2" ${F.units.length ? '' : 'disabled'} title="Zwei Ecken auf der Karte antippen">${areaMode ? '✔ Gebiet: fertig (G)' : `▭ Arbeitsgebiet vorgeben (G) · ${(F.areas ?? []).length}/${MAX_AREAS}`}</button>
     <label class="fleet-widen"><input type="checkbox" id="fleet-nonat" ${F.noNature ? 'checked' : ''}> Naturschutzzonen meiden: Pontons tragen kein Flachwasser am Ufer ab</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-noalt" ${F.noAltlast ? 'checked' : ''}> Altlastenbereiche meiden: Pontons lassen belastetes Material liegen</label>
+    <button id="btn-lend" ${lentUnit(game) || lendBlock(game) ? 'disabled' : ''} title="${lendBlock(game) ?? ''}">🧑‍✈️ Meinen Ponton der Flotte zuteilen</button>
     <label class="fleet-goal">Ausbauziel <select id="fleet-goal">${opts}</select></label>
     <small>${cls ? `Aktuell: ${cls.icon} ${cls.name}` : 'Alle Klassen fahren'}</small>
     <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
@@ -458,6 +459,8 @@ function updateFleet() {
   $('fleet-widthsel').onchange = (e) => { setWiden(game, F.widen, +e.target.value); fleetSig = null; updateFleet(); };
   $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
   $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
+  $('btn-lend').onclick = () => { if (sim.mode === 'slice') sim.leave(); if (lendPonton(game, sim.x, sim.y)) { syncMode(); fleetSig = null; updateFleet(); toast('Dein Ponton arbeitet für die Flotte', 'good', true); } };
+  for (const b of box.querySelectorAll('[data-recall]')) b.onclick = () => { const pos = recallPonton(game); if (pos) { sim.x = pos.x; sim.y = pos.y; } fleetSig = null; updateFleet(); toast('Ponton zurückgerufen', 'info', true); };
   $('btn-area2').onclick = toggleAreaMode;
   for (const b of box.querySelectorAll('[data-area-d]')) b.onclick = () => { const [id, d] = b.dataset.areaD.split(':'); const a = F.areas.find((q) => q.id === +id); setAreaDepth(game, +id, a.depth + +d); fleetSig = null; updateFleet(); };
   for (const sEl of box.querySelectorAll('[data-area-u]')) sEl.onchange = () => { setAreaUnit(game, +sEl.dataset.areaU, sEl.value ? +sEl.value : null); fleetSig = null; updateFleet(); };
@@ -659,6 +662,7 @@ function syncMode() {
   updateHints(); fitCanvas();
 }
 function anchor() {
+  if (lentUnit(game)) { toast('Dein Ponton arbeitet für die Flotte: im Panel «Flotte» zurückrufen', 'bad', true); return; }
   if (!sim.canFloat(sim.x, sim.y)) { toast('Hier ist zu wenig Wasser für den Ponton', 'bad', true); return; }
   if (!sim.anchor()) return;
   syncMode();
@@ -921,7 +925,8 @@ function frame(now) {
     const inMap = sim.mode === 'map';
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
-    if (tow || zoneMode || areaMode || landMode) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    if (lentUnit(game) && sim.mode === 'map') { const lu = lentUnit(game); sim.x = lu.x; sim.y = lu.y; } // der eigene Ponton fährt als Flottenschiff mit
+    if (tow || zoneMode || areaMode || landMode || lentUnit(game)) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
     ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {

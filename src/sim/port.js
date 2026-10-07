@@ -7,7 +7,7 @@ import { priceOf, ratioOf } from './market.js';
 // Der Hafen handelt mit Waren: Schiffe der passenden Fracht laden bei hohen Preisen aus deinem Lager (du verkaufst) und entladen bei tiefen
 // Preisen in dein Lager (du kaufst). Zusätzlich kannst du von Hand kaufen/verkaufen oder den Handel automatisieren (Kauf-/Verkaufsschwelle).
 export const PORT = {
-  openCost: 30000, slots: 6, spread: 0.06, reserve: 5000, shipShare: 0.15,
+  openCost: 30000, slots: 6, spread: 0.05, reserve: 5000, shipShare: 0.15,
   // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
   jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3, container: 2.5 }, fee: { kies: 5, oel: 6, container: 9 }, lateFactor: 0.5, bonusMax: 2 },
   // Baugrund: Jeder Bauplatz ist unebenes Gelände (Höhen relativ zur Sollhöhe) und muss mit der Baumaschine planiert werden, bevor gebaut werden darf
@@ -186,6 +186,12 @@ export function demolish(g, slot) { // Abriss: Lagerinhalt, der nicht mehr reinp
 }
 
 // Von Hand kaufen/verkaufen (Tonnen)
+// Marktwirkung: grosse Käufe treiben den Preis der Karte hoch, grosse Verkäufe drücken ihn (je 1000 t); die Abweichung klingt täglich ab
+export const IMPACT = { kies: 0.12, oel: 0.05, container: 0.04 };
+export function marketImpact(g, id, tons, dir) {
+  const K = CONFIG.market, m = g.market; if (!m?.dev || !(id in IMPACT)) return;
+  m.dev[id] = Math.min(K.maxRatio - 1, Math.max(K.minRatio - 1, (m.dev[id] ?? 0) + dir * (tons / 1000) * IMPACT[id]));
+}
 export function buy(g, id, tons) {
   const p = g.port; if (!hasKai(g) || !PORT.commodities[id]) return 0;
   const room = capacity(g, id) - p.stock[id], price = buyPrice(g, id);
@@ -193,7 +199,7 @@ export function buy(g, id, tons) {
   if (q <= 0) return 0;
   const c = q * price;
   p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q;
-  g.money -= c; p.spent += c; g.today.costs += c;
+  g.money -= c; p.spent += c; g.today.costs += c; marketImpact(g, id, q, +1);
   return q;
 }
 export function sell(g, id, tons) {
@@ -201,7 +207,7 @@ export function sell(g, id, tons) {
   const q = Math.max(0, Math.min(tons, p.stock[id]));
   if (q <= 0) return 0;
   const r = q * sellPrice(g, id);
-  p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r;
+  p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; marketImpact(g, id, q, -1);
   if (p.stock[id] < 1e-6) { p.stock[id] = 0; p.cost[id] = 0; }
   return q;
 }

@@ -154,3 +154,11 @@ Im Kartenvollbild öffnet `L` (Knopf «🛣 Land», sobald das Hafengelände erw
 - **Hafenzone:** Das Flachwasser (Naturschutz) neben dem Hafenbecken gehört zur Hafenzone: dort gibt es beim Baggern keine Schutzbusse. Weitere Schutzstreifen lassen sich weiter getrennt unter «Uferstreifen» kaufen.
 
 **Zweite Fahrrinne und Kreuzungsmöglichkeit auf der Karte:** Für die gewählte Schiffsklasse zeigt die Karte neben der besten Rinne (weiss/grün gestrichelt) eine existierende **zweite, getrennte Rinne in Orange** («2. Rinne», Gegenverkehr ohne Warten). Limegrüne Marken über der Rinne zeigen die Spalten, in denen zwei Rinnen nebeneinander Platz hätten (Kreuzung möglich). Die Legende erklärt beide.
+
+## Handel: Balance, Marktwirkung, Mindestmarge, Rückfracht
+- **Marktwirkung:** Grosse Käufe treiben den Preis der Karte hoch, grosse Verkäufe drücken ihn (je 1 000 t: Kies 12 %, Öl 5 %, Container 4 %); die Abweichung klingt täglich um 10 % ab. Eine Route sättigt sich, wenn man sie zu oft fährt. Der Hafen-Spread beträgt 5 % je Seite.
+- **Regionale Preise** (Endlos): dauerhafter Aufschlag/Abschlag je Karte (Kies ±40 %, Öl ±25 %, Container ±30 %). Je grösser der Unterschied zwischen zwei Karten, desto besser die Route.
+- **Mindestmarge:** Jedes Schiff fährt nur, wenn die erwartete Marge (Verkaufs- minus Einkaufspreis minus Fracht) mindestens den eingestellten Wert hat (Standard 1 CHF/t); sonst wartet es auf bessere Preise. **Rückfracht** (an): auf der Rückfahrt lädt es in Gegenrichtung, wenn sich das lohnt.
+- **Richtwerte der Schiffe** (Kauf / Unterhalt je Tag): Frachtkahn 28 000 / 120, Motorfrachter 70 000 / 260, Tankschiff 200 000 / 700, Containerschiff 260 000 / 900 CHF. Kies bringt wenig, Öl am meisten, Container hängt stark von den Preisunterschieden ab. Im Test (2 Karten, 10 Seeds, 120 Tage) lag der Gewinn nach Unterhalt bei Öl im Median bei rund 1 200 CHF/Tag, bei Kies unter 100 CHF/Tag; mit mehr Karten findest du bessere Paare.
+- **Hafenbecken:** verlandet langsam (¼ des normalen Tempos) und hat Spundwände (kein Nachrutschen der Böschung).
+- **Eigenen Ponton zuteilen:** Im Panel «Flotte» → «Meinen Ponton der Flotte zuteilen» (braucht Automatik): dein Ponton arbeitet dann wie ein gemieteter (ohne Lohn, zählt nicht zur Flottengrösse) und folgt den Flotteneinstellungen. Ankern ist gesperrt, bis du ihn zurückrufst.

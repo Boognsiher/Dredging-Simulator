@@ -9,12 +9,13 @@ import { zoneSupports } from './traffic.js';
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
 export const createFleet = () => ({ units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false });
 
-export const nextHireCost = (g) => CONFIG.fleet.costs[g.fleet.units.length] ?? null;
+const hiredCount = (g) => g.fleet.units.filter((u) => !u.self).length; // dein eigener Ponton (self) zählt nicht zu den gemieteten
+export const nextHireCost = (g) => CONFIG.fleet.costs[hiredCount(g)] ?? null;
 
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 export function hireBlock(g) {
   if (g.status !== 'playing') return 'Spiel beendet';
-  if (g.fleet.units.length >= CONFIG.fleet.max) return 'Flotte ist voll';
+  if (hiredCount(g) >= CONFIG.fleet.max) return 'Flotte ist voll';
   if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
   const cost = nextHireCost(g);
   if (g.money < cost) return `Braucht ${cost.toLocaleString('de-CH')} CHF`;
@@ -25,12 +26,31 @@ export function hireUnit(g) {
   if (hireBlock(g)) return null;
   const cost = nextHireCost(g), F = g.fleet;
   g.money -= cost;
-  const u = { id: ++F.seq, name: `Ponton ${F.units.length + 2}`, x: 1.5, y: g.river.centerY(1), state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
+  const u = { id: ++F.seq, name: `Ponton ${hiredCount(g) + 2}`, x: 1.5, y: g.river.centerY(1), state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
   F.units.push(u);
   g.say(`${u.name} gemietet (−${cost.toLocaleString('de-CH')} CHF): arbeitet selbstständig.`, 'upgrade');
   return u;
 }
 
+// Den eigenen Ponton der Flotte zuteilen (arbeitet dann wie ein gemieteter, ohne Lohn) und wieder zurückrufen
+export const lentUnit = (g) => g.fleet.units.find((u) => u.self) ?? null;
+export function lendBlock(g) {
+  if (g.status !== 'playing') return 'Spiel beendet';
+  if (lentUnit(g)) return 'Schon der Flotte zugeteilt';
+  return g.stats.autoLevel < 1 ? 'Braucht die Automatik (Ausrüstung)' : null;
+}
+export function lendPonton(g, x, y) {
+  if (lendBlock(g)) return null;
+  const F = g.fleet, u = { id: ++F.seq, name: 'Dein Ponton', self: true, x, y, state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
+  F.units.push(u);
+  g.say('Dein Ponton arbeitet jetzt für die Flotte (kein Lohn). Zurückrufen im Panel «Flotte».', 'upgrade');
+  return u;
+}
+export function recallPonton(g) {
+  const u = lentUnit(g); if (!u) return null;
+  u.sim?.leave(); g.fleet.units.splice(g.fleet.units.indexOf(u), 1);
+  return { x: u.x, y: u.y };
+}
 export function dismissUnit(g, id) {
   const F = g.fleet, i = F.units.findIndex((u) => u.id === id);
   if (i < 0) return false;
