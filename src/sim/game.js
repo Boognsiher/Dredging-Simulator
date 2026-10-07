@@ -106,7 +106,7 @@ export class Game {
     this.money -= cost;
     let name = MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
     const river = River.generate(createRng(seed), endlessRiver(this.seed, k)); river.wl = this.wl;
-    const br = createRng(seed ^ 0x9e3779b9), bias = {}; for (const id of ['kies', 'oel']) bias[id] = +br.range(-0.28, 0.28).toFixed(2); // regionale Preise: Handel zwischen den Karten lohnt sich
+    const br = createRng(seed ^ 0x9e3779b9), bias = {}; for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-0.28, 0.28).toFixed(2); // regionale Preise: Handel zwischen den Karten lohnt sich
     this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
     this.mapIdx = k;
     this.port.bay = carveBay(this.river, this.wl);

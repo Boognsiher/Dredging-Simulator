@@ -288,6 +288,7 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
 
 const fullLane = (g, id) => { carveFairway(g.river, g.wl, shipById(id), CONFIG.partialDepth + 0.1); g.analyze(true); }; // Rinne gleich auf volle Ladetiefe
 import { ENDLESS } from '../src/config.js';
+import { ensurePort } from '../src/sim/port.js';
 import { buyShip, sellShip, setRoute, routeInfo, updateShipping, SHIPPING, withMap } from '../src/sim/shipping.js';
 import { setAvoid, cellAllowed } from '../src/sim/fleet.js';
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
@@ -1462,4 +1463,15 @@ test('Flotte: Naturschutzzonen und Altlastenbereiche lassen sich sperren', () =>
   setAvoid(g, true, false); assert.equal(cellAllowed(g, nat), false); assert.ok(cellAllowed(g, alt));
   const sl = new SliceSim(r, computeStats({}), 20, 12, createRng(1)); sl.avoidAltlast = true;
   const col = alt % r.cols; void col;
+});
+
+test('Container-Fracht: Terminal, Lager, eigenes Containerschiff, alte Stände werden nachgerüstet', () => {
+  const g = twoPorts();
+  for (let i = 0; i < 2; i++) { g.maps[i].port.slots[3] = { type: 'container', level: 1 }; Object.assign(g.maps[i].fair.container, { passable: true, loadFactor: 0.8 }); g.maps[i].market.bias.container = i ? 0.25 : -0.25; }
+  const s = buyShip(g, 'container'); assert.ok(s && s.cargo === 'container');
+  const info = routeInfo(g, s); assert.ok(info.ok, info.reason); assert.ok(info.eff > 700 && info.eff < 900);
+  for (let i = 0; i < 14 * 14 * 20; i++) updateShipping(g, 0.05);
+  assert.ok(s.trips >= 1, 'Containerschiff fährt');
+  const old = { stock: { kies: 5, oel: 0 }, cost: { kies: 1, oel: 0 }, auto: {} };
+  ensurePort(old); assert.equal(old.stock.container, 0); assert.ok(old.auto.container);
 });

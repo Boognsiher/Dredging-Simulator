@@ -8,7 +8,7 @@ import { priceOf, ratioOf } from './market.js';
 export const PORT = {
   openCost: 30000, slots: 6, spread: 0.06, reserve: 5000, shipShare: 0.15,
   // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
-  jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3 }, fee: { kies: 5, oel: 6 }, lateFactor: 0.5, bonusMax: 2 },
+  jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3, container: 2.5 }, fee: { kies: 5, oel: 6, container: 9 }, lateFactor: 0.5, bonusMax: 2 },
   // Baugrund: Jeder Bauplatz ist unebenes Gelände (Höhen relativ zur Sollhöhe) und muss mit der Baumaschine planiert werden, bevor gebaut werden darf
   site: { w: 5, h: 4, maxCarry: 4, fillCost: 35, autoCost: 70, act: 0.3, travel: 0.1 },
   machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 } },
@@ -17,9 +17,11 @@ export const PORT = {
     kies: { name: 'Kieslager', icon: '⛰', commodity: 'kies', cost: 9000, up: [14000, 30000], cap: [600, 1600, 3600], text: 'Lager für Kies und Sand. Billig im Einkauf, wenig Marge pro Tonne, dafür viel Menge.' },
     tank: { name: 'Tanklager', icon: '🛢', commodity: 'oel', cost: 20000, up: [28000, 60000], cap: [500, 1300, 3000], text: 'Lager für Mineralöl. Teuer, aber hohe Preise und grosse Preisausschläge.' },
     kran: { name: 'Portalkran', icon: '🏗', cost: 14000, max: 1, text: 'Grosse Greifer: im Verlade-Minispiel 32 t pro Treffer statt 14 t (aber schnelleres Pendel).' },
+    container: { name: 'Containerterminal', icon: '📦', commodity: 'container', cost: 32000, up: [45000, 90000], cap: [300, 800, 1800], text: 'Umschlag und Lager für Container (Stückgut). Hoher Wert pro Tonne, braucht tiefe Hafenbecken für die grossen Containerschiffe.' },
     sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
   },
-  commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' } },
+  commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' }, container: { name: 'Container', lot: 40, icon: '📦' } },
+  storage: { kies: 'kies', oel: 'tank', container: 'container' }, label: { kies: 'Kies', oel: 'Öl', container: 'Container' }, // Gebäude je Ware, Anzeigenamen
 };
 
 // Hafenbecken: Bucht am Ufer (Karte), flach angelegt. Sie muss ausgebaggert werden, damit Schiffe anlegen können.
@@ -58,14 +60,16 @@ export const bayReady = (g) => bayDepth(g) >= PORT.bay.target - 0.05;
 export function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
   return {
-    open: false, slots: Array(PORT.slots).fill(null), stock: { kies: 0, oel: 0 }, cost: { kies: 0, oel: 0 }, // cost = Einstandspreis je t (Durchschnitt)
-    auto: { kies: auto(), oel: auto() }, jobs: [], sites: Array(PORT.slots).fill(null), jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
+    open: false, slots: Array(PORT.slots).fill(null), stock: { kies: 0, oel: 0, container: 0 }, cost: { kies: 0, oel: 0, container: 0 }, // cost = Einstandspreis je t (Durchschnitt)
+    auto: { kies: auto(), oel: auto(), container: auto() }, jobs: [], sites: Array(PORT.slots).fill(null), jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
   };
 }
 
 const slotsOf = (p, type) => p.slots.filter((s) => s?.type === type);
+// ältere Spielstände: neue Waren nachrüsten
+export function ensurePort(p) { for (const id of Object.keys(PORT.commodities)) { p.stock[id] ??= 0; p.cost[id] ??= 0; p.auto[id] ??= { on: false, buyBelow: 0.85, sellAbove: 1.2 }; } return p; }
 export const hasKai = (g) => g.port.open && slotsOf(g.port, 'kai').length > 0;
-export const capacity = (g, id) => slotsOf(g.port, id === 'oel' ? 'tank' : 'kies').reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0);
+export const capacity = (g, id) => slotsOf(g.port, PORT.storage[id]).reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0);
 export const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => { const s = slotsOf(m.port, 'sanierung')[0]; return s ? PORT.buildings.sanierung.refund[s.level - 1] : 0; })); // beste Sanierungsanlage aller Karten
 export const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
 export const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);

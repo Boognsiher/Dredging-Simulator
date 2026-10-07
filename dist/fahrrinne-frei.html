@@ -551,7 +551,7 @@ body.mode-map #map-select { order: 4; flex: none; }
 const __defs = [
 function(){
 const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } = __m(1);
-const { buyPrice, sellPrice } = __m(4);
+const { PORT, buyPrice, sellPrice } = __m(4);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } = __m(2);
 const { Game } = __m(6);
 const { acceptContract } = __m(14);
@@ -847,16 +847,16 @@ function updateShipping() {
   const S = game.shipping, sig = JSON.stringify([S.ships.map((s) => [s.id, s.state, s.from, s.to, s.cargo, s.autoBuy, s.toStock, s.note, Math.round(s.profit / 100)]), game.maps.map((m) => m.name), Math.floor(game.money / 2000), game.maps.map((m) => game.maps.length && [Math.round(m.fair.kahn.loadFactor * 20), Math.round(m.fair.motor.loadFactor * 20)])]);
   if (sig === shipSig) return; shipSig = sig;
   const mapOpts = (sel) => game.maps.map((m, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${m.name}</option>`).join('');
-  const prices = ['kies', 'oel'].map((id) => `${id === 'oel' ? 'Öl' : 'Kies'}: ` + game.maps.map((m, i) => `${m.name} <b>${withMap(game, i, () => Math.round(buyPrice(game, id)))}</b>/${withMap(game, i, () => Math.round(sellPrice(game, id)))}`).join(' · ')).join('<br>');
+  const prices = ['kies', 'oel', 'container'].map((id) => `${PORT.label[id]}: ` + game.maps.map((m, i) => `${m.name} <b>${withMap(game, i, () => Math.round(buyPrice(game, id)))}</b>/${withMap(game, i, () => Math.round(sellPrice(game, id)))}`).join(' · ')).join('<br>');
   const cards = S.ships.map((s) => {
     const T = SHIPPING.types[s.type], info = routeInfo(game, s);
     return `<div class="unit ship"><div><b>${T.icon} ${s.name}</b> <small>${s.state === 'sail' ? (s.leg === 'out' ? `unterwegs mit ${Math.round(s.load)} t` : 'Rückfahrt') : 'im Hafen'} · ${s.trips} Fahrten · ${s.profit >= 0 ? '+' : '−'}${chf(Math.abs(s.profit))}<br>${s.note}</small>
-      <div class="row"><select data-sr="from" data-id="${s.id}">${mapOpts(s.from)}</select> ➜ <select data-sr="to" data-id="${s.id}">${mapOpts(s.to)}</select> <b>${s.cargo === 'oel' ? 'Öl' : 'Kies'}</b></div>
+      <div class="row"><select data-sr="from" data-id="${s.id}">${mapOpts(s.from)}</select> ➜ <select data-sr="to" data-id="${s.id}">${mapOpts(s.to)}</select> <b>${PORT.label[s.cargo]}</b></div>
       <label><input type="checkbox" data-sr="autoBuy" data-id="${s.id}" ${s.autoBuy ? 'checked' : ''}> im Starthafen einkaufen</label> <label><input type="checkbox" data-sr="toStock" data-id="${s.id}" ${s.toStock ? 'checked' : ''}> im Zielhafen einlagern</label>
       <small class="${info.ok ? (info.margin > 0 ? '' : 'warn') : 'warn'}">${info.ok ? `Ladung ${Math.round(info.eff)} t (${Math.round(info.lf * 100)} % je nach Rinne) · Fracht ${info.perT.toFixed(1)} CHF/t · Kauf ${Math.round(info.priceFrom)} ➜ Verkauf ${Math.round(info.priceTo)} · Marge ${info.margin >= 0 ? '+' : ''}${info.margin.toFixed(1)} CHF/t` : info.reason}</small></div>
       <button data-sellship="${s.id}" ${s.state === 'sail' ? 'disabled' : ''} title="Verkauf: ${Math.round(SHIPPING.sellShare * 100)} % des Preises">Verkaufen</button></div>`;
   }).join('');
-  const buys = Object.entries(SHIPPING.types).map(([k, T]) => `<button data-buyship="${k}" ${shipBlock(game, k) ? 'disabled' : ''} title="${shipBlock(game, k) ?? ''}">${T.icon} ${T.name} (${T.cap} t, ${T['cargos'][0] === 'oel' ? 'Öl' : 'Kies'}) ${chf(T.cost)}</button>`).join('');
+  const buys = Object.entries(SHIPPING.types).map(([k, T]) => `<button data-buyship="${k}" ${shipBlock(game, k) ? 'disabled' : ''} title="${shipBlock(game, k) ?? ''}">${T.icon} ${T.name} (${T.cap} t, ${PORT.label[T.cargos[0]]}) ${chf(T.cost)}</button>`).join('');
   box.innerHTML = `<small>Eigene Frachter fahren Ware zwischen den Häfen der Karten (beide Häfen brauchen Kai, Lager und ein tiefes Hafenbecken). Gewinn = Preisunterschied (Kauf/Verkauf je Karte) minus Fracht; bei Niedrigwasser darf weniger geladen werden, die Fracht wird teurer. Unterhalt läuft täglich.<br>Preise je Karte (Kauf/Verkauf je t):<br>${prices}</small>${cards}<div class="shipbuy">${buys}</div>`;
   for (const el of box.querySelectorAll('[data-sr]')) el.onchange = () => { const k = el.dataset.sr, id = +el.dataset.id; setRoute(game, id, { [k]: el.type === 'checkbox' ? el.checked : +el.value }); shipSig = null; updateShipping(); };
   for (const b of box.querySelectorAll('[data-sellship]')) b.onclick = () => { sellShip(game, +b.dataset.sellship); shipSig = null; updateShipping(); };
@@ -1629,7 +1629,7 @@ return {  };
 function(){
 const { CONFIG, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
-const { hasKai, capacity, bayDepth, buy: portBuy, buyPrice, sellPrice } = __m(4);
+const { PORT, hasKai, capacity, bayDepth, buy: portBuy, buyPrice, sellPrice } = __m(4);
 
 
 
@@ -1642,6 +1642,7 @@ const SHIPPING = {
   types: {
     kahn: { name: 'Frachtkahn', icon: '🛶', cost: 45000, cap: 240, perDay: 260, cargos: ['kies'] },
     motor: { name: 'Motorfrachter', icon: '🚤', cost: 110000, cap: 640, perDay: 520, cargos: ['kies'] },
+    container: { name: 'Containerschiff', icon: '🚢', cost: 380000, cap: 1000, perDay: 1500, cargos: ['container'] },
     tank: { name: 'Tankschiff', icon: '🛢️', cost: 200000, cap: 560, perDay: 900, cargos: ['oel'] },
   },
 };
@@ -1691,7 +1692,7 @@ function routeInfo(g, s) {
   for (const i of ends) {
     const m = g.maps[i], f = m.fair?.[cid];
     if (!f?.passable) { out.reason = `Rinne ${m.name} gesperrt für ${T.name}`; return out; }
-    const why = withMap(g, i, () => (!hasKai(g) ? 'Kai fehlt' : capacity(g, s.cargo) <= 0 ? `Lager für ${s.cargo === 'oel' ? 'Öl' : 'Kies'} fehlt` : bayDepth(g) < minNeedDepth(shipById(cid)) ? 'Hafenbecken zu flach' : ''));
+    const why = withMap(g, i, () => (!hasKai(g) ? 'Kai fehlt' : capacity(g, s.cargo) <= 0 ? `Lager für ${PORT.label[s.cargo]} fehlt` : bayDepth(g) < minNeedDepth(shipById(cid)) ? 'Hafenbecken zu flach' : ''));
     if (why) { out.reason = `${why} (${m.name})`; return out; }
   }
   out.lf = Math.min(...ends.map((i) => g.maps[i].fair[cid].loadFactor));
@@ -2266,7 +2267,7 @@ const { priceOf, ratioOf } = __m(5);
 const PORT = {
   openCost: 30000, slots: 6, spread: 0.06, reserve: 5000, shipShare: 0.15,
   // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
-  jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3 }, fee: { kies: 5, oel: 6 }, lateFactor: 0.5, bonusMax: 2 },
+  jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3, container: 2.5 }, fee: { kies: 5, oel: 6, container: 9 }, lateFactor: 0.5, bonusMax: 2 },
   // Baugrund: Jeder Bauplatz ist unebenes Gelände (Höhen relativ zur Sollhöhe) und muss mit der Baumaschine planiert werden, bevor gebaut werden darf
   site: { w: 5, h: 4, maxCarry: 4, fillCost: 35, autoCost: 70, act: 0.3, travel: 0.1 },
   machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 } },
@@ -2275,9 +2276,11 @@ const PORT = {
     kies: { name: 'Kieslager', icon: '⛰', commodity: 'kies', cost: 9000, up: [14000, 30000], cap: [600, 1600, 3600], text: 'Lager für Kies und Sand. Billig im Einkauf, wenig Marge pro Tonne, dafür viel Menge.' },
     tank: { name: 'Tanklager', icon: '🛢', commodity: 'oel', cost: 20000, up: [28000, 60000], cap: [500, 1300, 3000], text: 'Lager für Mineralöl. Teuer, aber hohe Preise und grosse Preisausschläge.' },
     kran: { name: 'Portalkran', icon: '🏗', cost: 14000, max: 1, text: 'Grosse Greifer: im Verlade-Minispiel 32 t pro Treffer statt 14 t (aber schnelleres Pendel).' },
+    container: { name: 'Containerterminal', icon: '📦', commodity: 'container', cost: 32000, up: [45000, 90000], cap: [300, 800, 1800], text: 'Umschlag und Lager für Container (Stückgut). Hoher Wert pro Tonne, braucht tiefe Hafenbecken für die grossen Containerschiffe.' },
     sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
   },
-  commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' } },
+  commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' }, container: { name: 'Container', lot: 40, icon: '📦' } },
+  storage: { kies: 'kies', oel: 'tank', container: 'container' }, label: { kies: 'Kies', oel: 'Öl', container: 'Container' }, // Gebäude je Ware, Anzeigenamen
 };
 
 // Hafenbecken: Bucht am Ufer (Karte), flach angelegt. Sie muss ausgebaggert werden, damit Schiffe anlegen können.
@@ -2316,14 +2319,16 @@ const bayReady = (g) => bayDepth(g) >= PORT.bay.target - 0.05;
 function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
   return {
-    open: false, slots: Array(PORT.slots).fill(null), stock: { kies: 0, oel: 0 }, cost: { kies: 0, oel: 0 }, // cost = Einstandspreis je t (Durchschnitt)
-    auto: { kies: auto(), oel: auto() }, jobs: [], sites: Array(PORT.slots).fill(null), jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
+    open: false, slots: Array(PORT.slots).fill(null), stock: { kies: 0, oel: 0, container: 0 }, cost: { kies: 0, oel: 0, container: 0 }, // cost = Einstandspreis je t (Durchschnitt)
+    auto: { kies: auto(), oel: auto(), container: auto() }, jobs: [], sites: Array(PORT.slots).fill(null), jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
   };
 }
 
 const slotsOf = (p, type) => p.slots.filter((s) => s?.type === type);
+// ältere Spielstände: neue Waren nachrüsten
+function ensurePort(p) { for (const id of Object.keys(PORT.commodities)) { p.stock[id] ??= 0; p.cost[id] ??= 0; p.auto[id] ??= { on: false, buyBelow: 0.85, sellAbove: 1.2 }; } return p; }
 const hasKai = (g) => g.port.open && slotsOf(g.port, 'kai').length > 0;
-const capacity = (g, id) => slotsOf(g.port, id === 'oel' ? 'tank' : 'kies').reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0);
+const capacity = (g, id) => slotsOf(g.port, PORT.storage[id]).reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0);
 const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => { const s = slotsOf(m.port, 'sanierung')[0]; return s ? PORT.buildings.sanierung.refund[s.level - 1] : 0; })); // beste Sanierungsanlage aller Karten
 const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
 const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
@@ -2508,7 +2513,7 @@ function portDay(g) {
   }
 }
 
-return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, bayReady: bayReady, createPort: createPort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, buy: buy, sell: sell, machineOf: machineOf, portShip: portShip, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, buy: buy, sell: sell, machineOf: machineOf, portShip: portShip, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 const { CONFIG, CARGOS } = __m(2);
@@ -2682,7 +2687,7 @@ class Game {
     this.money -= cost;
     let name = MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
     const river = River.generate(createRng(seed), endlessRiver(this.seed, k)); river.wl = this.wl;
-    const br = createRng(seed ^ 0x9e3779b9), bias = {}; for (const id of ['kies', 'oel']) bias[id] = +br.range(-0.28, 0.28).toFixed(2); // regionale Preise: Handel zwischen den Karten lohnt sich
+    const br = createRng(seed ^ 0x9e3779b9), bias = {}; for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-0.28, 0.28).toFixed(2); // regionale Preise: Handel zwischen den Karten lohnt sich
     this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
     this.mapIdx = k;
     this.port.bay = carveBay(this.river, this.wl);
@@ -4981,7 +4986,7 @@ function(){
 const { Game, endlessRiver } = __m(6);
 const { createRng } = __m(12);
 const { createMarket } = __m(5);
-const { createPort } = __m(4);
+const { createPort, ensurePort } = __m(4);
 const { levelById } = __m(2);
 const { River } = __m(8);
 
@@ -5049,7 +5054,7 @@ function restoreGame(text) {
       const ref = i === 0 ? fresh : River.generate(createRng(m.seed), game.level.endless ? endlessRiver(game.seed, i) : game.level.river);
       river.centerY = ref.centerY; river.halfW = ref.halfW;
       m.river = river; m.site = null; m.fair = null;
-      m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort();
+      m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort(); ensurePort(m.port);
       m.fairClock = m.fairClock ?? 0; m.sedClock = m.sedClock ?? 0;
     });
     game.rng.setState(s.rng);
@@ -5330,7 +5335,7 @@ function setupPort(root, getGame, onChange) {
         h += `</div><div class="port-trade">`;
         for (const [id, C] of Object.entries(PORT.commodities)) {
           const cap = capacity(g, id), st = p.stock[id], r = ratioOf(g.market, id), a = p.auto[id];
-          if (cap <= 0) { h += `<div class="port-card"><b>${C.icon} ${C.name}</b><small> braucht ein ${id === 'oel' ? 'Tanklager' : 'Kieslager'}</small></div>`; continue; }
+          if (cap <= 0) { h += `<div class="port-card"><b>${C.icon} ${C.name}</b><small> braucht: ${PORT.buildings[PORT.storage[id]].name}</small></div>`; continue; }
           const gain = p.cost[id] > 0 ? st * (sellPrice(g, id) - p.cost[id]) : 0;
           h += `<div class="port-card"><b>${C.icon} ${C.name}</b> <span class="${r > 1.1 ? 'tr-up' : r < 0.9 ? 'tr-down' : ''}">${Math.round(priceOf(g.market, id))} CHF/t (${Math.round(r * 100)} %)</span>
             <div class="bar"><i style="width:${(st / cap) * 100}%"></i></div><small>Lager ${t(st)} von ${t(cap)}${p.cost[id] > 0 ? ` · Einstand ${Math.round(p.cost[id])} CHF/t · ${gain >= 0 ? 'Gewinn' : 'Verlust'} bei Verkauf ${chf(Math.abs(gain))}` : ''}</small>

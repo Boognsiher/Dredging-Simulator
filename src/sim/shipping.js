@@ -1,6 +1,6 @@
 import { CONFIG, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
-import { hasKai, capacity, bayDepth, buy as portBuy, buyPrice, sellPrice } from './port.js';
+import { PORT, hasKai, capacity, bayDepth, buy as portBuy, buyPrice, sellPrice } from './port.js';
 
 // Eigene Reederei: Frachter fahren Ware zwischen den Häfen verschiedener Karten (Endlos-Modus). Jede Karte hat eigene Preise (Markt mit Bias),
 // der Gewinn ist der Preisunterschied minus Spread und Frachtkosten. Wie viel ein Schiff laden darf, hängt von der Tiefe der Fahrrinne auf beiden Karten ab
@@ -10,6 +10,7 @@ export const SHIPPING = {
   types: {
     kahn: { name: 'Frachtkahn', icon: '🛶', cost: 45000, cap: 240, perDay: 260, cargos: ['kies'] },
     motor: { name: 'Motorfrachter', icon: '🚤', cost: 110000, cap: 640, perDay: 520, cargos: ['kies'] },
+    container: { name: 'Containerschiff', icon: '🚢', cost: 380000, cap: 1000, perDay: 1500, cargos: ['container'] },
     tank: { name: 'Tankschiff', icon: '🛢️', cost: 200000, cap: 560, perDay: 900, cargos: ['oel'] },
   },
 };
@@ -59,7 +60,7 @@ export function routeInfo(g, s) {
   for (const i of ends) {
     const m = g.maps[i], f = m.fair?.[cid];
     if (!f?.passable) { out.reason = `Rinne ${m.name} gesperrt für ${T.name}`; return out; }
-    const why = withMap(g, i, () => (!hasKai(g) ? 'Kai fehlt' : capacity(g, s.cargo) <= 0 ? `Lager für ${s.cargo === 'oel' ? 'Öl' : 'Kies'} fehlt` : bayDepth(g) < minNeedDepth(shipById(cid)) ? 'Hafenbecken zu flach' : ''));
+    const why = withMap(g, i, () => (!hasKai(g) ? 'Kai fehlt' : capacity(g, s.cargo) <= 0 ? `Lager für ${PORT.label[s.cargo]} fehlt` : bayDepth(g) < minNeedDepth(shipById(cid)) ? 'Hafenbecken zu flach' : ''));
     if (why) { out.reason = `${why} (${m.name})`; return out; }
   }
   out.lf = Math.min(...ends.map((i) => g.maps[i].fair[cid].loadFactor));

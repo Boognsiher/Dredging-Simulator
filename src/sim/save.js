@@ -1,7 +1,7 @@
 import { Game, endlessRiver } from './game.js';
 import { createRng } from './rng.js';
 import { createMarket } from './market.js';
-import { createPort } from './port.js';
+import { createPort, ensurePort } from './port.js';
 import { levelById } from '../config.js';
 import { River } from './river.js';
 
@@ -63,7 +63,7 @@ export function restoreGame(text) {
       const ref = i === 0 ? fresh : River.generate(createRng(m.seed), game.level.endless ? endlessRiver(game.seed, i) : game.level.river);
       river.centerY = ref.centerY; river.halfW = ref.halfW;
       m.river = river; m.site = null; m.fair = null;
-      m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort();
+      m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort(); ensurePort(m.port);
       m.fairClock = m.fairClock ?? 0; m.sedClock = m.sedClock ?? 0;
     });
     game.rng.setState(s.rng);

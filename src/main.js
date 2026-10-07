@@ -1,5 +1,5 @@
 import { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } from './sim/shipping.js';
-import { buyPrice, sellPrice } from './sim/port.js';
+import { PORT, buyPrice, sellPrice } from './sim/port.js';
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } from './config.js';
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
@@ -271,16 +271,16 @@ function updateShipping() {
   const S = game.shipping, sig = JSON.stringify([S.ships.map((s) => [s.id, s.state, s.from, s.to, s.cargo, s.autoBuy, s.toStock, s.note, Math.round(s.profit / 100)]), game.maps.map((m) => m.name), Math.floor(game.money / 2000), game.maps.map((m) => game.maps.length && [Math.round(m.fair.kahn.loadFactor * 20), Math.round(m.fair.motor.loadFactor * 20)])]);
   if (sig === shipSig) return; shipSig = sig;
   const mapOpts = (sel) => game.maps.map((m, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${m.name}</option>`).join('');
-  const prices = ['kies', 'oel'].map((id) => `${id === 'oel' ? 'Öl' : 'Kies'}: ` + game.maps.map((m, i) => `${m.name} <b>${withMap(game, i, () => Math.round(buyPrice(game, id)))}</b>/${withMap(game, i, () => Math.round(sellPrice(game, id)))}`).join(' · ')).join('<br>');
+  const prices = ['kies', 'oel', 'container'].map((id) => `${PORT.label[id]}: ` + game.maps.map((m, i) => `${m.name} <b>${withMap(game, i, () => Math.round(buyPrice(game, id)))}</b>/${withMap(game, i, () => Math.round(sellPrice(game, id)))}`).join(' · ')).join('<br>');
   const cards = S.ships.map((s) => {
     const T = SHIPPING.types[s.type], info = routeInfo(game, s);
     return `<div class="unit ship"><div><b>${T.icon} ${s.name}</b> <small>${s.state === 'sail' ? (s.leg === 'out' ? `unterwegs mit ${Math.round(s.load)} t` : 'Rückfahrt') : 'im Hafen'} · ${s.trips} Fahrten · ${s.profit >= 0 ? '+' : '−'}${chf(Math.abs(s.profit))}<br>${s.note}</small>
-      <div class="row"><select data-sr="from" data-id="${s.id}">${mapOpts(s.from)}</select> ➜ <select data-sr="to" data-id="${s.id}">${mapOpts(s.to)}</select> <b>${s.cargo === 'oel' ? 'Öl' : 'Kies'}</b></div>
+      <div class="row"><select data-sr="from" data-id="${s.id}">${mapOpts(s.from)}</select> ➜ <select data-sr="to" data-id="${s.id}">${mapOpts(s.to)}</select> <b>${PORT.label[s.cargo]}</b></div>
       <label><input type="checkbox" data-sr="autoBuy" data-id="${s.id}" ${s.autoBuy ? 'checked' : ''}> im Starthafen einkaufen</label> <label><input type="checkbox" data-sr="toStock" data-id="${s.id}" ${s.toStock ? 'checked' : ''}> im Zielhafen einlagern</label>
       <small class="${info.ok ? (info.margin > 0 ? '' : 'warn') : 'warn'}">${info.ok ? `Ladung ${Math.round(info.eff)} t (${Math.round(info.lf * 100)} % je nach Rinne) · Fracht ${info.perT.toFixed(1)} CHF/t · Kauf ${Math.round(info.priceFrom)} ➜ Verkauf ${Math.round(info.priceTo)} · Marge ${info.margin >= 0 ? '+' : ''}${info.margin.toFixed(1)} CHF/t` : info.reason}</small></div>
       <button data-sellship="${s.id}" ${s.state === 'sail' ? 'disabled' : ''} title="Verkauf: ${Math.round(SHIPPING.sellShare * 100)} % des Preises">Verkaufen</button></div>`;
   }).join('');
-  const buys = Object.entries(SHIPPING.types).map(([k, T]) => `<button data-buyship="${k}" ${shipBlock(game, k) ? 'disabled' : ''} title="${shipBlock(game, k) ?? ''}">${T.icon} ${T.name} (${T.cap} t, ${T['cargos'][0] === 'oel' ? 'Öl' : 'Kies'}) ${chf(T.cost)}</button>`).join('');
+  const buys = Object.entries(SHIPPING.types).map(([k, T]) => `<button data-buyship="${k}" ${shipBlock(game, k) ? 'disabled' : ''} title="${shipBlock(game, k) ?? ''}">${T.icon} ${T.name} (${T.cap} t, ${PORT.label[T.cargos[0]]}) ${chf(T.cost)}</button>`).join('');
   box.innerHTML = `<small>Eigene Frachter fahren Ware zwischen den Häfen der Karten (beide Häfen brauchen Kai, Lager und ein tiefes Hafenbecken). Gewinn = Preisunterschied (Kauf/Verkauf je Karte) minus Fracht; bei Niedrigwasser darf weniger geladen werden, die Fracht wird teurer. Unterhalt läuft täglich.<br>Preise je Karte (Kauf/Verkauf je t):<br>${prices}</small>${cards}<div class="shipbuy">${buys}</div>`;
   for (const el of box.querySelectorAll('[data-sr]')) el.onchange = () => { const k = el.dataset.sr, id = +el.dataset.id; setRoute(game, id, { [k]: el.type === 'checkbox' ? el.checked : +el.value }); shipSig = null; updateShipping(); };
   for (const b of box.querySelectorAll('[data-sellship]')) b.onclick = () => { sellShip(game, +b.dataset.sellship); shipSig = null; updateShipping(); };

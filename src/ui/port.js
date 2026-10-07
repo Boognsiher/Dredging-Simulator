@@ -84,7 +84,7 @@ export function setupPort(root, getGame, onChange) {
         h += `</div><div class="port-trade">`;
         for (const [id, C] of Object.entries(PORT.commodities)) {
           const cap = capacity(g, id), st = p.stock[id], r = ratioOf(g.market, id), a = p.auto[id];
-          if (cap <= 0) { h += `<div class="port-card"><b>${C.icon} ${C.name}</b><small> braucht ein ${id === 'oel' ? 'Tanklager' : 'Kieslager'}</small></div>`; continue; }
+          if (cap <= 0) { h += `<div class="port-card"><b>${C.icon} ${C.name}</b><small> braucht: ${PORT.buildings[PORT.storage[id]].name}</small></div>`; continue; }
           const gain = p.cost[id] > 0 ? st * (sellPrice(g, id) - p.cost[id]) : 0;
           h += `<div class="port-card"><b>${C.icon} ${C.name}</b> <span class="${r > 1.1 ? 'tr-up' : r < 0.9 ? 'tr-down' : ''}">${Math.round(priceOf(g.market, id))} CHF/t (${Math.round(r * 100)} %)</span>
             <div class="bar"><i style="width:${(st / cap) * 100}%"></i></div><small>Lager ${t(st)} von ${t(cap)}${p.cost[id] > 0 ? ` · Einstand ${Math.round(p.cost[id])} CHF/t · ${gain >= 0 ? 'Gewinn' : 'Verlust'} bei Verkauf ${chf(Math.abs(gain))}` : ''}</small>
