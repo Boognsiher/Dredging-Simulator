@@ -96,6 +96,12 @@
           <span><i style="background:rgba(150,90,200,.7)"></i>Fels im Weg</span>
         </div>
       </details>
+      <details id="save-tools"><summary>Spielstand sichern &amp; laden</summary>
+        <p><small>Der Spielstand liegt nur in diesem Browser. Zum Sichern, Weitergeben oder für den Wechsel zwischen Geräten:</small></p>
+        <div class="row"><button id="btn-export">⬇ Exportieren (Datei)</button><button id="btn-copy">📋 In Zwischenablage</button></div>
+        <div class="row"><button id="btn-import">⬆ Importieren (Datei)</button><input type="file" id="file-import" accept=".json,application/json,text/plain" hidden></div>
+        <small id="save-msg"></small>
+      </details>
       <h2 id="h-maps" hidden>Karten</h2>
       <div id="maps" hidden></div>
       <h2 id="h-ship" hidden>Reederei</h2>

@@ -831,6 +831,28 @@ function restart(loaded = null) {
   if (!(loaded instanceof Game)) { clearSave(); toast(game.level.blurb, 'info', true); } else saveGame();
 }
 
+// Spielstand sichern/laden (Datei oder Zwischenablage): so lässt er sich weitergeben oder auf ein anderes Gerät holen
+const saveMsg = (t) => { $('save-msg').textContent = t; };
+$('btn-export').onclick = () => {
+  try {
+    const blob = new Blob([serializeGame(game)], { type: 'application/json' }), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `fahrrinne-frei-tag${game.day}.json`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    saveMsg('Spielstand als Datei gespeichert.');
+  } catch { saveMsg('Export nicht möglich.'); }
+};
+$('btn-copy').onclick = async () => {
+  try { await navigator.clipboard.writeText(serializeGame(game)); saveMsg('Spielstand in die Zwischenablage kopiert.'); } catch { saveMsg('Kopieren nicht möglich: nimm den Export als Datei.'); }
+};
+$('btn-import').onclick = () => $('file-import').click();
+$('file-import').onchange = async (e) => {
+  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+  try {
+    const text = await file.text(), g = restoreGame(text);
+    if (!g) { saveMsg('Datei ist kein gültiger Spielstand (oder von einer inkompatiblen Version).'); return; }
+    restart(g); saveMsg('Spielstand geladen.');
+  } catch { saveMsg('Datei konnte nicht gelesen werden.'); }
+};
+
 $('btn-pump').onclick = togglePump;
 $('chk-fritz').checked = advisor.enabled;
 $('chk-fritz').onchange = (e) => setFritz(e.target.checked);
