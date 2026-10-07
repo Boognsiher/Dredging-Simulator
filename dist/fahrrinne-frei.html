@@ -318,7 +318,7 @@ body.touch #classbar { padding-right: 4px; }
 #concrete .packs { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; } #concrete .packs button { flex: 1 1 auto; margin: 0; font-size: 12px; }
 #concrete .mixer { background: #ffffff0d; border-radius: 8px; padding: 8px 10px; margin-top: 6px; } #concrete label { display: flex; gap: 6px; margin-top: 6px; }
 .fleet-widen { display: block; margin-top: 8px; font-size: 12px; } .fleet-widen select { margin-left: 6px; padding: 2px; border-radius: 4px; background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; }
-#btn-tow:not(:disabled) { background: var(--accent); color: #04222b; font-weight: 600; }
+#btn-goto, #btn-tow:not(:disabled) { background: var(--accent); color: #04222b; font-weight: 600; }
 
 /* ---------- Hafen-Seite ---------- */
 #port-page { position: fixed; inset: 0; z-index: 25; overflow-y: auto; background: #0b1a26; padding: 14px; text-align: left; }
@@ -491,6 +491,7 @@ body.mode-map #map-select { order: 4; flex: none; }
         <button id="btn-area" hidden>▭ Gebiet (G)</button>
         <button id="btn-land" hidden>🛣 Land (L)</button>
         <button id="btn-zone">↔ Kreuzung (K)</button>
+        <button id="btn-goto" hidden>📍 Zum Aufläufer</button>
         <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
         <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
         <button id="btn-pump">🌀 Pumpe: AUS (Leertaste)</button>
@@ -1308,7 +1309,16 @@ function startTow() {
   tow = new TowSim(game, ship); mapTarget = null; syncMode();
   toast('Zugtaste halten: Spannung im grünen Bereich halten', 'info', true);
 }
+// Aufgelaufene Schiffe auf allen Karten (aktuelle Karte zuerst)
+function groundedAll() {
+  const out = [];
+  game.maps.forEach((m, k) => { for (const s of m.traffic.ships) if (s.state === 'grounded' && s.path) out.push({ map: k, ship: s.id, name: m.name, x: Math.floor(shipPos(s).x) + 1 }); });
+  return out.sort((a, b) => (a.map === game.mapIdx ? 0 : 1) - (b.map === game.mapIdx ? 0 : 1));
+}
 function updateTowButton() {
+  const gb = $('btn-goto'), all = groundedAll(), first = all[0];
+  gb.hidden = !first || !!tow || (first.map === game.mapIdx && sim.mode === 'map' && !!groundedNear(game, sim.x, sim.y));
+  if (!gb.hidden) { gb.textContent = `📍 Zum Aufläufer${game.maps.length > 1 ? ` (${first.name}, Spalte ${first.x})` : ` (Spalte ${first.x})`}${all.length > 1 ? ` · ${all.length}` : ''}`; gb.onclick = () => gotoShip(first); }
   const b = $('btn-tow'), any = game.traffic.ships.some((s) => s.state === 'grounded');
   b.hidden = !any || !!tow || sim.mode !== 'map';
   if (!b.hidden) { const near = groundedNear(game, sim.x, sim.y); b.disabled = !near; b.textContent = near ? '🛟 Aufläufer freischleppen (T)' : '🛟 Aufläufer: näher heranfahren'; b.classList.toggle('primary', !!near); }

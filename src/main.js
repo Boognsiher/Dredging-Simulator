@@ -697,7 +697,16 @@ function startTow() {
   tow = new TowSim(game, ship); mapTarget = null; syncMode();
   toast('Zugtaste halten: Spannung im grünen Bereich halten', 'info', true);
 }
+// Aufgelaufene Schiffe auf allen Karten (aktuelle Karte zuerst)
+function groundedAll() {
+  const out = [];
+  game.maps.forEach((m, k) => { for (const s of m.traffic.ships) if (s.state === 'grounded' && s.path) out.push({ map: k, ship: s.id, name: m.name, x: Math.floor(shipPos(s).x) + 1 }); });
+  return out.sort((a, b) => (a.map === game.mapIdx ? 0 : 1) - (b.map === game.mapIdx ? 0 : 1));
+}
 function updateTowButton() {
+  const gb = $('btn-goto'), all = groundedAll(), first = all[0];
+  gb.hidden = !first || !!tow || (first.map === game.mapIdx && sim.mode === 'map' && !!groundedNear(game, sim.x, sim.y));
+  if (!gb.hidden) { gb.textContent = `📍 Zum Aufläufer${game.maps.length > 1 ? ` (${first.name}, Spalte ${first.x})` : ` (Spalte ${first.x})`}${all.length > 1 ? ` · ${all.length}` : ''}`; gb.onclick = () => gotoShip(first); }
   const b = $('btn-tow'), any = game.traffic.ships.some((s) => s.state === 'grounded');
   b.hidden = !any || !!tow || sim.mode !== 'map';
   if (!b.hidden) { const near = groundedNear(game, sim.x, sim.y); b.disabled = !near; b.textContent = near ? '🛟 Aufläufer freischleppen (T)' : '🛟 Aufläufer: näher heranfahren'; b.classList.toggle('primary', !!near); }
