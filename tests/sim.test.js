@@ -597,7 +597,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
-import { hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+import { updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
 
 function bankSlice(levels = { loeffel: 3 }) {
   const g = new Game(3, 'hochrhein'), r = g.river;
@@ -1576,4 +1576,18 @@ test('Arbeitsgebiet: Ufer erst, wenn das Wasser die Tiefe hat und Verbreitern an
   assert.ok(cols.length > 0 && cols.every((c) => !c.land), 'ohne Verbreitern kein Ufer');
   g.fleet.widen = true;
   assert.ok(openAreaColumns(g, a).every((c) => !c.land), 'solange das Wasser nicht tief genug ist, kein Ufer');
+});
+
+test('Flotte: festgesetztes Ponton im Flachwasser kommt wieder frei', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false;
+  g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('auto'); hireUnit(g);
+  const u = g.fleet.units[0], r = g.river;
+  for (let t = 0; t < 4 && u.state !== 'travel'; t += 0.1) updateFleet(g, 0.1);
+  assert.equal(u.state, 'travel');
+  // Ponton rundum einmauern: Flachwasser in 2 Zellen Umkreis
+  const cx = Math.floor(u.sim.x), cy = Math.floor(u.sim.y);
+  for (let y = cy - 2; y <= cy + 2; y++) for (let x = cx - 2; x <= cx + 2; x++) if ((x !== cx || y !== cy) && x >= 0 && y >= 0 && x < r.cols && y < r.rows && !(r.zone[y * r.cols + x] && false)) r.top[y * r.cols + x] = g.wl - 0.3;
+  const x0 = u.sim.x, y0 = u.sim.y;
+  for (let t = 0; t < 6; t += 0.05) updateFleet(g, 0.05);
+  assert.ok(Math.hypot(u.sim.x - x0, u.sim.y - y0) > 2 || u.state !== 'travel', 'Ponton muss sich lösen');
 });

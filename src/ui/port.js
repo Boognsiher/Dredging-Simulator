@@ -53,7 +53,7 @@ export function setupPort(root, getGame, onChange) {
     } else {
       if (siteOpen !== null && p.sites?.[siteOpen] && !p.sites[siteOpen].ready) {
         const st = p.sites[siteOpen], S = PORT.site;
-        h += `<div class="port-card"><b>🚜 Bauplatz ${siteOpen + 1} planieren</b> <small>Rote Zellen sind zu hoch: anklicken trägt ab (Ladung wächst, max. ${S.maxCarry}). Blaue Zellen sind zu tief: anklicken füllt auf (mit Ladung, sonst Kies aus dem Lager oder ${S.fillCost} CHF Zukauf). Auf eine ebene Zelle klicken kippt Ladung ab. Wege zwischen Zellen kosten Zeit.</small>
+        h += `<div class="port-card" id="site-card"><b>🚜 Bauplatz ${siteOpen + 1} planieren</b> <small>Rote Zellen sind zu hoch: anklicken trägt ab (Ladung wächst, max. ${S.maxCarry}). Blaue Zellen sind zu tief: anklicken füllt auf (mit Ladung, sonst Kies aus dem Lager oder ${S.fillCost} CHF Zukauf). Auf eine ebene Zelle klicken kippt Ladung ab. Wege zwischen Zellen kosten Zeit.</small>
           <div class="site" style="grid-template-columns:repeat(${S.w},1fr)">${st.h.map((v, i) => `<button class="cell ${v > 0 ? 'hi' : v < 0 ? 'lo' : 'ok'}" data-act="cell" data-x="${i % S.w}" data-y="${Math.floor(i / S.w)}">${st.mx === i % S.w && st.my === Math.floor(i / S.w) ? '🚜' : v === 0 ? '·' : (v > 0 ? '+' : '') + v}</button>`).join('')}</div>
           <div class="bar"><i id="site-busy" style="width:0%;background:#e0a040"></i></div><small>Ladung ${st.carry}/${S.maxCarry} · Rest ${siteWork(st)} Einheiten</small>
           <div class="row"><button data-act="autolevel" data-slot="${siteOpen}" ${g.money < autoLevelCost(g, siteOpen) ? 'disabled' : ''}>Planierraupe mieten · ${chf(autoLevelCost(g, siteOpen))}</button><button class="ghost" data-act="siteclose">Schliessen</button></div></div>`;
@@ -62,7 +62,7 @@ export function setupPort(root, getGame, onChange) {
       p.slots.forEach((sl, i) => {
         if (!sl) {
           const st = p.sites?.[i], ready = st?.ready;
-          h += `<div class="plot empty"><b>Bauplatz ${i + 1}</b><small>${ready ? '✓ Gelände eben' : `Unebenes Gelände (${st ? siteWork(st) : '?'} Höheneinheiten)`}</small>`;
+          h += `<div class="plot empty" id="plot-${i}"><b>Bauplatz ${i + 1}</b><small>${ready ? '✓ Gelände eben' : `Unebenes Gelände (${st ? siteWork(st) : '?'} Höheneinheiten)`}</small>`;
           if (!ready) h += `<button data-act="site" data-slot="${i}">🚜 Planieren</button>`;
           else h += pick === i ? Object.entries(PORT.buildings).map(([k, B]) => { const bl = buildBlock(g, i, k); return `<button data-act="build" data-slot="${i}" data-type="${k}" ${bl ? 'disabled' : ''} title="${B.text} ${bl ?? ''}">${B.icon} ${B.name} · ${chf(B.cost)}</button>`; }).join('') + `<button data-act="pick" data-slot="-1">Abbrechen</button>` : `<button data-act="pick" data-slot="${i}">+ Bauen</button>`;
           h += `</div>`; return;
@@ -108,6 +108,7 @@ export function setupPort(root, getGame, onChange) {
   root.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT') return;
     const g = getGame(), a = b.dataset.act, slot = +b.dataset.slot, id = b.dataset.id;
+    const was = siteOpen;
     if (a === 'hit') { hit(); return; }
     if (a === 'hallup') { upgradeHall(g, b.dataset.hall); render(true); onChange?.(); return; }
     if (a === 'site') siteOpen = slot;
@@ -123,6 +124,8 @@ export function setupPort(root, getGame, onChange) {
     else if (a === 'buy') buy(g, id, +b.dataset.n);
     else if (a === 'sell') sell(g, id, +b.dataset.n);
     render(true); onChange?.();
+    if (a === 'site') root.querySelector('#site-card')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); // Planierfeld springt ins Bild, auch wenn der Bauplatz weit unten liegt
+    else if (a === 'siteclose' || a === 'autolevel') root.querySelector(`#plot-${was ?? 0}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   });
   root.addEventListener('input', (e) => {
     const el = e.target, g = getGame(), a = el.dataset.act, id = el.dataset.id; if (!a || !id) return;

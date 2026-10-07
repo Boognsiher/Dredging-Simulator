@@ -388,6 +388,14 @@ function stepUnit(g, u, dt) {
           } else { u.skip[skipKey(s)] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         }
       } else if (dist > 1e-6) {
+        // Festhänger (Flachwasser/Land ringsum, Zittern auf der Stelle): nach kurzer Zeit auf die Rinne setzen und ein Stück Richtung Ziel weiter
+        const moved = Math.hypot(sim.x - (u.px ?? sim.x), sim.y - (u.py ?? sim.y));
+        u.stuckT = moved < 0.3 * g.stats.speed * CONFIG.fleet.speedMult * dt ? (u.stuckT ?? 0) + dt : 0;
+        if (u.stuckT > 2) {
+          u.stuckT = 0;
+          const step = Math.sign(gi - ni) * (nd > 1.2 ? 0 : 3), n = route.nodes[Math.max(0, Math.min(route.nodes.length - 1, ni + step))];
+          if (sim.canFloat(n.x + 0.5, n.y + 0.5)) { sim.x = n.x + 0.5; sim.y = n.y + 0.5; u.note = 'wurde freigesetzt'; }
+        }
         const k = CONFIG.fleet.speedMult; inp = { dx: (dx / dist) * k, dy: (dy / dist) * k, suction: false };
       }
     }
@@ -406,7 +414,7 @@ function stepUnit(g, u, dt) {
   sim.notes.length = 0;
   g.collect(d);
   g.totals.fleetRemoved += d.removed; u.removed += d.removed;
-  u.x = sim.x; u.y = sim.y;
+  u.x = sim.x; u.y = sim.y; u.px = sim.x; u.py = sim.y;
 }
 
 export function updateFleet(g, dt) {
