@@ -274,7 +274,7 @@ const H0 = () => H;
 
 // Eigener Hafen: Hafenbecken (Bucht) am Ufer. Gelb gerahmt = muss noch vertieft werden, grün = bereit
 function drawHarbor(ctx, game) {
-  const bay = game.port?.bay; if (!bay?.cells?.length) return;
+  const bay = game.port?.bay; if (!bay?.cells?.length || game.mapIdx !== 0) return;
   const d = bayDepth(game), ready = bayReady(game), open = game.port.open;
   const x = OX + bay.x0 * CELL, y = bay.y0 * CELL, w = (bay.x1 - bay.x0 + 1) * CELL, h = (bay.y1 - bay.y0 + 1) * CELL;
   ctx.fillStyle = ready ? 'rgba(120,230,150,.22)' : 'rgba(255,200,70,.18)'; ctx.fillRect(x, y, w, h);

@@ -408,3 +408,10 @@ body.mode-map #touch-ui { bottom: 52px; }
   body.mode-map #classbar .cls.pick small { display: block; }
 }
 body.mode-map #toast { top: calc(var(--hdr-h) + 62px); }
+
+/* Endlos-Modus: Seed-Auswahl und Kartenwahl */
+.endless-row { margin-top: 12px; padding: 12px; border-radius: 12px; background: #ffffff10; text-align: left; } .endless-row small { display: block; color: var(--muted); margin: 4px 0 8px; font-size: 13px; }
+.seedrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .seedrow input { width: 120px; padding: 6px; border-radius: 6px; border: 1px solid #ffffff33; background: #1b3550; color: var(--ink); font: inherit; }
+.seedrow button { margin: 0; width: auto; } .seedrow .primary { flex: 1; position: static; }
+#map-select { background: #24415c; color: var(--ink); border: 0; border-radius: 6px; padding: 6px 8px; font: inherit; max-width: 170px; }
+body.mode-map #map-select { order: 4; flex: none; }

@@ -1,4 +1,4 @@
-import { LEVELS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } from './config.js';
+import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } from './config.js';
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass } from './sim/traffic.js';
@@ -192,8 +192,9 @@ function updateGoal() {
   const g = game, goal = g.level.goalTons, done = g.totals.tons;
   let box = $('goal');
   if (!box.firstChild) box.innerHTML = '<div id="goal-txt"></div><progress id="goal-prog" max="1" value="0"></progress><div id="goal-sub"></div><button id="btn-finish" class="primary" hidden>Konzession sichern und abschliessen</button>';
-  $('goal-txt').innerHTML = `<b>${num(done)}</b> / ${num(goal)} t Fracht durchgebracht`;
-  $('goal-prog').value = Math.min(1, done / goal);
+  const fin = Number.isFinite(goal);
+  $('goal-txt').innerHTML = fin ? `<b>${num(done)}</b> / ${num(goal)} t Fracht durchgebracht` : `<b>${num(done)}</b> t Fracht durchgebracht <small>(Endlos, Seed ${game.seed})</small>`;
+  $('goal-prog').hidden = !fin; $('goal-prog').value = fin ? Math.min(1, done / goal) : 0;
   $('goal-sub').innerHTML = `<small>${g.totals.ships} Schiffe · Verkehr +${chf(g.totals.trafficIncome)} · ${g.totals.rejected} abgewiesen${g.totals.groundings ? ` · ${g.totals.groundings} Havarien` : ''}</small>`;
   const btn = $('btn-finish');
   btn.hidden = !g.goalReached || g.status !== 'playing';
@@ -246,6 +247,40 @@ function updateDeposits() {
     ${unknown ? `<button id="btn-explore" class="primary" ${eb ? 'disabled' : ''}>Gebiet erkunden (${chf(CONFIG.deposits.exploreCost)}) · ${unknown} unbekannt</button>${eb ? `<small class="warn">${eb}</small>` : ''}` : '<small>Alle Vorkommen sind erkundet.</small>'}`;
   for (const b of box.querySelectorAll('[data-conc]')) b.onclick = () => { if (game.buyConcession(+b.dataset.conc)) { depositSig = null; updateDeposits(); updatePanel(); } };
   const eBtn = $('btn-explore'); if (eBtn) eBtn.onclick = () => { const d = game.explore(); if (d) { toast(`Gefunden: ${d.name} bei Spalte ${Math.round(d.cx) + 1}`, 'good', true); depositSig = null; updateDeposits(); updatePanel(); } };
+}
+
+// ---------- Karten (Endlos): Engstellen verwalten ----------
+function changeMap(i) {
+  if (!game.endless || i === game.mapIdx || i < 0 || i >= game.maps.length) return;
+  if (tow) tow = null;
+  if (sim.mode === 'slice') sim.leave();
+  game.site = null; game.switchMap(i);
+  sim = game.createSession(); sim.autoRange = game.autoRange ?? null;
+  mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; ui.areaA = null; ui.hoverX = null;
+  const first = game.level.classes.find((id) => game.fair?.[id] && !game.fair[id].passable); classSel = first ?? null; ui.classSel = classSel;
+  fleetSig = null; trafficSig = null; hazardSig = null; depositSig = null; shoreSig = null; mapsSig = null;
+  fx.clear(); syncMode(); updatePanel(); applyLevel(); fitCanvas();
+  toast(`Karte ${game.map.name}`, 'info', true);
+}
+let mapsSig = null;
+function updateMapSelect() {
+  const sel = $('map-select'), show = game.endless && game.maps.length > 1;
+  sel.hidden = !show; if (!show) return;
+  const sig = game.maps.map((m) => m.name).join('|');
+  if (sel.dataset.sig !== sig) { sel.innerHTML = game.maps.map((m, i) => `<option value="${i}">🗺 ${m.name}</option>`).join(''); sel.dataset.sig = sig; }
+  sel.value = String(game.mapIdx);
+}
+function updateMaps() {
+  const on = game.endless, box = $('maps');
+  $('h-maps').hidden = !on; box.hidden = !on; if (!on) return;
+  const sig = JSON.stringify([game.maps.map((m) => [m.name, Object.keys(m.unlocked).length, m.fleet.units.length, m.traffic.ships.length]), game.mapIdx, Math.floor(game.money / 1000)]);
+  if (sig === mapsSig) return; mapsSig = sig;
+  const cost = game.mapCost(), block = game.mapBlock();
+  box.innerHTML = `<small>Flussnetz (Seed ${game.seed}): jede Karte ist eine eigene Engstelle mit eigenem Verkehr, eigener Flotte und eigenen Kreuzungsstellen. Alle laufen im Hintergrund weiter; Geld, Anlage, Ausrüstung und Markt sind gemeinsam.</small>` +
+    game.maps.map((m, i) => `<div class="unit"><div><b>${i === game.mapIdx ? '▶ ' : ''}${m.name}</b> <small>Schwierigkeit ${m.difficulty + 1} · ${SHIPS.filter((s) => m.unlocked[s.id]).map((s) => s.icon).join(' ') || '–'} · ${m.fleet.units.length} Pontons · ${m.traffic.ships.filter((s) => s.state === 'sail').length} Schiffe unterwegs</small></div><button data-map="${i}" ${i === game.mapIdx ? 'disabled' : ''}>Wechseln</button></div>`).join('') +
+    `<button id="btn-addmap" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flussnetz vollständig' : `Neue Karte erschliessen (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
+  for (const b of box.querySelectorAll('[data-map]')) b.onclick = () => changeMap(+b.dataset.map);
+  const add = $('btn-addmap'); if (add) add.onclick = () => { const k = game.addMap(); if (k !== false) { mapsSig = null; updateMaps(); toast(`Neue Karte: ${game.maps[k].name}`, 'good', true); } };
 }
 
 let shoreSig = null;
@@ -413,13 +448,15 @@ function updateLog() {
 let deltaUntil = 0, lastMoney = null, moneyTimer = 0;
 function updateHud() {
   const left = game.timeLeft, mm = Math.floor(left / 60), ss = String(Math.floor(left % 60)).padStart(2, '0');
-  $('h-day').textContent = `${Math.min(game.day, game.deadlineDays)}/${game.deadlineDays}`;
-  $('h-left').textContent = `(${mm}:${ss})`;
+  const fin = Number.isFinite(game.deadlineDays);
+  $('h-day').textContent = fin ? `${Math.min(game.day, game.deadlineDays)}/${game.deadlineDays}` : `${game.day}`;
+  $('h-left').textContent = fin ? `(${mm}:${ss})` : '';
   $('h-money').textContent = chf(game.money);
   $('h-money').style.color = game.money < 0 ? 'var(--bad)' : '';
   { const cap = game.stats.bufferCapacity, st = game.stockTotal; $('h-buf').textContent = `${Math.round(st)}/${Math.round(cap)} m³`; $('h-buf').classList.toggle('warn', st >= cap * 0.85); }
   if (performance.now() > deltaUntil) { $('h-income').textContent = ''; $('h-income').className = ''; }
-  $('h-tons').textContent = `${Math.round((game.totals.tons / game.level.goalTons) * 100)}%`;
+  $('h-tons').textContent = Number.isFinite(game.level.goalTons) ? `${Math.round((game.totals.tons / game.level.goalTons) * 100)}%` : `${num(game.totals.tons)} t`;
+  updateMapSelect();
   $('h-wl').textContent = `${game.wl.toFixed(1)} m${game.closed ? ' ⛔' : ''}`;
   const best = loadBest();
   $('h-best').textContent = best === null ? '–' : chf(best);
@@ -438,7 +475,7 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+function updatePanel() { updateMaps(); updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -685,7 +722,7 @@ function showEnd() {
   const cargoLine = Object.entries(t.byCargo).sort((a, b) => b[1] - a[1]).map(([id, v]) => `${cargoById(id).name} ${num(v)} t`).join(' · ');
   showOverlay(`<h2>${title}</h2>
     <p>Endstand: <b>${chf(e.finalMoney)}</b>${record ? ' <b class="good">Neuer Rekord!</b>' : best !== null ? `<br><small>Rekord: ${chf(best)}</small>` : ''}</p>
-    <p><small>Fracht ${num(t.tons)} / ${num(game.level.goalTons)} t · ${t.ships} Schiffe · ${t.rejected} abgewiesen (entgangen ca. ${chf(t.lostValue)}) · ${t.groundings} Havarien (${chf(t.salvage)})<br>
+    <p><small>Fracht ${num(t.tons)}${Number.isFinite(game.level.goalTons) ? ` / ${num(game.level.goalTons)}` : ''} t · ${t.ships} Schiffe · ${t.rejected} abgewiesen (entgangen ca. ${chf(t.lostValue)}) · ${t.groundings} Havarien (${chf(t.salvage)})<br>
     Verkehr +${chf(t.trafficIncome)} · Baggerentgelt +${chf(t.pay)} · Anlage ${t.plantNet >= 0 ? '+' : '−'}${chf(Math.abs(t.plantNet))} · Aufträge +${chf(t.contractsPaid)} (${t.contractsDone} erfüllt, ${t.contractsFailed} verpasst)<br>
     Betrieb −${chf(t.opCost)} · Bussen −${chf(t.fines + t.protectFines)} · Reparaturen −${chf(t.repairs + t.eventCosts)}<br>
     Gebaggert ${num(t.removed)} m³ · ${cargoLine || 'keine Fracht'}</small></p>
@@ -695,8 +732,9 @@ function showEnd() {
 }
 
 function applyLevel() {
-  $('level-name').textContent = game.level.short;
-  document.title = `Fahrrinne frei! · ${game.level.short}`;
+  const nm = game.endless ? `${game.level.short} #${game.seed} · ${game.map.name}` : game.level.short;
+  $('level-name').textContent = nm;
+  document.title = `Fahrrinne frei! · ${nm}`;
 }
 
 function showLevels(note = '') {
@@ -708,12 +746,16 @@ function showLevels(note = '') {
       <span class="ltxt"><b>${open ? '' : '🔒 '}${l.name}</b><small>${l.blurb}</small>
       <small>Ziel ${num(l.goalTons)} t · ${l.deadlineDays} Tage · Start ${chf(l.startMoney)}${b !== undefined ? ` · Rekord ${chf(b)}` : ''}${open ? '' : ` · erreiche das Ziel in ${LEVELS[i - 1].short} und schliesse mit Gewinn ab`}</small></span></button>`;
   }).join('');
-  showOverlay(`<h2>Fahrrinne frei!</h2>${note ? `<p class="good">${note}</p>` : ''}<p>Welcher Fluss soll es sein?</p><div class="levels">${rows}</div>`);
+  const endless = `<div class="endless-row"><b>♾ ${ENDLESS.name}</b><small>${ENDLESS.blurb}</small>
+      <div class="seedrow"><label>Seed <input id="seed-in" type="number" min="0" max="99999999" value="${Math.floor(Math.random() * 90000) + 1000}"></label><button id="btn-seed" title="Zufälliger Seed">🎲</button><button id="btn-endless" class="primary">Endlos starten</button></div></div>`;
+  showOverlay(`<h2>Fahrrinne frei!</h2>${note ? `<p class="good">${note}</p>` : ''}<p>Welcher Fluss soll es sein?</p><div class="levels">${rows}</div>${endless}`);
   for (const b of document.querySelectorAll('#overlay .level:not(.locked)')) b.onclick = () => restart(b.dataset.level);
+  $('btn-seed').onclick = () => { $('seed-in').value = Math.floor(Math.random() * 90000000); };
+  $('btn-endless').onclick = () => restart({ levelId: ENDLESS.id, seed: Math.max(0, Math.floor(+$('seed-in').value) || 0) });
 }
 
 function restart(loaded = null) {
-  game = loaded instanceof Game ? loaded : new Game(undefined, typeof loaded === 'string' ? loaded : game.levelId);
+  game = loaded instanceof Game ? loaded : loaded && typeof loaded === 'object' ? new Game(loaded.seed, loaded.levelId) : new Game(undefined, typeof loaded === 'string' ? loaded : game.levelId);
   sim = game.createSession(); sim.autoRange = game.autoRange ?? null; paused = false; endShown = false;
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
@@ -740,6 +782,7 @@ addEventListener('resize', () => { fitCanvas(); placeToast(); });
 addEventListener('orientationchange', () => setTimeout(fitCanvas, 200));
 $('btn-pause2').onclick = togglePause;
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
+$('map-select').onchange = (e) => changeMap(+e.target.value);
 $('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
 addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
 
@@ -802,6 +845,7 @@ let last = performance.now(), panelTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   ui.dt = dt; ui.t += dt;
+  if (game.endless && sim.mode === 'map' && !tow) { if (readInput.tap('Period')) changeMap((game.mapIdx + 1) % game.maps.length); if (readInput.tap('Comma')) changeMap((game.mapIdx + game.maps.length - 1) % game.maps.length); }
   if (readInput.tap('Tab')) setMenu(!menuOpen);
   if (menuOpen && readInput.tap('Escape')) setMenu(false);
   if (readInput.tap('KeyH')) togglePort();

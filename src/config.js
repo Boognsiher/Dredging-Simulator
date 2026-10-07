@@ -239,4 +239,13 @@ export const LEVELS = [
     palette: { water: [56, 110, 110], land: [108, 112, 80] },
   },
 ];
-export const levelById = (id) => LEVELS.find((l) => l.id === id) ?? LEVELS[0];
+// Endlos-Modus: Zufallskarten aus einer Seed-Nummer, startet wie der Hochrhein und lässt sich um weitere Engstellen (Karten) erweitern.
+// Jede weitere Karte ist schwerer (schmaler, mehr Fels, Altlasten, Fremdstoffe) und kostet mehr. Kein Ziel, keine Frist: wer pleite geht, verliert.
+export const ENDLESS = {
+  id: 'endlos', endless: true, name: 'Endlos: Flussnetz', short: 'Endlos',
+  blurb: 'Zufallskarten mit Seed-Nummer. Du startest wie am Hochrhein und erschliesst mit der Zeit weitere Engstellen als neue Karten, die du alle verwaltest.',
+  river: null, classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1, goalTons: Infinity, startMoney: 60000, deadlineDays: Infinity, turbidityMult: 1,
+  palette: { water: [44, 112, 150], land: [98, 124, 80] },
+  maxMaps: 6, mapCosts: [0, 45000, 90000, 150000, 240000, 380000],
+};
+export const levelById = (id) => (id === ENDLESS.id ? ENDLESS : LEVELS.find((l) => l.id === id) ?? LEVELS[0]);

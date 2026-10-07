@@ -1,13 +1,14 @@
-import { Game } from './game.js';
+import { Game, endlessRiver } from './game.js';
+import { createRng } from './rng.js';
 import { levelById } from '../config.js';
 import { River } from './river.js';
 
 // Spielstand: reine Umwandlung Game <-> JSON-Text (kein DOM, kein Speicher). Gespeichert wird der Management-Zustand (Geld, Zeit, Upgrades,
 // Markt, Schiffe, Aufträge ...) und die Flusssohle. Abgeleitetes (Fahrrinnen, Pfade, Nachrutschen) wird nach dem Laden neu berechnet.
 // Die laufende Pontonfahrt wird nicht gespeichert: nach dem Laden steht der Ponton wieder auf der Karte.
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
-const SKIP = new Set(['rng', 'river', 'notes', 'flash', 'site', 'fair', '_stats']);
+const SKIP = new Set(['rng', 'notes', 'flash', '_stats']);
 const toB64 = (arr) => {
   const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
   let s = '';
@@ -20,35 +21,51 @@ const fromB64 = (b64, Type) => {
   return new Type(bytes.buffer);
 };
 
+const packRiver = (river) => {
+  const out = {};
+  for (const [k, v] of Object.entries(river)) {
+    if (k === 'pending' || k === 'centerY' || k === 'halfW') continue;
+    out[k] = ArrayBuffer.isView(v) ? { type: v.constructor.name, b64: toB64(v) } : v;
+  }
+  return out;
+};
+
 export function serializeGame(game) {
   const data = {};
   for (const [k, v] of Object.entries(game)) if (!SKIP.has(k)) data[k] = v;
-  const river = {};
-  for (const [k, v] of Object.entries(game.river)) {
-    if (k === 'pending' || k === 'centerY' || k === 'halfW') continue;
-    river[k] = ArrayBuffer.isView(v) ? { type: v.constructor.name, b64: toB64(v) } : v;
-  }
-  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, river }, (k, v) => (k === 'path' || k === 'sim' ? undefined : v));
+  data.maps = game.maps.map(({ river, fair, site, ...rest }) => rest); // Flussbett je Karte separat (Typed Arrays)
+  const rivers = game.maps.map((m) => packRiver(m.river));
+  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, rivers }, (k, v) => (k === 'path' || k === 'sim' ? undefined : v));
 }
 
 // Gibt ein Game zurück oder null, wenn der Text kaputt oder von einer anderen Version ist.
 export function restoreGame(text) {
   try {
     const s = JSON.parse(text);
-    if (s?.version !== SAVE_VERSION) return null;
+    if (s?.version !== SAVE_VERSION && s?.version !== 5) return null;
+    if (s.version === 5) { // Spielstand vor den Mehrkarten-Spielen: alles gehört zu Karte 1
+      const d = s.data, m = { id: 0, name: 'Karte 1', seed: d.seed, difficulty: 0 };
+      for (const k of ['traffic', 'fleet', 'zones', 'zoneSeq', 'unlocked', 'fairSig', 'fairClock', 'sedClock', 'rejectedBy']) { m[k] = d[k]; delete d[k]; }
+      d.maps = [m]; d.mapIdx = 0; s.rivers = [s.river];
+    }
     const game = new Game(s.data.seed, s.data.levelId);
+    const fresh = game.maps[0].river; // gleicher Seed: liefert die Anzeige-Hilfen (Mittellinie, Breite) der ersten Karte
     Object.assign(game, s.data);
     game._stats = null;
-    game.notes = []; game.flash = []; game.site = null;
-    const river = new River(s.river.cols, s.river.rows);
+    game.notes = []; game.flash = []; game.mapIdx = Math.min(game.mapIdx ?? 0, game.maps.length - 1);
     const types = { Float32Array, Uint8Array };
-    for (const [k, v] of Object.entries(s.river)) river[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v;
-    // Anzeige-Hilfen (Mittellinie, Breite) stammen aus der Generierung: aus einem frisch erzeugten Fluss gleichen Seeds übernehmen
-    river.centerY = game.river.centerY; river.halfW = game.river.halfW;
-    game.river = river;
+    game.maps.forEach((m, i) => {
+      const src = s.rivers[i], river = new River(src.cols, src.rows);
+      for (const [k, v] of Object.entries(src)) river[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v;
+      const ref = i === 0 ? fresh : River.generate(createRng(m.seed), game.level.endless ? endlessRiver(game.seed, i) : game.level.river);
+      river.centerY = ref.centerY; river.halfW = ref.halfW;
+      m.river = river; m.site = null; m.fair = null;
+      m.fairClock = m.fairClock ?? 0; m.sedClock = m.sedClock ?? 0;
+    });
     game.rng.setState(s.rng);
-    game.analyze(true);
-    game.fairClock = 0;
+    const cur = game.mapIdx;
+    for (let i = 0; i < game.maps.length; i++) { game.mapIdx = i; game.analyze(true); game.fairClock = 0; }
+    game.mapIdx = cur;
     return game;
   } catch { return null; }
 }

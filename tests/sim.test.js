@@ -287,6 +287,7 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
 });
 
 const fullLane = (g, id) => { carveFairway(g.river, g.wl, shipById(id), CONFIG.partialDepth + 0.1); g.analyze(true); }; // Rinne gleich auf volle Ladetiefe
+import { ENDLESS } from '../src/config.js';
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
 import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
@@ -1383,4 +1384,31 @@ test('Flotte: Arbeitsgebiet auf der Karte vorgeben, nur dieses Rechteck wird geb
   assert.equal(changedFar, 0, 'weit ausserhalb bleibt unberührt');
   assert.ok(setAreaDepth(g, a.id, 9) && g.fleet.areas[0].depth === CONFIG.echolot.maxDepth);
   assert.ok(setAreaUnit(g, a.id, 99) && removeArea(g, a.id) && g.fleet.areas.length === 0);
+});
+
+test('Endlos: Seed bestimmt die Karte, weitere Karten erschliessen, alle laufen weiter, Speichern/Laden', () => {
+  const a = new Game(4242, 'endlos'), b = new Game(4242, 'endlos'), c = new Game(4243, 'endlos');
+  assert.equal(a.endless, true); assert.equal(a.maps.length, 1);
+  assert.deepEqual([...a.river.top.slice(0, 200)], [...b.river.top.slice(0, 200)], 'gleicher Seed, gleiche Karte');
+  assert.notDeepEqual([...a.river.top.slice(0, 200)], [...c.river.top.slice(0, 200)], 'anderer Seed, andere Karte');
+  assert.ok(a.fair.kahn.passable, 'wie am ersten Level: Kähne fahren von Anfang an');
+  assert.equal(a.goalReached, false);
+  a.eventsOn = false; a.money = 1000;
+  assert.equal(a.mapBlock(), `Braucht ${ENDLESS.mapCosts[1].toLocaleString('de-CH')} CHF`);
+  a.money = 1e6; assert.equal(a.addMap(), 1);
+  assert.equal(a.maps.length, 2); assert.equal(a.mapIdx, 0, 'Ansicht bleibt auf der aktuellen Karte');
+  assert.ok(a.maps[1].fair.kahn.passable);
+  assert.notDeepEqual([...a.maps[0].river.top.slice(0, 200)], [...a.maps[1].river.top.slice(0, 200)]);
+  a.switchMap(1); a.buyUpgrade('auto'); hireUnit(a); a.switchMap(0);
+  for (let i = 0; i < 14 * 40 * 20; i++) a.update(0.05);
+  assert.ok(a.maps[1].fleet.units[0].removed > 0, 'Flotte der Nebenkarte baggert im Hintergrund');
+  a.money = 1e6; while (a.addMap()) { /* bis zum Maximum */ }
+  assert.equal(a.maps.length, ENDLESS.maxMaps); assert.ok(a.mapBlock());
+  a.switchMap(2);
+  const r = restoreGame(serializeGame(a));
+  assert.ok(r, 'Spielstand lässt sich laden');
+  assert.equal(r.maps.length, a.maps.length); assert.equal(r.mapIdx, 2);
+  for (let i = 0; i < a.maps.length; i++) assert.deepEqual([...r.maps[i].river.top.slice(0, 300)], [...a.maps[i].river.top.slice(0, 300)]);
+  assert.ok(r.maps.every((m) => m.fair && typeof m.river.centerY === 'function'));
+  for (let i = 0; i < 200; i++) r.update(0.05);
 });

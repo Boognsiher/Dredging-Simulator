@@ -10,6 +10,7 @@
 <body>
   <header id="header-bar">
     <h1 id="title">Fahrrinne frei! <small id="level-name"></small></h1>
+    <select id="map-select" aria-label="Karte wechseln" hidden></select>
     <button id="btn-menu" aria-label="Menü">☰ Menü</button>
     <div id="hud">
       <span>Tag <b id="h-day"></b> <small id="h-left"></small></span>
@@ -85,6 +86,8 @@
           <span><i style="background:rgba(150,90,200,.7)"></i>Fels im Weg</span>
         </div>
       </details>
+      <h2 id="h-maps" hidden>Karten</h2>
+      <div id="maps" hidden></div>
       <h2>Verkehrsziel</h2>
       <div id="goal"></div>
       <h2>Wasserstrasse</h2>

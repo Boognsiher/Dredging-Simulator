@@ -1,4 +1,4 @@
-import { CONFIG, UPGRADES, SHIPS, KIND, levelById } from '../config.js';
+import { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, levelById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { River } from './river.js';
 import { carveFairway, analyzeFairway, zonePlan } from './fairway.js';
@@ -13,6 +13,19 @@ import { processPlant, stockTotal, materialPrice } from './plant.js';
 import { updateContracts } from './contracts.js';
 import { createFleet, updateFleet } from './fleet.js';
 
+// Zufallsfluss für den Endlos-Modus: Parameter aus (Seed, Kartennummer); spätere Karten sind schwerer
+const MAP_NAMES = ['Rheinfelden', 'Laufenburg', 'Kembs', 'Aare-Mündung', 'Thur-Enge', 'Bingen', 'Wesel', 'Eisernes Tor', 'Straubing', 'Passau', 'Basel', 'Koblenz'];
+export const mapSeed = (seed, k) => ((seed >>> 0) * 2654435761 + k * 40503 + 12345) >>> 0;
+export function endlessRiver(seed, k) {
+  const r = createRng(mapSeed(seed, k)), hard = Math.min(1, k / 5);
+  const bars = [8, 22, 36].map((x) => ({ x: Math.round(x + r.range(-2, 2)), w: +r.range(3, 4).toFixed(1), raise: +r.range(0.45, 0.6).toFixed(2) }));
+  const ridgeN = k === 0 ? 1 : 1 + (k >= 2 ? 1 : 0) + (k >= 4 ? 1 : 0), ridges = [];
+  for (let i = 0; i < ridgeN; i++) ridges.push({ x: Math.round(((i + 1) * 44) / (ridgeN + 1) + r.range(-3, 3)), w: +r.range(3, 5).toFixed(1), depth: +Math.max(3.1, 4.3 - 0.22 * k + r.range(-0.2, 0.2)).toFixed(2) });
+  const kinds = ['kiesbank', 'quarz', 'seife'], deposits = ['kiesbank'];
+  for (let i = 0; i < 2 + (k >= 2 ? 1 : 0); i++) deposits.push(kinds[r.int(0, 2)]);
+  return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
+    bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits };
+}
 const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0 });
 
 // Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
@@ -23,7 +36,9 @@ export class Game {
     this.levelId = levelById(levelId).id;
     this.rng = createRng(seed);
     const L = levelById(this.levelId);
-    this.river = River.generate(this.rng, L.river);
+    this.maps = [{ id: 0, name: MAP_NAMES[(seed >>> 0) % MAP_NAMES.length], seed, difficulty: 0 }]; // Karten (Engstellen); die Felder river, traffic, fleet, zones ... gehören zur aktuellen Karte (mapIdx)
+    this.mapIdx = 0;
+    this.river = River.generate(this.rng, L.endless ? endlessRiver(seed, 0) : L.river);
     this.wl = this.river.wl;
     this.water = { target: CONFIG.water.base, until: 0 };
     this.closed = false; // Hochwasser: Schifffahrt gesperrt
@@ -71,6 +86,34 @@ export class Game {
   }
 
   get level() { return levelById(this.levelId); }
+  get endless() { return !!this.level.endless; }
+  get map() { return this.maps[this.mapIdx]; }
+
+  // Weitere Karte (Engstelle) erschliessen: nur im Endlos-Modus; jede kostet mehr und ist schwerer
+  mapCost() { return this.maps.length >= (ENDLESS.maxMaps) ? null : ENDLESS.mapCosts[this.maps.length]; }
+  mapBlock() {
+    if (!this.endless) return 'Nur im Endlos-Modus';
+    if (this.status !== 'playing') return 'Spiel beendet';
+    const c = this.mapCost();
+    if (c === null) return 'Das Flussnetz ist vollständig erschlossen';
+    return this.money < c ? `Braucht ${c.toLocaleString('de-CH')} CHF` : null;
+  }
+  addMap() {
+    if (this.mapBlock()) return false;
+    const k = this.maps.length, cost = this.mapCost(), seed = mapSeed(this.seed, k), cur = this.mapIdx;
+    this.money -= cost;
+    let name = MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
+    const river = River.generate(createRng(seed), endlessRiver(this.seed, k)); river.wl = this.wl;
+    this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null });
+    this.mapIdx = k;
+    this.analyze();
+    carveFairway(this.river, this.wl, SHIPS.find((s) => s.id === this.level.classes[0]));
+    this.analyze(true);
+    this.mapIdx = cur;
+    this.say(`Neue Karte erschlossen: ${name} (−${cost.toLocaleString('de-CH')} CHF). Schwierigkeit ${k + 1}.`, 'upgrade');
+    return k;
+  }
+  switchMap(i) { if (i < 0 || i >= this.maps.length || i === this.mapIdx) return false; this.mapIdx = i; return true; }
   get stats() { return (this._stats ??= computeStats(this.levels)); }
   get stockTotal() { return stockTotal(this.stock); }
   get bufferRoom() { return Math.max(0, this.stats.bufferCapacity - this.stockTotal); }
@@ -123,7 +166,7 @@ export class Game {
       const f = this.fair[cls.id], was = this.fairSig[cls.id];
       if (f.passable && !this.unlocked[cls.id]) {
         this.unlocked[cls.id] = true;
-        if (!silent && was !== undefined) { this.say(`Neue Schiffsklasse freigeschaltet: ${cls.name}! Reedereien schicken ab jetzt solche Schiffe.`, 'good'); this.notify(`${cls.icon} ${cls.name} freigeschaltet: ab jetzt kommen solche Schiffe`, 'good'); }
+        if (!silent && was !== undefined) { const at = this.maps.length > 1 ? ` (${this.map.name})` : ''; this.say(`Neue Schiffsklasse freigeschaltet: ${cls.name}${at}! Reedereien schicken ab jetzt solche Schiffe.`, 'good'); this.notify(`${cls.icon} ${cls.name} freigeschaltet${at}: ab jetzt kommen solche Schiffe`, 'good'); }
       } else if (was !== undefined && !silent && f.passable !== was) {
         if (f.passable) { this.say(`Fahrrinne wieder frei für ${cls.name}.`, 'good'); }
         else if (!this.closed) this.say(`Rinne für ${cls.name} ist zu flach geworden (Pegel oder Verlandung).`, 'bad');
@@ -292,7 +335,7 @@ export class Game {
     const K = CONFIG.water, W = this.water;
     if (W.until && this.time >= W.until) { W.target = K.base; W.until = 0; }
     this.wl += (W.target - this.wl) * Math.min(1, dt * K.followRate);
-    this.river.wl = this.wl;
+    for (const m of this.maps) m.river.wl = this.wl;
     const wasClosed = this.closed;
     this.closed = this.wl > K.base + K.floodClose;
     if (this.closed !== wasClosed) { this.say(this.closed ? 'Schifffahrt gesperrt (Hochwasser).' : 'Schifffahrt wieder frei.', this.closed ? 'bad' : 'good'); if (!this.closed) this.notify('Schifffahrt wieder frei', 'good'); }
@@ -314,16 +357,20 @@ export class Game {
       for (let k = 0; k < 5; k++) { if (pl.by[k] >= 0) this.totals.sold += pl.by[k]; else this.totals.disposal -= pl.by[k]; }
     }
 
-    this.river.settle();
-    this.sedClock += dt;
-    if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.sedClock = 0; }
-
-    this.fairClock -= dt;
-    if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
-
     updatePort(this, dt);
-    updateFleet(this, dt);
-    updateTraffic(this, dt);
+    const cur = this.mapIdx; // alle Karten laufen weiter: Flotte, Verkehr und Flussbett der anderen Karten arbeiten im Hintergrund
+    for (let k = 0; k < this.maps.length; k++) {
+      this.mapIdx = k;
+      this.river.wl = this.wl;
+      this.river.settle();
+      this.sedClock += dt;
+      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.sedClock = 0; }
+      this.fairClock -= dt;
+      if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
+      updateFleet(this, dt);
+      updateTraffic(this, dt);
+    }
+    this.mapIdx = cur;
 
     const day = Math.floor(this.time / CONFIG.daySeconds) + 1;
     while (this.day < day && this.status === 'playing') { this.day++; this.dayEnd(); }
@@ -336,7 +383,7 @@ export class Game {
   dayEnd() {
     const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
     const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
-    const wages = CONFIG.fleet.wage * this.fleet.units.length;
+    const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.length, 0);
     this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;
     y.costs += cost + wages;
@@ -344,10 +391,13 @@ export class Game {
     this.today = freshDay();
     stepMarket(this.market, this.rng);
     portDay(this);
+    const cur = this.mapIdx;
     for (const e of this.eventsOn ? EVENTS : []) {
       if (this.rng() < e.chance && (!e.when || e.when(this))) {
+        if (this.maps.length > 1) this.mapIdx = Math.floor(this.rng() * this.maps.length); // Ereignisse treffen eine zufällige Karte
         const r = e.apply(this);
-        if (r) { this.say(r.text, r.kind); this.notify(r.text, r.kind); }
+        if (r) { const t = this.maps.length > 1 ? `${this.maps[this.mapIdx].name}: ${r.text}` : r.text; this.say(t, r.kind); this.notify(t, r.kind); }
+        this.mapIdx = cur;
       }
     }
     updateContracts(this);
@@ -368,4 +418,9 @@ export class Game {
   }
 
   get won() { return this.status === 'ended' && this.end.reason !== 'bankrupt' && this.end.goalReached && this.end.finalMoney > 0; }
+}
+
+// Felder der aktuellen Karte: Game.river, .traffic, .fleet, .zones ... lesen und schreiben in maps[mapIdx]
+for (const key of ['river', 'traffic', 'fleet', 'zones', 'zoneSeq', 'unlocked', 'fairSig', 'fair', 'fairClock', 'sedClock', 'rejectedBy', 'site']) {
+  Object.defineProperty(Game.prototype, key, { get() { return this.maps[this.mapIdx][key]; }, set(v) { this.maps[this.mapIdx][key] = v; }, enumerable: false, configurable: true });
 }
