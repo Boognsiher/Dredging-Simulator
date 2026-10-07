@@ -98,6 +98,17 @@ export class Game {
   get endless() { return !!this.level.endless; }
   get map() { return this.maps[this.mapIdx]; }
 
+  // Stau auf der Karte: Bei Niedrigwasser, gesperrter Rinne oder Hochwasser-Sperre können die Schiffe nicht fahren, die Ware staut sich
+  // und der Preis vor Ort sinkt (bis -30 %): günstig einkaufen und im Hafenlager einlagern, bis die Schiffe wieder fahren
+  glutTarget() {
+    const K = CONFIG.water;
+    if (this.closed) return 0.3;
+    const low = Math.min(1, Math.max(0, (K.base - 0.1 - this.wl) / 0.5)), act = SHIPS.filter((s) => this.unlocked[s.id]);
+    const blocked = act.length ? act.filter((s) => !this.fair?.[s.id]?.passable).length / act.length : 0;
+    return Math.max(0.25 * low, 0.2 * blocked);
+  }
+  updateGlut(dt) { const m = this.market; m.glut = (m.glut ?? 0) + (this.glutTarget() - (m.glut ?? 0)) * Math.min(1, dt * 0.1); }
+
   // Weitere Karte (Engstelle) erschliessen: nur im Endlos-Modus; jede kostet mehr und ist schwerer
   mapCost() { return this.maps.length >= (ENDLESS.maxMaps) ? null : ENDLESS.mapCosts[this.maps.length]; }
   mapBlock() {
@@ -377,6 +388,7 @@ export class Game {
       if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.sedClock = 0; }
       this.fairClock -= dt;
       if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
+      this.updateGlut(dt);
       updatePort(this, dt);
       updateFleet(this, dt);
       updateTraffic(this, dt);

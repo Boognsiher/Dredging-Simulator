@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Fahrrinne frei!</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%9A%A2%3C/text%3E%3C/svg%3E">
+  <meta name="theme-color" content="#0b1a26">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Fahrrinne frei">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <style>
 :root { --bg:#0e1a24; --panel:#16273a; --ink:#e8eef4; --muted:#8fa6ba; --accent:#3fb0c9; --bad:#ff7a6b; --good:#7bd88f; }
 * { box-sizing: border-box; }
@@ -820,7 +826,7 @@ function sparkline(h, color) {
 }
 let marketSig = '';
 function updateMarket() {
-  const sig = `${game.day}|${game.levelId}`;
+  const sig = `${game.day}|${game.levelId}|${Math.round((game.market.glut ?? 0) * 20)}|${game.mapIdx}`;
   if (sig === marketSig) return;
   marketSig = sig;
   const used = new Set(SHIPS.filter((s) => game.level.classes.includes(s.id)).flatMap((s) => s.cargo));
@@ -830,6 +836,7 @@ function updateMarket() {
     row.innerHTML = `<div><i class="dot" style="background:${c.color};display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px"></i>${c.name}</div><div><b>${p.toFixed(p < 50 ? 1 : 0)}</b> CHF/t <span class="${t > 0 ? 'tr-up' : t < 0 ? 'tr-down' : ''}">${t > 0 ? '▲' : t < 0 ? '▼' : '–'}</span></div>${sparkline(game.market.history[c.id], ratio > 1.15 ? '#7bd88f' : ratio < 0.85 ? '#ff7a6b' : '#8fa6ba')}`;
     return row;
   }));
+  if ((game.market.glut ?? 0) > 0.04) { const n = document.createElement('small'); n.className = 'warn'; n.textContent = `⚠ Stau: ${game.closed ? 'Sperrung' : 'Niedrigwasser'} drückt die Preise hier um ${Math.round(game.market.glut * 100)} %. Günstig einkaufen und im Hafenlager einlagern, bis die Schiffe wieder fahren.`; $('market').append(n); }
 }
 
 let depositSig = null;
@@ -1699,8 +1706,8 @@ const SHIPPING = {
   types: {
     kahn: { name: 'Frachtkahn', icon: '🛶', cost: 28000, cap: 240, perDay: 120, cargos: ['kies'] },
     motor: { name: 'Motorfrachter', icon: '🚤', cost: 70000, cap: 640, perDay: 260, cargos: ['kies'] },
-    container: { name: 'Containerschiff', icon: '🚢', cost: 260000, cap: 700, perDay: 900, cargos: ['container'] },
-    tank: { name: 'Tankschiff', icon: '🛢️', cost: 200000, cap: 560, perDay: 700, cargos: ['oel'] },
+    container: { name: 'Containerschiff', icon: '🚢', cost: 220000, cap: 800, perDay: 700, cargos: ['container'] },
+    tank: { name: 'Tankschiff', icon: '🛢️', cost: 220000, cap: 560, perDay: 800, cargos: ['oel'] },
   },
 };
 
@@ -2766,14 +2773,14 @@ const gauss = (rng) => Math.sqrt(-2 * Math.log(Math.max(1e-9, rng()))) * Math.co
 
 // bias: dauerhafter Preisaufschlag/-abschlag je Fracht (regionale Knappheit, Endlos-Karten); priceOf = Basis × (1 + Abweichung + Bias)
 function createMarket(bias = {}) {
-  const m = { dev: {}, history: {}, bias: { ...bias } };
+  const m = { dev: {}, history: {}, bias: { ...bias }, glut: 0 }; // glut: Preisabschlag, wenn Schiffe nicht fahren können (Niedrigwasser, Sperrung)
   for (const c of CARGOS) { m.dev[c.id] = 0; m.history[c.id] = [c.base]; }
   return m;
 }
 
 const priceOf = (m, id) => {
   const c = CARGOS.find((x) => x.id === id), K = CONFIG.market;
-  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0) + (m.bias?.[id] ?? 0)));
+  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0) + (m.bias?.[id] ?? 0) - (m.glut ?? 0)));
 };
 const ratioOf = (m, id) => priceOf(m, id) / CARGOS.find((x) => x.id === id).base;
 
@@ -2919,6 +2926,17 @@ class Game {
   get level() { return levelById(this.levelId); }
   get endless() { return !!this.level.endless; }
   get map() { return this.maps[this.mapIdx]; }
+
+  // Stau auf der Karte: Bei Niedrigwasser, gesperrter Rinne oder Hochwasser-Sperre können die Schiffe nicht fahren, die Ware staut sich
+  // und der Preis vor Ort sinkt (bis -30 %): günstig einkaufen und im Hafenlager einlagern, bis die Schiffe wieder fahren
+  glutTarget() {
+    const K = CONFIG.water;
+    if (this.closed) return 0.3;
+    const low = Math.min(1, Math.max(0, (K.base - 0.1 - this.wl) / 0.5)), act = SHIPS.filter((s) => this.unlocked[s.id]);
+    const blocked = act.length ? act.filter((s) => !this.fair?.[s.id]?.passable).length / act.length : 0;
+    return Math.max(0.25 * low, 0.2 * blocked);
+  }
+  updateGlut(dt) { const m = this.market; m.glut = (m.glut ?? 0) + (this.glutTarget() - (m.glut ?? 0)) * Math.min(1, dt * 0.1); }
 
   // Weitere Karte (Engstelle) erschliessen: nur im Endlos-Modus; jede kostet mehr und ist schwerer
   mapCost() { return this.maps.length >= (ENDLESS.maxMaps) ? null : ENDLESS.mapCosts[this.maps.length]; }
@@ -3199,6 +3217,7 @@ class Game {
       if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.sedClock = 0; }
       this.fairClock -= dt;
       if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
+      this.updateGlut(dt);
       updatePort(this, dt);
       updateFleet(this, dt);
       updateTraffic(this, dt);
@@ -6624,5 +6643,6 @@ const __cache = [];
 function __m(i) { if (!__cache[i]) { __cache[i] = {}; __cache[i] = __defs[i](); } return __cache[i]; }
 __m(0);
 </script>
+  <script>if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(() => {});</script>
 </body>
 </html>

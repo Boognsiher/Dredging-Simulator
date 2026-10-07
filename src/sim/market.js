@@ -6,14 +6,14 @@ const gauss = (rng) => Math.sqrt(-2 * Math.log(Math.max(1e-9, rng()))) * Math.co
 
 // bias: dauerhafter Preisaufschlag/-abschlag je Fracht (regionale Knappheit, Endlos-Karten); priceOf = Basis × (1 + Abweichung + Bias)
 export function createMarket(bias = {}) {
-  const m = { dev: {}, history: {}, bias: { ...bias } };
+  const m = { dev: {}, history: {}, bias: { ...bias }, glut: 0 }; // glut: Preisabschlag, wenn Schiffe nicht fahren können (Niedrigwasser, Sperrung)
   for (const c of CARGOS) { m.dev[c.id] = 0; m.history[c.id] = [c.base]; }
   return m;
 }
 
 export const priceOf = (m, id) => {
   const c = CARGOS.find((x) => x.id === id), K = CONFIG.market;
-  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0) + (m.bias?.[id] ?? 0)));
+  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0) + (m.bias?.[id] ?? 0) - (m.glut ?? 0)));
 };
 export const ratioOf = (m, id) => priceOf(m, id) / CARGOS.find((x) => x.id === id).base;
 

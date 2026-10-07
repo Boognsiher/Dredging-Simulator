@@ -1,3 +1,4 @@
+import { readFileSync, existsSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { snapStick, steerToward, isTap } from '../src/ui/touch-logic.js';
@@ -31,4 +32,14 @@ test('Spielfeldgrösse: Seitenverhältnis bleibt, Auflösung ganzzahlig', () => 
 test('Steuerungsanzeige: Karte und Querschnitt haben Hinweise für Tastatur und Touch', () => {
   for (const mode of ['map', 'slice']) for (const touch of [false, true]) assert.ok(hintsFor(mode, touch).length >= 3);
   assert.deepEqual(hintsFor('unbekannt', false), []);
+});
+
+test('PWA: Manifest, Symbole und Service Worker sind vorhanden und passen zusammen', () => {
+  const root = new URL('../', import.meta.url), m = JSON.parse(readFileSync(new URL('manifest.webmanifest', root), 'utf8'));
+  assert.equal(m.display, 'standalone'); assert.ok(m.start_url && m.scope);
+  for (const ic of m.icons) assert.ok(existsSync(new URL(ic.src, root)), ic.src);
+  assert.ok(m.icons.some((i) => i.purpose === 'maskable'));
+  const sw = readFileSync(new URL('sw.js', root), 'utf8'), html = readFileSync(new URL('index.html', root), 'utf8');
+  assert.match(sw, /addEventListener\('fetch'/); assert.match(html, /rel="manifest"/); assert.match(html, /serviceWorker/);
+  for (const f of ['index.html', 'style.css', 'icons/icon-192.png']) assert.ok(sw.includes(f), `${f} im Vorab-Cache`);
 });

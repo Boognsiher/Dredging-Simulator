@@ -30,7 +30,7 @@ jobs:
       - name: Seite zusammenstellen
         run: |
           mkdir _site
-          cp -r index.html style.css src dist _site/
+          cp -r index.html style.css manifest.webmanifest sw.js icons src dist _site/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

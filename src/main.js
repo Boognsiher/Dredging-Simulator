@@ -222,7 +222,7 @@ function sparkline(h, color) {
 }
 let marketSig = '';
 function updateMarket() {
-  const sig = `${game.day}|${game.levelId}`;
+  const sig = `${game.day}|${game.levelId}|${Math.round((game.market.glut ?? 0) * 20)}|${game.mapIdx}`;
   if (sig === marketSig) return;
   marketSig = sig;
   const used = new Set(SHIPS.filter((s) => game.level.classes.includes(s.id)).flatMap((s) => s.cargo));
@@ -232,6 +232,7 @@ function updateMarket() {
     row.innerHTML = `<div><i class="dot" style="background:${c.color};display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px"></i>${c.name}</div><div><b>${p.toFixed(p < 50 ? 1 : 0)}</b> CHF/t <span class="${t > 0 ? 'tr-up' : t < 0 ? 'tr-down' : ''}">${t > 0 ? '▲' : t < 0 ? '▼' : '–'}</span></div>${sparkline(game.market.history[c.id], ratio > 1.15 ? '#7bd88f' : ratio < 0.85 ? '#ff7a6b' : '#8fa6ba')}`;
     return row;
   }));
+  if ((game.market.glut ?? 0) > 0.04) { const n = document.createElement('small'); n.className = 'warn'; n.textContent = `⚠ Stau: ${game.closed ? 'Sperrung' : 'Niedrigwasser'} drückt die Preise hier um ${Math.round(game.market.glut * 100)} %. Günstig einkaufen und im Hafenlager einlagern, bis die Schiffe wieder fahren.`; $('market').append(n); }
 }
 
 let depositSig = null;

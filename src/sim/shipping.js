@@ -10,8 +10,8 @@ export const SHIPPING = {
   types: {
     kahn: { name: 'Frachtkahn', icon: '🛶', cost: 28000, cap: 240, perDay: 120, cargos: ['kies'] },
     motor: { name: 'Motorfrachter', icon: '🚤', cost: 70000, cap: 640, perDay: 260, cargos: ['kies'] },
-    container: { name: 'Containerschiff', icon: '🚢', cost: 260000, cap: 700, perDay: 900, cargos: ['container'] },
-    tank: { name: 'Tankschiff', icon: '🛢️', cost: 200000, cap: 560, perDay: 700, cargos: ['oel'] },
+    container: { name: 'Containerschiff', icon: '🚢', cost: 220000, cap: 800, perDay: 700, cargos: ['container'] },
+    tank: { name: 'Tankschiff', icon: '🛢️', cost: 220000, cap: 560, perDay: 800, cargos: ['oel'] },
   },
 };
 

@@ -1527,3 +1527,19 @@ test('Flotte: eigenen Ponton zuteilen und zurückrufen', () => {
   assert.ok(u.removed > 0, 'arbeitet'); assert.ok(g.money > m0 - 5000, 'kein Lohn');
   const pos = recallPonton(g); assert.ok(pos && lentUnit(g) === null); assert.equal(g.fleet.units.length, 0);
 });
+
+test('Stau: bei Niedrigwasser und Sperrung sinken die Preise vor Ort, danach erholen sie sich', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false; g.traffic.spawnIn = 1e9;
+  const p0 = priceOf(g.market, 'kies');
+  for (let i = 0; i < 20 * 14 * 3; i++) g.update(0.05); assert.ok(g.market.glut < 0.02, 'normaler Pegel: kein Abschlag');
+  g.setWater(g.wl - 0.8, 5);
+  for (let i = 0; i < 20 * 14 * 4; i++) g.update(0.05);
+  assert.ok(g.market.glut > 0.1, `Niedrigwasser drückt die Preise (${g.market.glut.toFixed(2)})`);
+  assert.ok(priceOf(g.market, 'kies') < p0 * 0.95 || g.market.dev.kies > 0);
+  g.setWater(CONFIG.water.base + 1.5, 5);
+  for (let i = 0; i < 20 * 14 * 4; i++) g.update(0.05);
+  assert.ok(g.closed && g.market.glut > 0.2, 'Hochwasser-Sperre: starker Abschlag');
+  g.setWater(CONFIG.water.base, 0);
+  for (let i = 0; i < 20 * 14 * 12; i++) g.update(0.05);
+  assert.ok(g.market.glut < 0.05, 'Erholung nach Ende der Sperre');
+});
