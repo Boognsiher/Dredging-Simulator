@@ -239,7 +239,7 @@ function updateMarket() {
 let depositSig = null;
 function updateDeposits() {
   const r = game.river, price = (d) => materialPrice(d.kind, game.stats, game.market);
-  const rows = r.deposits.map((d) => ({ d, rest: r.depositRemaining(d.id) }));
+  const rows = r.deposits.filter((d) => !d.depleted).map((d) => ({ d, rest: r.depositRemaining(d.id) }));
   const sig = JSON.stringify([rows.map(({ d, rest }) => [d.id, d.known, d.owned, Math.round(rest / 5)]), Math.floor(game.money / 500), game.fleet.mine, Math.round(game.totals.premium / 100)]);
   if (sig === depositSig) return;
   depositSig = sig;

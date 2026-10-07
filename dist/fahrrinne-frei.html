@@ -849,7 +849,7 @@ function updateMarket() {
 let depositSig = null;
 function updateDeposits() {
   const r = game.river, price = (d) => materialPrice(d.kind, game.stats, game.market);
-  const rows = r.deposits.map((d) => ({ d, rest: r.depositRemaining(d.id) }));
+  const rows = r.deposits.filter((d) => !d.depleted).map((d) => ({ d, rest: r.depositRemaining(d.id) }));
   const sig = JSON.stringify([rows.map(({ d, rest }) => [d.id, d.known, d.owned, Math.round(rest / 5)]), Math.floor(game.money / 500), game.fleet.mine, Math.round(game.totals.premium / 100)]);
   if (sig === depositSig) return;
   depositSig = sig;
@@ -1896,7 +1896,7 @@ const CONFIG = {
   hard: { factor: 1.5 }, // harte Schicht: Leistung geteilt durch (1 + Härte * factor)
   box: { cols: 4 }, // der Ponton baggert gleichzeitig 4 Karten-Spalten (Flussrichtung) und 16 Zellen quer zum Fluss
   // Baggerentgelt der Wasserstrassenverwaltung für Material aus dem Baggerkorridor; Naturschutzzone (Ufer, Flachwasser) kostet
-  deposits: { exploreCost: 1500 },
+  deposits: { exploreCost: 1500, emptyBelow: 6, maxActive: 3, spawnChance: 0.22 }, // leer unter 6 m³ Rest; bis zu 3 Vorkommen gleichzeitig, täglich 22 % Chance auf ein neues
   pay: { perM3: 40, protectFine: 220, landFee: 14 }, // landFee: Landerwerb/Entsorgung pro m³ Aushub aus dem Ausbaustreifen am Ufer
   // Material der Flusssohle (Index = Wert in river.kind). Preis in CHF pro m³ nach der Aufbereitung: positiv = Verkauf, negativ = Entsorgung.
   // Der Kiespreis folgt dem Markt (Fracht "Kies & Sand").
@@ -2847,7 +2847,7 @@ function trend(m, id) {
 return { createMarket: createMarket, priceOf: priceOf, ratioOf: ratioOf, stepMarket: stepMarket, shockMarket: shockMarket, trend: trend };
 },
 function(){
-const { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, levelById } = __m(2);
+const { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } = __m(2);
 const { toolAvailable } = __m(8);
 const { River } = __m(9);
 const { carveFairway, analyzeFairway, zonePlan } = __m(3);
@@ -3120,9 +3120,22 @@ class Game {
     this.notify(`Vorkommen gefunden: ${d.name}`, 'good');
     return d;
   }
+  // Täglich: leere Vorkommen verschwinden, mit der Zeit erscheinen neue zum Kauf (bekannt, Konzession kostet), solange weniger als drei aktiv sind
+  depositsDay() {
+    const D = CONFIG.deposits;
+    for (const m of this.maps) {
+      const r = m.river, name = this.maps.length > 1 ? `${m.name}: ` : '';
+      for (const d of r.deposits) if (!d.depleted && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
+      const active = r.deposits.filter((d) => !d.depleted).length;
+      if (active < D.maxActive && this.rng() < D.spawnChance) {
+        const T = DEPOSITS[Math.floor(this.rng() * DEPOSITS.length)], d = r.spawnDeposit(this.rng, T);
+        if (d) { this.say(`${name}Neues Vorkommen entdeckt: ${d.name} bei Spalte ${Math.round(d.cx) + 1}. Konzession ${d.cost.toLocaleString('de-CH')} CHF.`, 'good'); this.notify(`${name}Neues Vorkommen: ${d.name}`, 'good'); }
+      }
+    }
+  }
   concessionBlock(id) {
     const d = this.river.deposits[id - 1];
-    if (!d || !d.known) return 'Erst erkunden';
+    if (!d || !d.known || d.depleted) return d?.depleted ? 'Vorkommen ist abgebaut' : 'Erst erkunden';
     if (d.owned) return 'Schon erworben';
     if (this.money < d.cost) return `Braucht ${d.cost.toLocaleString('de-CH')} CHF`;
     return this.status === 'playing' ? null : 'Spiel beendet';
@@ -3289,6 +3302,7 @@ class Game {
         this.mapIdx = cur;
       }
     }
+    this.depositsDay();
     updateContracts(this);
     if (this.goalReached && !this.goalSeen) {
       this.goalSeen = true;
@@ -3836,6 +3850,31 @@ class River {
       if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
       this.pending.add(i);
     }
+  }
+
+  // Leeres Vorkommen verschwindet (Markierung und Zellen); die Nummer bleibt vergeben, weil Vorkommen über ihren Index gefunden werden
+  retireDeposit(id) {
+    const d = this.deposits[id - 1]; if (!d || d.depleted) return false;
+    for (let i = 0; i < this.dep.length; i++) if (this.dep[i] === id) { this.dep[i] = 0; this.depLeft[i] = 0; }
+    d.depleted = true; d.owned = false;
+    return true;
+  }
+  // Neues Vorkommen mit dicker Sedimentschicht im Baggerkorridor (bekannt, Konzession kostet); null, wenn keine passende Stelle gefunden wird
+  spawnDeposit(rng, T) {
+    if (this.deposits.length >= 250) return null;
+    for (let tries = 0; tries < 14; tries++) {
+      const x = Math.floor(rng.range(6, this.cols - 6)), y = this.centerY(x) + rng.range(-0.3, 0.3) * this.halfW(x), rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2), cells = [];
+      for (let yy = Math.max(0, Math.floor(y - ry)); yy <= Math.min(this.rows - 1, Math.ceil(y + ry)); yy++) for (let xx = Math.max(0, Math.floor(x - rx)); xx <= Math.min(this.cols - 1, Math.ceil(x + rx)); xx++) {
+        const i = yy * this.cols + xx;
+        if (((xx - x) / rx) ** 2 + ((yy - y) / ry) ** 2 <= 1 && this.zone[i] && !this.bay[i] && !this.dep[i] && this.kind[i] !== 3 && this.top[i] - this.rock[i] > 0.6) cells.push(i);
+      }
+      if (cells.length < 8) continue;
+      const id = this.deposits.length + 1;
+      for (const i of cells) { this.dep[i] = id; this.kind[i] = T.kind; this.depLeft[i] = Math.min(this.top[i] - this.rock[i], rng.range(0.9, 1.5)); }
+      const d = { id, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: x, cy: y, rx, ry, owned: false, known: true, cost: T.cost };
+      this.deposits.push(d); return d;
+    }
+    return null;
   }
 
   // Restmenge (m³) eines Vorkommens
@@ -5312,11 +5351,11 @@ class Advisor {
         text: () => 'In der Rinne liegen Altlasten (orange, ☢). Die Entsorgung kostet 160 CHF pro m³ und der Abtrag trübt stärker: ein Trübungsschutz und die Entwässerung lohnen sich, und rechne die Kosten ein, bevor du die Klasse ausbaust.' },
       { id: 'sunk', prio: 87, when: () => game.totals.sunk > 0 && game.totals.sunk > (this.shownAt._s ?? 0),
         text: () => { this.shownAt._s = game.totals.sunk; return 'Ein Schiff ist gesunken: Wrack und Altlast liegen jetzt in der Rinne. Das Wrack ist eine harte Untiefe (am besten mit dem Löffelbagger), die Altlast kostet Entsorgung. Mit dem Freischleppen-Minispiel hättest du es retten können.'; } },
-      { id: 'deposit', prio: 92, when: () => game.river.deposits.some((d) => d.owned) && game.totals.premium < 1 && game.totals.removed < 400 && this.runTime > 25,
-        text: () => { const d = game.river.deposits.find((q) => q.owned); return `Gutes Geld liegt im Fluss: ${d.name} bei Spalte ${Math.round(d.cx) + 1} (goldgelb auf der Karte) gehört schon dir. Baggere dort zuerst: du bekommst ×${d.mult} auf das Material, sofort bar. Karte antippen, Anker werfen, Pumpe an.`; } },
+      { id: 'deposit', prio: 92, when: () => game.river.deposits.some((d) => d.owned && !d.depleted) && game.totals.premium < 1 && game.totals.removed < 400 && this.runTime > 25,
+        text: () => { const d = game.river.deposits.find((q) => q.owned && !q.depleted); return `Gutes Geld liegt im Fluss: ${d.name} bei Spalte ${Math.round(d.cx) + 1} (goldgelb auf der Karte) gehört schon dir. Baggere dort zuerst: du bekommst ×${d.mult} auf das Material, sofort bar. Karte antippen, Anker werfen, Pumpe an.`; } },
       { id: 'noconcession', prio: 86, when: () => !!game.depositNoConcession && !game.river.deposits[game.depositNoConcession - 1]?.owned,
         text: () => { const d = game.river.deposits[game.depositNoConcession - 1]; return `Du baggerst in einem Rohstoffgebiet (${d.name}) ohne Konzession: so entgeht dir der Preisaufschlag ×${d.mult}. Die Konzession kostet ${d.cost.toLocaleString('de-CH')} CHF (Panel, Rohstoffgebiete).`; } },
-      { id: 'explore', prio: 55, when: () => game.day > 4 && game.river.deposits.some((d) => !d.known) && game.money > CONFIG.deposits.exploreCost * 4,
+      { id: 'explore', prio: 55, when: () => game.day > 4 && game.river.deposits.some((d) => !d.known && !d.depleted) && game.money > CONFIG.deposits.exploreCost * 4,
         text: () => `Im Fluss liegen noch unbekannte Rohstoffvorkommen. Erkunden kostet ${CONFIG.deposits.exploreCost.toLocaleString('de-CH')} CHF (Panel, Rohstoffgebiete), und mit Konzession bringt der Abbau Quarzsand oder Erz ein Vielfaches.` },
       { id: 'contract', prio: 58, when: () => game.contracts.some((c) => c.status === 'offer'),
         text: () => `Eine Reederei bietet dir einen Frachtauftrag an (Panel, Aufträge). Die Prämie gibt es nur, wenn die Schiffe rechtzeitig durchkommen, schau also, ob die Klasse schon fahren kann.` },
@@ -6175,7 +6214,7 @@ function drawPontoon(ctx, game, sim, ui) {
 function drawDeposits(ctx, game, ui) {
   const r = game.river;
   for (const d of r.deposits ?? []) {
-    if (!d.known) continue;
+    if (!d.known || d.depleted) continue;
     const T = depositType(d.type);
     for (let i = 0; i < r.dep.length; i++) {
       if (r.dep[i] !== d.id) continue;

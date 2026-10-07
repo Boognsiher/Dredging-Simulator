@@ -1,4 +1,4 @@
-import { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, levelById } from '../config.js';
+import { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { River } from './river.js';
 import { carveFairway, analyzeFairway, zonePlan } from './fairway.js';
@@ -256,9 +256,22 @@ export class Game {
     this.notify(`Vorkommen gefunden: ${d.name}`, 'good');
     return d;
   }
+  // Täglich: leere Vorkommen verschwinden, mit der Zeit erscheinen neue zum Kauf (bekannt, Konzession kostet), solange weniger als drei aktiv sind
+  depositsDay() {
+    const D = CONFIG.deposits;
+    for (const m of this.maps) {
+      const r = m.river, name = this.maps.length > 1 ? `${m.name}: ` : '';
+      for (const d of r.deposits) if (!d.depleted && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
+      const active = r.deposits.filter((d) => !d.depleted).length;
+      if (active < D.maxActive && this.rng() < D.spawnChance) {
+        const T = DEPOSITS[Math.floor(this.rng() * DEPOSITS.length)], d = r.spawnDeposit(this.rng, T);
+        if (d) { this.say(`${name}Neues Vorkommen entdeckt: ${d.name} bei Spalte ${Math.round(d.cx) + 1}. Konzession ${d.cost.toLocaleString('de-CH')} CHF.`, 'good'); this.notify(`${name}Neues Vorkommen: ${d.name}`, 'good'); }
+      }
+    }
+  }
   concessionBlock(id) {
     const d = this.river.deposits[id - 1];
-    if (!d || !d.known) return 'Erst erkunden';
+    if (!d || !d.known || d.depleted) return d?.depleted ? 'Vorkommen ist abgebaut' : 'Erst erkunden';
     if (d.owned) return 'Schon erworben';
     if (this.money < d.cost) return `Braucht ${d.cost.toLocaleString('de-CH')} CHF`;
     return this.status === 'playing' ? null : 'Spiel beendet';
@@ -425,6 +438,7 @@ export class Game {
         this.mapIdx = cur;
       }
     }
+    this.depositsDay();
     updateContracts(this);
     if (this.goalReached && !this.goalSeen) {
       this.goalSeen = true;

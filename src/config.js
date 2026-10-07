@@ -24,7 +24,7 @@ export const CONFIG = {
   hard: { factor: 1.5 }, // harte Schicht: Leistung geteilt durch (1 + Härte * factor)
   box: { cols: 4 }, // der Ponton baggert gleichzeitig 4 Karten-Spalten (Flussrichtung) und 16 Zellen quer zum Fluss
   // Baggerentgelt der Wasserstrassenverwaltung für Material aus dem Baggerkorridor; Naturschutzzone (Ufer, Flachwasser) kostet
-  deposits: { exploreCost: 1500 },
+  deposits: { exploreCost: 1500, emptyBelow: 6, maxActive: 3, spawnChance: 0.22 }, // leer unter 6 m³ Rest; bis zu 3 Vorkommen gleichzeitig, täglich 22 % Chance auf ein neues
   pay: { perM3: 40, protectFine: 220, landFee: 14 }, // landFee: Landerwerb/Entsorgung pro m³ Aushub aus dem Ausbaustreifen am Ufer
   // Material der Flusssohle (Index = Wert in river.kind). Preis in CHF pro m³ nach der Aufbereitung: positiv = Verkauf, negativ = Entsorgung.
   // Der Kiespreis folgt dem Markt (Fracht "Kies & Sand").

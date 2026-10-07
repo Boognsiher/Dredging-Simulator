@@ -199,6 +199,31 @@ export class River {
     }
   }
 
+  // Leeres Vorkommen verschwindet (Markierung und Zellen); die Nummer bleibt vergeben, weil Vorkommen über ihren Index gefunden werden
+  retireDeposit(id) {
+    const d = this.deposits[id - 1]; if (!d || d.depleted) return false;
+    for (let i = 0; i < this.dep.length; i++) if (this.dep[i] === id) { this.dep[i] = 0; this.depLeft[i] = 0; }
+    d.depleted = true; d.owned = false;
+    return true;
+  }
+  // Neues Vorkommen mit dicker Sedimentschicht im Baggerkorridor (bekannt, Konzession kostet); null, wenn keine passende Stelle gefunden wird
+  spawnDeposit(rng, T) {
+    if (this.deposits.length >= 250) return null;
+    for (let tries = 0; tries < 14; tries++) {
+      const x = Math.floor(rng.range(6, this.cols - 6)), y = this.centerY(x) + rng.range(-0.3, 0.3) * this.halfW(x), rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2), cells = [];
+      for (let yy = Math.max(0, Math.floor(y - ry)); yy <= Math.min(this.rows - 1, Math.ceil(y + ry)); yy++) for (let xx = Math.max(0, Math.floor(x - rx)); xx <= Math.min(this.cols - 1, Math.ceil(x + rx)); xx++) {
+        const i = yy * this.cols + xx;
+        if (((xx - x) / rx) ** 2 + ((yy - y) / ry) ** 2 <= 1 && this.zone[i] && !this.bay[i] && !this.dep[i] && this.kind[i] !== 3 && this.top[i] - this.rock[i] > 0.6) cells.push(i);
+      }
+      if (cells.length < 8) continue;
+      const id = this.deposits.length + 1;
+      for (const i of cells) { this.dep[i] = id; this.kind[i] = T.kind; this.depLeft[i] = Math.min(this.top[i] - this.rock[i], rng.range(0.9, 1.5)); }
+      const d = { id, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: x, cy: y, rx, ry, owned: false, known: true, cost: T.cost };
+      this.deposits.push(d); return d;
+    }
+    return null;
+  }
+
   // Restmenge (m³) eines Vorkommens
   depositRemaining(id) {
     let v = 0;

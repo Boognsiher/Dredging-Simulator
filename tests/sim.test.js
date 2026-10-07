@@ -1603,3 +1603,21 @@ test('Flotte: Einstellungsänderung lässt arbeitende Pontons sofort neu wählen
   assert.notEqual(u.state, 'work');
   assert.equal(u.sim.mode, 'map');
 });
+
+test('Vorkommen: leere verschwinden, mit der Zeit erscheinen neue zum Kauf', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false;
+  const r = g.river, d0 = r.deposits[0];
+  for (let i = 0; i < r.dep.length; i++) if (r.dep[i] === d0.id) r.depLeft[i] = 0; // abgebaut
+  g.depositsDay();
+  assert.ok(d0.depleted);
+  assert.ok(!r.dep.some((v) => v === d0.id));
+  assert.match(g.concessionBlock(d0.id), /abgebaut/);
+  const n0 = r.deposits.length, rng0 = g.rng; g.rng = () => 0.001; // jetzt sicher: neues Vorkommen
+  g.rng.range = (a, b) => a + (b - a) * 0.5;
+  for (let k = 0; k < 6; k++) g.depositsDay();
+  g.rng = rng0;
+  const fresh = r.deposits.slice(n0);
+  assert.ok(fresh.length >= 1, 'neues Vorkommen erscheint');
+  assert.ok(fresh.every((d) => d.known && !d.owned && !d.depleted && r.depositRemaining(d.id) > 6));
+  const rt = restoreGame(serializeGame(g)); assert.equal(rt.river.deposits.length, r.deposits.length);
+});

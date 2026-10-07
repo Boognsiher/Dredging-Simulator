@@ -236,7 +236,7 @@ function drawPontoon(ctx, game, sim, ui) {
 function drawDeposits(ctx, game, ui) {
   const r = game.river;
   for (const d of r.deposits ?? []) {
-    if (!d.known) continue;
+    if (!d.known || d.depleted) continue;
     const T = depositType(d.type);
     for (let i = 0; i < r.dep.length; i++) {
       if (r.dep[i] !== d.id) continue;
