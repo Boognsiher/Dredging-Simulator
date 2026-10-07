@@ -1543,3 +1543,16 @@ test('Stau: bei Niedrigwasser und Sperrung sinken die Preise vor Ort, danach erh
   for (let i = 0; i < 20 * 14 * 12; i++) g.update(0.05);
   assert.ok(g.market.glut < 0.05, 'Erholung nach Ende der Sperre');
 });
+
+test('Aufbereitungshalle schaltet Anlagenstufen über 6 frei', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.unlocked.motor = true;
+  g.levels.plant = 6; g._stats = null; g.money = 1e7;
+  assert.equal(g.nextUpgradeCost('plant'), null);
+  assert.ok(g.upgradeLocked('plant'));
+  assert.ok(!g.buyUpgrade('plant'));
+  assert.ok(openPort(g)); for (const s of g.port.sites) s.ready = true;
+  assert.ok(build(g, 0, 'kai')); assert.ok(build(g, 1, 'werk'));
+  assert.ok(g.buyUpgrade('plant') && g.buyUpgrade('plant'));
+  assert.ok(!g.buyUpgrade('plant'));
+  assert.ok(upgrade(g, 1)); assert.ok(g.buyUpgrade('plant'));
+});

@@ -40,7 +40,7 @@ export class Advisor {
     if (L.auto === 0 && game.totals.removed > 400) order.push('auto');
     order.push('power', 'beacons', 'sorter', 'speed', 'radius', 'winch', 'pilot', 'vts', 'echolot', 'plant');
     for (const id of order) {
-      if (!UPGRADES[id] || L[id] >= UPGRADES[id].maxLevel) continue;
+      if (!UPGRADES[id] || L[id] >= UPGRADES[id].maxLevel || game.upgradeLocked(id)) continue;
       const cost = upgradeCost(id, L[id]);
       if (cost <= game.money) return { id, cost };
     }

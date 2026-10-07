@@ -7,7 +7,7 @@ import { EVENTS } from './events.js';
 import { computeStats, upgradeCost } from './stats.js';
 import { createRng } from './rng.js';
 import { createMarket, stepMarket } from './market.js';
-import { createPort, portDay, refundFrac, updatePort, carveBay } from './port.js';
+import { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } from './port.js';
 import { createShipping, updateShipping } from './shipping.js';
 import { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } from './traffic.js';
 import { processPlant, stockTotal, materialPrice } from './plant.js';
@@ -149,7 +149,9 @@ export class Game {
 
   setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
 
-  nextUpgradeCost(id) { return this.levels[id] >= UPGRADES[id].maxLevel ? null : upgradeCost(id, this.levels[id]); }
+  // gesperrt: Anlage über Stufe 6 braucht die Aufbereitungshalle im Hafen
+  upgradeLocked(id) { return id === 'plant' && this.levels.plant >= plantLimit(this) && this.levels.plant < UPGRADES.plant.maxLevel; }
+  nextUpgradeCost(id) { return this.levels[id] >= UPGRADES[id].maxLevel || this.upgradeLocked(id) ? null : upgradeCost(id, this.levels[id]); }
 
   buyUpgrade(id) {
     const cost = this.nextUpgradeCost(id);
