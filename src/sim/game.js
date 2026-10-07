@@ -144,7 +144,7 @@ export class Game {
   get timeLeft() { return Math.max(0, this.totalSeconds - this.time); }
   get goalReached() { return this.totals.tons >= this.level.goalTons; }
 
-  notify(text, kind = 'info') { this.notes.push({ text, kind }); }
+  notify(text, kind = 'info', extra = null) { this.notes.push({ text, kind, ...extra }); }
   say(text, kind = 'info') { this.log.unshift({ day: this.day, text, kind }); this.log.length = Math.min(this.log.length, 60); }
 
   setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }

@@ -38,6 +38,7 @@ button.primary { background:var(--accent); color:#04222b; font-weight:600; width
 #upgrades h3 { font-size:13px; color:var(--muted); margin:12px 0 6px; font-weight:600; }
 .warn { color:var(--bad); }
 #toast { position:absolute; top:44px; left:8px; right:8px; text-align:center; pointer-events:none; }
+#toast .toast-go { pointer-events: auto; margin-left: 6px; padding: 4px 10px; font-size: inherit; width: auto; background: var(--accent); color: #05222c; border-radius: 6px; font-weight: 700; }
 #toast span { display:inline-block; background:#000c; padding:6px 12px; border-radius:6px; }
 #toast .bad, #toast .clog { color:var(--bad); } #toast .good { color:var(--good); }
 button#btn-drone, button#btn-wait { width:100%; margin-top:6px; }
@@ -589,7 +590,7 @@ const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } = __m(2);
 const { Game } = __m(7);
 const { acceptContract } = __m(15);
-const { waitingByClass } = __m(14);
+const { waitingByClass, shipPos } = __m(14);
 const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(16);
 const { bayCapacity, maxZones, zoneClasses } = __m(14);
 const { materialPrice } = __m(17);
@@ -1159,13 +1160,18 @@ function placeToast() {
   const visTop = canvas.offsetTop + (cropVis !== null ? panY : 0), visH = cropVis !== null ? cropVis : canvas.clientHeight;
   t.style.right = '8px'; t.style.top = `${Math.max(8, visTop + visH - t.offsetHeight - 12)}px`;
 }
-function toast(text, kind = 'info', force = false) {
+function toast(text, kind = 'info', force = false, goto = null) {
   if (!force && (kind === 'info' || kind === 'upgrade')) return;
   $('toast').innerHTML = `<span class="${kind}"></span>`;
   $('toast').firstChild.textContent = text;
+  if (goto) { // Meldung mit Sprungknopf zum aufgelaufenen Schiff
+    const b = document.createElement('button'); b.className = 'toast-go'; b.textContent = '📍 Zum Schiff';
+    b.onclick = () => { gotoShip(goto); $('toast').innerHTML = ''; };
+    $('toast').firstChild.append(' ', b);
+  }
   placeToast();
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { $('toast').innerHTML = ''; }, force ? 3800 : 2600);
+  toastTimer = setTimeout(() => { $('toast').innerHTML = ''; }, goto ? 12000 : force ? 3800 : 2600);
 }
 
 // ---------- Spielfeld einpassen und Steuerungsanzeige ----------
@@ -1282,6 +1288,19 @@ function anchor() {
 function leave() { if (tow) { tow = null; syncMode(); return; } if (sim.leave()) syncMode(); }
 
 // Aufläufer freischleppen: Ponton nahe ans Schiff, dann Minispiel
+// Zum aufgelaufenen Schiff springen: Karte wechseln, Ponton neben das Schiff setzen
+function gotoShip({ map, ship: id }) {
+  if (map !== game.mapIdx) { if (!game.endless) return; changeMap(map); }
+  const ship = game.traffic.ships.find((s) => s.id === id);
+  if (!ship || ship.state !== 'grounded') { toast('Das Schiff ist schon wieder frei oder abgeschleppt.', 'info', true); return; }
+  if (tow) tow = null;
+  if (sim.mode === 'slice') sim.leave();
+  const p = shipPos(ship); let best = null, bd = Infinity; // nächste Zelle, auf der der Ponton schwimmt
+  for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = Math.floor(p.x) + dx + 0.5, y = Math.floor(p.y) + dy + 0.5, d = Math.hypot(x - p.x, y - p.y); if (d < bd && d <= 3.5 && sim.canFloat(x, y)) { bd = d; best = { x, y }; } }
+  if (!best) { toast('Kein Platz für den Ponton neben dem Schiff: von Hand heranfahren.', 'bad', true); return; }
+  sim.x = best.x; sim.y = best.y; mapTarget = null; syncMode(); updateTowButton();
+  toast('Beim Schiff: «Schleppen» (T) startet das Freiziehen', 'info', true);
+}
 function startTow() {
   if (tow || sim.mode !== 'map') return;
   const ship = groundedNear(game, sim.x, sim.y);
@@ -1650,7 +1669,7 @@ function frame(now) {
       tipTimer = 0;
       if (advisor.enabled && !(sim.mode === 'slice' && sim.slice.freeing)) { const tip = advisor.pick(game, sim); if (tip) showTip(tip); }
     }
-    for (const n of game.notes.splice(0)) toast(n.text, n.kind);
+    for (const n of game.notes.splice(0)) toast(n.text, n.kind, false, n.goto);
   }
   readInput.endFrame();
 
@@ -1955,7 +1974,7 @@ const CONFIG = {
     gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
     enterGap: 3.0,
     groundMargin: 0.2, // m: so viel darf die Sohle über dem Tiefgang liegen, ohne dass das Schiff aufläuft (Kielfreiheit von 0,3 m ist ein Puffer)
-    groundSeconds: 18, tugFreeSeconds: 8, // Schlepper auf Maximalstufe befreien aufgelaufene Schiffe (und sind schneller)
+    groundSeconds: 30, tugFreeSeconds: 8, // Schlepper auf Maximalstufe befreien aufgelaufene Schiffe (und sind schneller)
     salvageFactor: 2.0, // Havarie: Schlepper-Zeit; Bergungskosten = Faktor * Gebühr
     siteRadius: 3.5, siteSlow: 0.5, // Ponton in der Rinne: langsame Fahrt, Wechselverkehr
     switchAfter: 10, // Sekunden Wartezeit auf der Gegenseite, ab der in einer Einbahnrinne die Richtung gewechselt wird
@@ -3008,7 +3027,7 @@ class Game {
   get timeLeft() { return Math.max(0, this.totalSeconds - this.time); }
   get goalReached() { return this.totals.tons >= this.level.goalTons; }
 
-  notify(text, kind = 'info') { this.notes.push({ text, kind }); }
+  notify(text, kind = 'info', extra = null) { this.notes.push({ text, kind, ...extra }); }
   say(text, kind = 'info') { this.log.unshift({ day: this.day, text, kind }); this.log.length = Math.min(this.log.length, 60); }
 
   setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
@@ -4540,7 +4559,7 @@ function updateTraffic(g, dt) {
       ship.state = 'grounded'; ship.ground = C.groundSeconds * (1 - 0.25 * vts) * (g.stats.tugs >= UPGRADES.tugs.maxLevel ? 0.6 : 1); ship.salvage = cost;
       g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost;
       g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
-      g.notify(`${cls.name} aufgelaufen! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad');
+      g.notify(`${g.maps.length > 1 ? `${g.map.name}: ` : ''}${cls.name} aufgelaufen bei Spalte ${Math.floor(p.x) + 1}! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad', { goto: { map: g.mapIdx, ship: ship.id } });
       g.flash.push({ x: p.x, y: p.y, text: '⚠', color: '#ff7a6b' });
     }
   }

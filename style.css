@@ -24,6 +24,7 @@ button.primary { background:var(--accent); color:#04222b; font-weight:600; width
 #upgrades h3 { font-size:13px; color:var(--muted); margin:12px 0 6px; font-weight:600; }
 .warn { color:var(--bad); }
 #toast { position:absolute; top:44px; left:8px; right:8px; text-align:center; pointer-events:none; }
+#toast .toast-go { pointer-events: auto; margin-left: 6px; padding: 4px 10px; font-size: inherit; width: auto; background: var(--accent); color: #05222c; border-radius: 6px; font-weight: 700; }
 #toast span { display:inline-block; background:#000c; padding:6px 12px; border-radius:6px; }
 #toast .bad, #toast .clog { color:var(--bad); } #toast .good { color:var(--good); }
 button#btn-drone, button#btn-wait { width:100%; margin-top:6px; }

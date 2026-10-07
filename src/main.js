@@ -4,7 +4,7 @@ import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landO
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById } from './config.js';
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
-import { waitingByClass } from './sim/traffic.js';
+import { waitingByClass, shipPos } from './sim/traffic.js';
 import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
@@ -549,13 +549,18 @@ function placeToast() {
   const visTop = canvas.offsetTop + (cropVis !== null ? panY : 0), visH = cropVis !== null ? cropVis : canvas.clientHeight;
   t.style.right = '8px'; t.style.top = `${Math.max(8, visTop + visH - t.offsetHeight - 12)}px`;
 }
-function toast(text, kind = 'info', force = false) {
+function toast(text, kind = 'info', force = false, goto = null) {
   if (!force && (kind === 'info' || kind === 'upgrade')) return;
   $('toast').innerHTML = `<span class="${kind}"></span>`;
   $('toast').firstChild.textContent = text;
+  if (goto) { // Meldung mit Sprungknopf zum aufgelaufenen Schiff
+    const b = document.createElement('button'); b.className = 'toast-go'; b.textContent = '📍 Zum Schiff';
+    b.onclick = () => { gotoShip(goto); $('toast').innerHTML = ''; };
+    $('toast').firstChild.append(' ', b);
+  }
   placeToast();
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { $('toast').innerHTML = ''; }, force ? 3800 : 2600);
+  toastTimer = setTimeout(() => { $('toast').innerHTML = ''; }, goto ? 12000 : force ? 3800 : 2600);
 }
 
 // ---------- Spielfeld einpassen und Steuerungsanzeige ----------
@@ -672,6 +677,19 @@ function anchor() {
 function leave() { if (tow) { tow = null; syncMode(); return; } if (sim.leave()) syncMode(); }
 
 // Aufläufer freischleppen: Ponton nahe ans Schiff, dann Minispiel
+// Zum aufgelaufenen Schiff springen: Karte wechseln, Ponton neben das Schiff setzen
+function gotoShip({ map, ship: id }) {
+  if (map !== game.mapIdx) { if (!game.endless) return; changeMap(map); }
+  const ship = game.traffic.ships.find((s) => s.id === id);
+  if (!ship || ship.state !== 'grounded') { toast('Das Schiff ist schon wieder frei oder abgeschleppt.', 'info', true); return; }
+  if (tow) tow = null;
+  if (sim.mode === 'slice') sim.leave();
+  const p = shipPos(ship); let best = null, bd = Infinity; // nächste Zelle, auf der der Ponton schwimmt
+  for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = Math.floor(p.x) + dx + 0.5, y = Math.floor(p.y) + dy + 0.5, d = Math.hypot(x - p.x, y - p.y); if (d < bd && d <= 3.5 && sim.canFloat(x, y)) { bd = d; best = { x, y }; } }
+  if (!best) { toast('Kein Platz für den Ponton neben dem Schiff: von Hand heranfahren.', 'bad', true); return; }
+  sim.x = best.x; sim.y = best.y; mapTarget = null; syncMode(); updateTowButton();
+  toast('Beim Schiff: «Schleppen» (T) startet das Freiziehen', 'info', true);
+}
 function startTow() {
   if (tow || sim.mode !== 'map') return;
   const ship = groundedNear(game, sim.x, sim.y);
@@ -1040,7 +1058,7 @@ function frame(now) {
       tipTimer = 0;
       if (advisor.enabled && !(sim.mode === 'slice' && sim.slice.freeing)) { const tip = advisor.pick(game, sim); if (tip) showTip(tip); }
     }
-    for (const n of game.notes.splice(0)) toast(n.text, n.kind);
+    for (const n of game.notes.splice(0)) toast(n.text, n.kind, false, n.goto);
   }
   readInput.endFrame();
 

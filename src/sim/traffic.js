@@ -227,7 +227,7 @@ export function updateTraffic(g, dt) {
       ship.state = 'grounded'; ship.ground = C.groundSeconds * (1 - 0.25 * vts) * (g.stats.tugs >= UPGRADES.tugs.maxLevel ? 0.6 : 1); ship.salvage = cost;
       g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost;
       g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
-      g.notify(`${cls.name} aufgelaufen! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad');
+      g.notify(`${g.maps.length > 1 ? `${g.map.name}: ` : ''}${cls.name} aufgelaufen bei Spalte ${Math.floor(p.x) + 1}! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad', { goto: { map: g.mapIdx, ship: ship.id } });
       g.flash.push({ x: p.x, y: p.y, text: '⚠', color: '#ff7a6b' });
     }
   }
