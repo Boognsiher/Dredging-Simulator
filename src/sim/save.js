@@ -8,7 +8,7 @@ import { River } from './river.js';
 // Spielstand: reine Umwandlung Game <-> JSON-Text (kein DOM, kein Speicher). Gespeichert wird der Management-Zustand (Geld, Zeit, Upgrades,
 // Markt, Schiffe, Aufträge ...) und die Flusssohle. Abgeleitetes (Fahrrinnen, Pfade, Nachrutschen) wird nach dem Laden neu berechnet.
 // Die laufende Pontonfahrt wird nicht gespeichert: nach dem Laden steht der Ponton wieder auf der Karte.
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7; // 7: Karte mit 36 statt 24 Zeilen (ältere Spielstände passen nicht mehr)
 
 const SKIP = new Set(['rng', 'notes', 'flash', '_stats']);
 const toB64 = (arr) => {
@@ -44,12 +44,7 @@ export function serializeGame(game) {
 export function restoreGame(text) {
   try {
     const s = JSON.parse(text);
-    if (s?.version !== SAVE_VERSION && s?.version !== 5) return null;
-    if (s.version === 5) { // Spielstand vor den Mehrkarten-Spielen: alles gehört zu Karte 1
-      const d = s.data, m = { id: 0, name: 'Karte 1', seed: d.seed, difficulty: 0 };
-      for (const k of ['traffic', 'fleet', 'zones', 'zoneSeq', 'unlocked', 'fairSig', 'fairClock', 'sedClock', 'rejectedBy']) { m[k] = d[k]; delete d[k]; }
-      d.maps = [m]; d.mapIdx = 0; s.rivers = [s.river];
-    }
+    if (s?.version !== SAVE_VERSION) return null;
     const topPort = s.data.port, topMarket = s.data.market; delete s.data.port; delete s.data.market; // ältere Stände: Hafen und Markt gehörten dem ganzen Spiel (jetzt je Karte)
     const game = new Game(s.data.seed, s.data.levelId);
     const fresh = game.maps[0].river; // gleicher Seed: liefert die Anzeige-Hilfen (Mittellinie, Breite) der ersten Karte

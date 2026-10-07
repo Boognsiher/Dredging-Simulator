@@ -474,8 +474,8 @@ test('Verkehr: Marktnachfrage steuert die Fracht (teures Öl lockt Tanker)', () 
 
 test('Spiel: Ponton in der Rinne bremst den Verkehr (Baustelle)', () => {
   const g = emptyGame(9);
-  g.site = { x: 20, y: 12 };
-  const near = g.fair.kahn.path.points.some((p) => Math.hypot(p.x - 20, p.y - 12) < CONFIG.traffic.siteRadius);
+  const cy = g.fair.kahn.path.points.find((p) => p.x >= 20).y; g.site = { x: 20, y: cy };
+  const near = g.fair.kahn.path.points.some((p) => Math.hypot(p.x - 20, p.y - cy) < CONFIG.traffic.siteRadius);
   assert.ok(near);
   for (let i = 0; i < 12 * 20 * 20; i++) g.update(0.05);
   assert.ok(g.totals.ships >= 0);
@@ -1112,7 +1112,7 @@ test('Flotte betoniert die Rinne, verbraucht Beton und hört ohne Beton auf', ()
 
 test('Flotte betoniert nur mit Betoniergerät und wenn eingeschaltet', () => {
   const g = new Game(3, 'hochrhein');
-  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn'; g.concrete = 100;
+  g.money = 1e6; g.buyUpgrade('auto'); g.traffic.spawnIn = 1e9; g.eventsOn = false; g.fleet.goal = 'kahn'; g.concrete = 100; fullLane(g, 'kahn');
   g.fleet.mine = false; g.fleet.mine = false; hireUnit(g);
   for (let i = 0; i < 14 * 8 * 20; i++) g.update(0.05);
   assert.equal(g.totals.concreteUsed, 0);

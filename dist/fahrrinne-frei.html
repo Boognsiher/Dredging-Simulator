@@ -645,7 +645,7 @@ const readInput = createInput(canvas);
 sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
-let sheetOpen = false, menuOpen = false, mapFull = false;
+let sheetOpen = false, menuOpen = false, mapFull = false, panYm = 0;
 let areaMode = false; // Arbeitsgebiet für gemietete Pontons aufziehen (Karte): zwei Ecken antippen
 let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
@@ -1138,7 +1138,9 @@ function panCanvas(dt) {
     const AW = innerWidth, AH = innerHeight, fxp = tow ? cw / 2 : ((OX + sim.x * CELL) / canvas.logicalW) * cw;
     const want = cw <= AW ? (AW - cw) / 2 : Math.min(0, Math.max(AW - cw, AW / 2 - fxp));
     panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1);
-    canvas.style.left = `${panX}px`; canvas.style.top = `${(AH - ch) / 2}px`;
+    const fyp = tow ? ch / 2 : ((sim.y * CELL) / canvas.logicalH) * ch, wantY = ch <= AH ? (AH - ch) / 2 : Math.min(0, Math.max(AH - ch, AH / 2 - fyp));
+    panYm += (wantY - panYm) * (dt > 0 ? Math.min(1, dt * 6) : 1);
+    canvas.style.left = `${panX}px`; canvas.style.top = `${panYm}px`;
     canvas.style.marginLeft = canvas.style.marginTop = canvas.style.marginBottom = canvas.style.clipPath = '';
     return;
   }
@@ -1174,8 +1176,8 @@ function fitCanvas() {
   mapFull = document.body.classList.contains('mode-map');
   if (mapFull) { // Karte und Schleppen: das Bild füllt den ganzen Bildschirm (hochkant: Höhe füllen, seitlich dem Ponton folgen)
     const AW = innerWidth, AH = innerHeight, aspect = lw / lh;
-    if (AW / AH < 1.5) { w = Math.min(AH * aspect, AW * 2.1); h = w / aspect; } // schmale Bildschirme: bis 2,1-fach vergrössert, seitlich dem Ponton folgen
-    else { h = AW / aspect > AH ? AH : AW / aspect; w = h * aspect; } // sonst die ganze Karte
+    if (AW / AH >= aspect) { w = AW; h = AW / aspect; } // breiter als die Karte: Breite füllen, in der Höhe dem Ponton folgen
+    else { w = Math.min(AH * aspect, AW * 2.1); h = w / aspect; } // schmaler: Höhe füllen (bis 2,1-fach), seitlich dem Ponton folgen
     canvas.style.position = 'absolute';
   } else { canvas.style.position = ''; canvas.style.left = ''; canvas.style.top = ''; }
   if (mapFull) { /* oben berechnet */ }
@@ -1772,7 +1774,7 @@ function(){
 // durchkommen. Jedes Schiff bringt Gebühr + Anteil am Frachtwert (Markt!), das Baggergut wird aufbereitet und verkauft
 // oder entsorgt. Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel schaltet das nächste Level frei.
 const CONFIG = {
-  river: { cols: 44, rows: 24 },
+  river: { cols: 44, rows: 36 }, // 36 Zeilen: der Fluss liegt in der Mitte, beiderseits bleibt Land (Hafen, später Strassen und Lager)
   daySeconds: 14, // ein Spieltag in Sekunden (120 Tage = 28 Minuten)
   startMoney: 50000, // CHF
   deadlineDays: 120,
@@ -5009,7 +5011,7 @@ const { River } = __m(8);
 // Spielstand: reine Umwandlung Game <-> JSON-Text (kein DOM, kein Speicher). Gespeichert wird der Management-Zustand (Geld, Zeit, Upgrades,
 // Markt, Schiffe, Aufträge ...) und die Flusssohle. Abgeleitetes (Fahrrinnen, Pfade, Nachrutschen) wird nach dem Laden neu berechnet.
 // Die laufende Pontonfahrt wird nicht gespeichert: nach dem Laden steht der Ponton wieder auf der Karte.
-const SAVE_VERSION = 6;
+const SAVE_VERSION = 7; // 7: Karte mit 36 statt 24 Zeilen (ältere Spielstände passen nicht mehr)
 
 const SKIP = new Set(['rng', 'notes', 'flash', '_stats']);
 const toB64 = (arr) => {
@@ -5045,12 +5047,7 @@ function serializeGame(game) {
 function restoreGame(text) {
   try {
     const s = JSON.parse(text);
-    if (s?.version !== SAVE_VERSION && s?.version !== 5) return null;
-    if (s.version === 5) { // Spielstand vor den Mehrkarten-Spielen: alles gehört zu Karte 1
-      const d = s.data, m = { id: 0, name: 'Karte 1', seed: d.seed, difficulty: 0 };
-      for (const k of ['traffic', 'fleet', 'zones', 'zoneSeq', 'unlocked', 'fairSig', 'fairClock', 'sedClock', 'rejectedBy']) { m[k] = d[k]; delete d[k]; }
-      d.maps = [m]; d.mapIdx = 0; s.rivers = [s.river];
-    }
+    if (s?.version !== SAVE_VERSION) return null;
     const topPort = s.data.port, topMarket = s.data.market; delete s.data.port; delete s.data.market; // ältere Stände: Hafen und Markt gehörten dem ganzen Spiel (jetzt je Karte)
     const game = new Game(s.data.seed, s.data.levelId);
     const fresh = game.maps[0].river; // gleicher Seed: liefert die Anzeige-Hilfen (Mittellinie, Breite) der ersten Karte

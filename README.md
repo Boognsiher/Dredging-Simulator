@@ -143,3 +143,5 @@ Im Levelmenü gibt es unten **«♾ Endlos: Flussnetz»**: Du gibst eine **Seed-
 - **Flotte schonen:** Im Panel «Flotte» lässt sich einstellen, dass die gemieteten Pontons **Naturschutzzonen** (Flachwasser am Ufer) und **Altlastenbereiche** nicht abtragen (Rinne, Gebiete, Ufer, Kreuzungsstellen).
 
 **Container:** Neben Kies und Öl gibt es Containerfracht. Im Hafen baust du ein **Containerterminal** (32 000 CHF, 3 Stufen, 300 / 800 / 1 800 t Lager); durchfahrende Containerschiffe erzeugen dort Umschlagaufträge (Minispiel). In der Reederei gibt es das **Containerschiff** (380 000 CHF, 1 000 t, braucht eine tiefe Rinne und ein tiefes Hafenbecken). Container haben je Karte eigene Preise wie Kies und Öl.
+
+**Grössere Karte:** Die Karte hat jetzt 36 statt 24 Zeilen: der Fluss bleibt gleich, beiderseits liegt mehr Land (Platz für Hafen und später Strassen und Lager). Im Hochformat wird die Karte dadurch höher, im Vollbild folgt sie dem Ponton auch in der Höhe. Spielstände von vorher (Version 5/6) lassen sich wegen der neuen Kartengrösse nicht mehr laden.

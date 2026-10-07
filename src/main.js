@@ -59,7 +59,7 @@ const readInput = createInput(canvas);
 sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
-let sheetOpen = false, menuOpen = false, mapFull = false;
+let sheetOpen = false, menuOpen = false, mapFull = false, panYm = 0;
 let areaMode = false; // Arbeitsgebiet für gemietete Pontons aufziehen (Karte): zwei Ecken antippen
 let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
@@ -552,7 +552,9 @@ function panCanvas(dt) {
     const AW = innerWidth, AH = innerHeight, fxp = tow ? cw / 2 : ((OX + sim.x * CELL) / canvas.logicalW) * cw;
     const want = cw <= AW ? (AW - cw) / 2 : Math.min(0, Math.max(AW - cw, AW / 2 - fxp));
     panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1);
-    canvas.style.left = `${panX}px`; canvas.style.top = `${(AH - ch) / 2}px`;
+    const fyp = tow ? ch / 2 : ((sim.y * CELL) / canvas.logicalH) * ch, wantY = ch <= AH ? (AH - ch) / 2 : Math.min(0, Math.max(AH - ch, AH / 2 - fyp));
+    panYm += (wantY - panYm) * (dt > 0 ? Math.min(1, dt * 6) : 1);
+    canvas.style.left = `${panX}px`; canvas.style.top = `${panYm}px`;
     canvas.style.marginLeft = canvas.style.marginTop = canvas.style.marginBottom = canvas.style.clipPath = '';
     return;
   }
@@ -588,8 +590,8 @@ function fitCanvas() {
   mapFull = document.body.classList.contains('mode-map');
   if (mapFull) { // Karte und Schleppen: das Bild füllt den ganzen Bildschirm (hochkant: Höhe füllen, seitlich dem Ponton folgen)
     const AW = innerWidth, AH = innerHeight, aspect = lw / lh;
-    if (AW / AH < 1.5) { w = Math.min(AH * aspect, AW * 2.1); h = w / aspect; } // schmale Bildschirme: bis 2,1-fach vergrössert, seitlich dem Ponton folgen
-    else { h = AW / aspect > AH ? AH : AW / aspect; w = h * aspect; } // sonst die ganze Karte
+    if (AW / AH >= aspect) { w = AW; h = AW / aspect; } // breiter als die Karte: Breite füllen, in der Höhe dem Ponton folgen
+    else { w = Math.min(AH * aspect, AW * 2.1); h = w / aspect; } // schmaler: Höhe füllen (bis 2,1-fach), seitlich dem Ponton folgen
     canvas.style.position = 'absolute';
   } else { canvas.style.position = ''; canvas.style.left = ''; canvas.style.top = ''; }
   if (mapFull) { /* oben berechnet */ }

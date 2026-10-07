@@ -5,7 +5,7 @@
 // durchkommen. Jedes Schiff bringt Gebühr + Anteil am Frachtwert (Markt!), das Baggergut wird aufbereitet und verkauft
 // oder entsorgt. Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel schaltet das nächste Level frei.
 export const CONFIG = {
-  river: { cols: 44, rows: 24 },
+  river: { cols: 44, rows: 36 }, // 36 Zeilen: der Fluss liegt in der Mitte, beiderseits bleibt Land (Hafen, später Strassen und Lager)
   daySeconds: 14, // ein Spieltag in Sekunden (120 Tage = 28 Minuten)
   startMoney: 50000, // CHF
   deadlineDays: 120,
