@@ -419,3 +419,13 @@ body.mode-map #map-select { order: 4; flex: none; }
 .ship .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; } .ship select { background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; border-radius: 6px; padding: 4px 6px; font: inherit; }
 .ship label { font-size: 12px; display: inline-flex; gap: 4px; align-items: center; margin-right: 8px; } .ship { align-items: flex-start; }
 .shipbuy { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; } .shipbuy button { margin: 0; text-align: left; }
+
+/* ---- Handy hochkant (bisheriges Layout): Kopf und Leisten sparen Platz, damit die Karte gross bleibt (auch mit Kartenwahl im Endlos-Modus) ---- */
+@media (max-width: 860px) {
+  body:not(.mode-map) header { flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
+  body:not(.mode-map) #hud { flex: 1; min-width: 0; }
+  body:not(.mode-map) #map-select { flex: none; font-size: 12px; padding: 3px 4px; max-width: 112px; }
+  body:not(.mode-map) #hud span:nth-child(n+6) { display: none; } /* Schiffe und Rekord stehen woanders bzw. sind nebensächlich */
+  body:not(.mode-slice):not(.mode-map) #shift-hud { display: none; }
+  body:not(.mode-map) #shift-actions button { font-size: 12px; padding: 4px 6px; }
+}

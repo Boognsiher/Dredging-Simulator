@@ -428,6 +428,16 @@ body.mode-map #map-select { order: 4; flex: none; }
 .ship label { font-size: 12px; display: inline-flex; gap: 4px; align-items: center; margin-right: 8px; } .ship { align-items: flex-start; }
 .shipbuy { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; } .shipbuy button { margin: 0; text-align: left; }
 
+/* ---- Handy hochkant (bisheriges Layout): Kopf und Leisten sparen Platz, damit die Karte gross bleibt (auch mit Kartenwahl im Endlos-Modus) ---- */
+@media (max-width: 860px) {
+  body:not(.mode-map) header { flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
+  body:not(.mode-map) #hud { flex: 1; min-width: 0; }
+  body:not(.mode-map) #map-select { flex: none; font-size: 12px; padding: 3px 4px; max-width: 112px; }
+  body:not(.mode-map) #hud span:nth-child(n+6) { display: none; } /* Schiffe und Rekord stehen woanders bzw. sind nebensächlich */
+  body:not(.mode-slice):not(.mode-map) #shift-hud { display: none; }
+  body:not(.mode-map) #shift-actions button { font-size: 12px; padding: 4px 6px; }
+}
+
 </style>
 </head>
 <body>
@@ -464,8 +474,8 @@ body.mode-map #map-select { order: 4; flex: none; }
         <button id="btn-leave">↩ Zurück zur Karte (Q)</button>
         <button id="btn-auto">🤖 Auto (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
-        <button id="btn-area" hidden>▭ Arbeitsgebiet (G)</button>
-        <button id="btn-zone">↔ Kreuzungsstelle planen (K)</button>
+        <button id="btn-area" hidden>▭ Gebiet (G)</button>
+        <button id="btn-zone">↔ Kreuzung (K)</button>
         <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
         <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
         <button id="btn-pump">🌀 Pumpe: AUS (Leertaste)</button>
@@ -930,7 +940,7 @@ function updateTrafficPanel() {
 function toggleZoneMode() {
   if (tow || sim.mode !== 'map') { toast('Kreuzungsstellen planst du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
   zoneMode = !zoneMode; ui.zoneMode = zoneMode; trafficSig = null; mapTarget = null;
-  $('btn-zone').textContent = zoneMode ? '✔ Kreuzungsstellen: fertig (K)' : '↔ Kreuzungsstelle planen (K)';
+  $('btn-zone').textContent = zoneMode ? '✔ Kreuzung: fertig (K)' : '↔ Kreuzung (K)';
   updateTrafficPanel();
   if (zoneMode) { const c = shipById(game.zoneClassId); toast(`Planen für ${c.name}: Spalte antippen, die Zahl zeigt den fehlenden Aushub`, 'info', true); }
 }
@@ -938,7 +948,7 @@ function toggleAreaMode() {
   if (tow || sim.mode !== 'map') { toast('Arbeitsgebiete gibst du auf der Karte vor (Anker lichten mit Q)', 'info', true); return; }
   if (zoneMode) toggleZoneMode();
   areaMode = !areaMode; ui.areaMode = areaMode; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
-  $('btn-area').textContent = areaMode ? '✔ Gebiet: fertig (G)' : '▭ Arbeitsgebiet (G)';
+  $('btn-area').textContent = areaMode ? '✔ Gebiet: fertig (G)' : '▭ Gebiet (G)';
   if (areaMode) toast(`Zwei Ecken antippen: das Rechteck wird von den gemieteten Pontons auf die Gebietstiefe gebaggert (max. ${MAX_AREAS} Gebiete)`, 'info', true);
 }
 function cellAt(px, py) { return { x: (px - OX) / CELL, y: py / CELL }; }

@@ -354,7 +354,7 @@ function updateTrafficPanel() {
 function toggleZoneMode() {
   if (tow || sim.mode !== 'map') { toast('Kreuzungsstellen planst du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
   zoneMode = !zoneMode; ui.zoneMode = zoneMode; trafficSig = null; mapTarget = null;
-  $('btn-zone').textContent = zoneMode ? '✔ Kreuzungsstellen: fertig (K)' : '↔ Kreuzungsstelle planen (K)';
+  $('btn-zone').textContent = zoneMode ? '✔ Kreuzung: fertig (K)' : '↔ Kreuzung (K)';
   updateTrafficPanel();
   if (zoneMode) { const c = shipById(game.zoneClassId); toast(`Planen für ${c.name}: Spalte antippen, die Zahl zeigt den fehlenden Aushub`, 'info', true); }
 }
@@ -362,7 +362,7 @@ function toggleAreaMode() {
   if (tow || sim.mode !== 'map') { toast('Arbeitsgebiete gibst du auf der Karte vor (Anker lichten mit Q)', 'info', true); return; }
   if (zoneMode) toggleZoneMode();
   areaMode = !areaMode; ui.areaMode = areaMode; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
-  $('btn-area').textContent = areaMode ? '✔ Gebiet: fertig (G)' : '▭ Arbeitsgebiet (G)';
+  $('btn-area').textContent = areaMode ? '✔ Gebiet: fertig (G)' : '▭ Gebiet (G)';
   if (areaMode) toast(`Zwei Ecken antippen: das Rechteck wird von den gemieteten Pontons auf die Gebietstiefe gebaggert (max. ${MAX_AREAS} Gebiete)`, 'info', true);
 }
 function cellAt(px, py) { return { x: (px - OX) / CELL, y: py / CELL }; }
