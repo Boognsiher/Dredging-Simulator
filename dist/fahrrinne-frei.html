@@ -4657,17 +4657,18 @@ function dismissUnit(g, id) {
 }
 
 // Sperren für die automatischen Pontons: Naturschutzzone (Flachwasser am Ufer) und Altlastenbereiche nicht abtragen
-function setAvoid(g, nature, altlast) { g.fleet.noNature = !!nature; g.fleet.noAltlast = !!altlast; }
+const bump = (g) => { g.fleet.rev = (g.fleet.rev ?? 0) + 1; }; // Einstellung geändert: arbeitende Pontons wählen sofort neu
+function setAvoid(g, nature, altlast) { g.fleet.noNature = !!nature; g.fleet.noAltlast = !!altlast; bump(g); }
 function cellAllowed(g, i) {
   const F = g.fleet, r = g.river;
   if (F.noAltlast && r.kind[i] === KIND.altlast && r.top[i] - r.rock[i] > 0.05) return false;
   if (F.noNature && !r.zone[i] && r.ext[i] === 2) return false;
   return true;
 }
-function setMine(g, on) { g.fleet.mine = !!on; }
-function setPour(g, on) { g.fleet.pour = !!on; }
-function setWiden(g, on, w) { g.fleet.widen = !!on; if (w) g.fleet.widenW = Math.max(1, Math.min(5, Math.round(w))); }
-function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === clsId) ? clsId : null; }
+function setMine(g, on) { g.fleet.mine = !!on; bump(g); }
+function setPour(g, on) { g.fleet.pour = !!on; bump(g); }
+function setWiden(g, on, w) { g.fleet.widen = !!on; if (w) g.fleet.widenW = Math.max(1, Math.min(5, Math.round(w))); bump(g); }
+function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === clsId) ? clsId : null; bump(g); }
 
 // Ausbauklasse: gewählt oder die kleinste, die noch nicht fährt (und endlich ist)
 function targetClass(g) {
@@ -4755,12 +4756,12 @@ function addArea(g, xa, ya, xb, yb, depth) {
   if (!any) return null; // nur Wasser im Baggerkorridor oder Ausbaustreifen lässt sich bearbeiten
   const cls = targetClass(g), d = depth ?? Math.min(CONFIG.echolot.maxDepth, (cls ? cls.draught + CONFIG.clearance : CONFIG.echolot.defaultDepth) + 0.2);
   const a = { id: ++F.areaSeq, x0, x1, y0, y1, depth: Math.round(d * 10) / 10, unit: null };
-  F.areas.push(a);
+  F.areas.push(a); bump(g);
   return a;
 }
-function removeArea(g, id) { const F = g.fleet, i = (F.areas ?? []).findIndex((a) => a.id === id); if (i < 0) return false; F.areas.splice(i, 1); return true; }
-function setAreaDepth(g, id, d) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.depth = Math.round(Math.min(CONFIG.echolot.maxDepth, Math.max(CONFIG.echolot.minDepth, d)) * 10) / 10; return true; }
-function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; return true; }
+function removeArea(g, id) { const F = g.fleet, i = (F.areas ?? []).findIndex((a) => a.id === id); if (i < 0) return false; F.areas.splice(i, 1); bump(g); return true; }
+function setAreaDepth(g, id, d) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.depth = Math.round(Math.min(CONFIG.echolot.maxDepth, Math.max(CONFIG.echolot.minDepth, d)) * 10) / 10; bump(g); return true; }
+function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; bump(g); return true; }
 
 // Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
 // die Tiefe hat und "Ufer verbreitern" mit Löffelbagger an ist; vorher baggern die Pontons nur die Rinne.
@@ -4938,12 +4939,16 @@ function stepUnit(g, u, dt) {
   const sim = (u.sim ??= makeSim(g, u));
   sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom; sim.concreteAvail = g.concrete;
   let inp = { dx: 0, dy: 0, suction: false };
+  if ((u.state === 'travel' || u.state === 'work') && u.rev !== (g.fleet.rev ?? 0)) { // Einstellungen geändert: Arbeit abbrechen und neu wählen
+    if (sim.mode === 'slice') sim.leave();
+    u.state = 'idle'; u.idle = 0; u.site = null; u.note = 'wählt neu (Einstellung geändert)';
+  }
   if (u.state === 'idle') {
     u.idle -= dt;
     if (u.idle <= 0) {
       const s = pickSite(g, u);
       if (s.none) { u.idle = CONFIG.fleet.idleRetry; u.note = s.none; }
-      else { u.site = s; u.state = 'travel'; u.travelT = 0; u.note = `fährt zu Spalte ${s.col + 1}`; }
+      else { u.site = s; u.rev = g.fleet.rev ?? 0; u.state = 'travel'; u.travelT = 0; u.note = `fährt zu Spalte ${s.col + 1}`; }
     }
   } else if (u.state === 'travel') {
     const s = u.site, route = g.fair?.[g.level.classes[0]];
@@ -6552,20 +6557,26 @@ function drawTowView(ctx, game, tow, ui = {}) {
   ctx.fillStyle = sky; ctx.fillRect(0, 0, W, SURFY);
   const wg = ctx.createLinearGradient(0, SURFY, 0, H); wg.addColorStop(0, '#3a86ab'); wg.addColorStop(1, '#0d2c43');
   ctx.fillStyle = wg; ctx.fillRect(0, SURFY, W, H - SURFY);
-  // Untiefe: links hoch, nach rechts tiefer
-  const barY = (x) => (x < 360 ? 205 + x * 0.30 : 313 + (x - 360) * 0.02);
-  ctx.fillStyle = '#c8b27c'; ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(0, barY(0));
-  for (let x = 0; x <= W; x += 20) ctx.lineTo(x, barY(x));
-  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = '#f0e4c8'; ctx.lineWidth = 3; ctx.stroke();
+  // Flacher Grund und ein Felsen links: das Schiff liegt mit dem Rumpf darauf und wird von dort ins tiefe Wasser gezogen
+  const SEAB = 405, FX = 170, FHW = 120, len = 150 + cls.len * 10, hh = 26 + cls.draught * 4;
+  const floatBottom = SURFY + hh * 0.42, peakY = floatBottom - 26; // Felsspitze liegt über der Schwimmlinie des Rumpfs
+  const rockTop = (x) => { const u = (x - FX) / FHW; if (Math.abs(u) >= 1) return SEAB; return SEAB - (1 - u ** 4) * (SEAB - peakY) + Math.sin(x * 0.37) * 2.5 * (1 - Math.abs(u)); };
+  ctx.fillStyle = '#c8b27c'; ctx.fillRect(0, SEAB, W, H - SEAB);
+  ctx.strokeStyle = '#f0e4c8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, SEAB); ctx.lineTo(W, SEAB); ctx.stroke();
+  ctx.fillStyle = '#6f747c'; ctx.beginPath(); ctx.moveTo(FX - FHW - 10, SEAB + 2);
+  for (let x = FX - FHW; x <= FX + FHW; x += 6) ctx.lineTo(x, rockTop(x));
+  ctx.lineTo(FX + FHW + 10, SEAB + 2); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#3d4249'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = '#8a9099'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(FX - 60, SEAB - 40); ctx.lineTo(FX - 30, SEAB - 110); ctx.moveTo(FX + 30, SEAB - 20); ctx.lineTo(FX + 50, SEAB - 90); ctx.stroke();
   ctx.strokeStyle = '#d9f1ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, SURFY); ctx.lineTo(W, SURFY); ctx.stroke();
   // Ponton mit Winde rechts
   const px = W - 110, py = SURFY;
   ctx.fillStyle = '#e8c33a'; ctx.strokeStyle = '#3b2f08'; ctx.lineWidth = 2; ctx.fillRect(px - 70, py - 22, 140, 30); ctx.strokeRect(px - 70, py - 22, 140, 30);
   ctx.fillStyle = '#2b2b2b'; ctx.fillRect(px - 10, py - 40, 20, 20);
-  // Schiff (Seitenansicht), rückt mit dem Fortschritt nach rechts
-  const frac = Math.min(1, tow.progress / tow.need), sx = 90 + frac * 330, sy = barY(sx) - 16, ang = Math.atan2(barY(sx + 30) - barY(sx - 30), 60);
-  const len = 150 + cls.len * 10, hh = 26 + cls.draught * 4;
+  // Schiff (Seitenansicht): liegt mit dem Rumpf auf dem Felsen (Bug/Heck stützen sich ab), rutscht mit dem Fortschritt herunter und schwimmt dann auf
+  const frac = Math.min(1, tow.progress / tow.need), sx = 170 + frac * 330;
+  const xs = sx - len * 0.38, xb = sx + len * 0.38, yS = Math.min(floatBottom, rockTop(xs)), yB = Math.min(floatBottom, rockTop(xb));
+  const ang = Math.atan2(yB - yS, xb - xs), sy = (yS + yB) / 2 - hh * 0.5 + (frac >= 1 ? Math.sin(t * 3) * 1.5 : 0);
   ctx.save(); ctx.translate(sx, sy); ctx.rotate(ang);
   ctx.fillStyle = cls.color; ctx.strokeStyle = '#10202c'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(-len / 2, -hh * 0.5); ctx.lineTo(len / 2 - 14, -hh * 0.5); ctx.lineTo(len / 2 + 10, -hh * 0.1); ctx.lineTo(len / 2 - 20, hh * 0.5); ctx.lineTo(-len / 2 + 10, hh * 0.5); ctx.closePath(); ctx.fill(); ctx.stroke();

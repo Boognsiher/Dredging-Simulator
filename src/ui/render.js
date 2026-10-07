@@ -669,20 +669,26 @@ export function drawTowView(ctx, game, tow, ui = {}) {
   ctx.fillStyle = sky; ctx.fillRect(0, 0, W, SURFY);
   const wg = ctx.createLinearGradient(0, SURFY, 0, H); wg.addColorStop(0, '#3a86ab'); wg.addColorStop(1, '#0d2c43');
   ctx.fillStyle = wg; ctx.fillRect(0, SURFY, W, H - SURFY);
-  // Untiefe: links hoch, nach rechts tiefer
-  const barY = (x) => (x < 360 ? 205 + x * 0.30 : 313 + (x - 360) * 0.02);
-  ctx.fillStyle = '#c8b27c'; ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(0, barY(0));
-  for (let x = 0; x <= W; x += 20) ctx.lineTo(x, barY(x));
-  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = '#f0e4c8'; ctx.lineWidth = 3; ctx.stroke();
+  // Flacher Grund und ein Felsen links: das Schiff liegt mit dem Rumpf darauf und wird von dort ins tiefe Wasser gezogen
+  const SEAB = 405, FX = 170, FHW = 120, len = 150 + cls.len * 10, hh = 26 + cls.draught * 4;
+  const floatBottom = SURFY + hh * 0.42, peakY = floatBottom - 26; // Felsspitze liegt über der Schwimmlinie des Rumpfs
+  const rockTop = (x) => { const u = (x - FX) / FHW; if (Math.abs(u) >= 1) return SEAB; return SEAB - (1 - u ** 4) * (SEAB - peakY) + Math.sin(x * 0.37) * 2.5 * (1 - Math.abs(u)); };
+  ctx.fillStyle = '#c8b27c'; ctx.fillRect(0, SEAB, W, H - SEAB);
+  ctx.strokeStyle = '#f0e4c8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, SEAB); ctx.lineTo(W, SEAB); ctx.stroke();
+  ctx.fillStyle = '#6f747c'; ctx.beginPath(); ctx.moveTo(FX - FHW - 10, SEAB + 2);
+  for (let x = FX - FHW; x <= FX + FHW; x += 6) ctx.lineTo(x, rockTop(x));
+  ctx.lineTo(FX + FHW + 10, SEAB + 2); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#3d4249'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = '#8a9099'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(FX - 60, SEAB - 40); ctx.lineTo(FX - 30, SEAB - 110); ctx.moveTo(FX + 30, SEAB - 20); ctx.lineTo(FX + 50, SEAB - 90); ctx.stroke();
   ctx.strokeStyle = '#d9f1ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, SURFY); ctx.lineTo(W, SURFY); ctx.stroke();
   // Ponton mit Winde rechts
   const px = W - 110, py = SURFY;
   ctx.fillStyle = '#e8c33a'; ctx.strokeStyle = '#3b2f08'; ctx.lineWidth = 2; ctx.fillRect(px - 70, py - 22, 140, 30); ctx.strokeRect(px - 70, py - 22, 140, 30);
   ctx.fillStyle = '#2b2b2b'; ctx.fillRect(px - 10, py - 40, 20, 20);
-  // Schiff (Seitenansicht), rückt mit dem Fortschritt nach rechts
-  const frac = Math.min(1, tow.progress / tow.need), sx = 90 + frac * 330, sy = barY(sx) - 16, ang = Math.atan2(barY(sx + 30) - barY(sx - 30), 60);
-  const len = 150 + cls.len * 10, hh = 26 + cls.draught * 4;
+  // Schiff (Seitenansicht): liegt mit dem Rumpf auf dem Felsen (Bug/Heck stützen sich ab), rutscht mit dem Fortschritt herunter und schwimmt dann auf
+  const frac = Math.min(1, tow.progress / tow.need), sx = 170 + frac * 330;
+  const xs = sx - len * 0.38, xb = sx + len * 0.38, yS = Math.min(floatBottom, rockTop(xs)), yB = Math.min(floatBottom, rockTop(xb));
+  const ang = Math.atan2(yB - yS, xb - xs), sy = (yS + yB) / 2 - hh * 0.5 + (frac >= 1 ? Math.sin(t * 3) * 1.5 : 0);
   ctx.save(); ctx.translate(sx, sy); ctx.rotate(ang);
   ctx.fillStyle = cls.color; ctx.strokeStyle = '#10202c'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(-len / 2, -hh * 0.5); ctx.lineTo(len / 2 - 14, -hh * 0.5); ctx.lineTo(len / 2 + 10, -hh * 0.1); ctx.lineTo(len / 2 - 20, hh * 0.5); ctx.lineTo(-len / 2 + 10, hh * 0.5); ctx.closePath(); ctx.fill(); ctx.stroke();

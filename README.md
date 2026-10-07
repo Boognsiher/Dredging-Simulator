@@ -47,7 +47,7 @@ Steuerung, Aufbau und Oberfläche folgen dem Seesanierungs-Spiel ([Romans-Altlas
   Beton wird anfangs **gekauft** (Panel «Beton», 110 CHF/m³). Mit dem **Betonwerk** (Anlage ausbauen) mischst du ihn selbst aus Kies und Sand des Flusses (die Anlage leitet sie ins Lager um, wenn der Haken gesetzt ist)
   plus Zement (38 CHF/m³): deutlich billiger.
 - **Aufläufer-Minispiel:** Läuft ein Schiff auf Grund (Niedrigwasser, Verlandung), blockiert es die Rinne. Fährst du mit dem Ponton in seine Nähe (Karte: Ring um das Schiff) und startest
-  «Aufläufer freischleppen» (`T` oder Knopf), kannst du es selbst freiziehen: **Zugtaste halten** (Leertaste, am Handy der grosse Knopf), um Spannung aufzubauen, loslassen lässt sie sinken. Nur im **grünen Band** bewegt
+  «Aufläufer freischleppen» (`T` oder Knopf), kannst du es selbst freiziehen: (die Ansicht zeigt das Schiff im Seitenschnitt auf einem Felsen liegend, das beim Ziehen herunterrutscht und aufschwimmt) **Zugtaste halten** (Leertaste, am Handy der grosse Knopf), um Spannung aufzubauen, loslassen lässt sie sinken. Nur im **grünen Band** bewegt
   sich das Schiff, zu viel Zug lässt die Leine reissen (Strafe). Schwere Schiffe haben ein schmaleres Band. Schaffst du es, ist das Schiff sofort frei und ein Teil der Bergungskosten kommt zurück; sonst kommen die Schlepper wie gewohnt.
 - **Ziel:** Jedes Level hat ein Verkehrsziel in Tonnen. Erreichst du es und schliesst mit Gewinn ab (oder die Frist läuft mit Gewinn ab), schaltest du das nächste Level frei.
   Gewonnen hat, wer am Ende am meisten Geld hat. Levels: **Hochrhein** (Einstieg), **Loreley-Enge** (schmal, Felsriegel, Schubverband), **Eisernes Tor** (Fels, Altlasten, Blindgänger).
@@ -124,6 +124,7 @@ Im **Querschnitt** (Hochformat) liegt die Anzeige von Trübung, Puffer und offen
 Hinweis: Die frühere Schieflage (Umkippen der Pumpe) und das Upgrade «Pumpen-Ballast» sind entfernt.
 
 ## Arbeitsgebiete und Hafenbecken (Karte)
+- **Änderungen wirken sofort:** Ändert du Arbeitsgebiete (anlegen, löschen, Tiefe, Zuteilung), Ziel-Klasse, Meiden-Optionen, Ufer verbreitern, Rohstoffabbau oder Betonieren, brechen arbeitende und anfahrende Pontons ab und wählen neu.
 - **Arbeitsgebiet vorgeben:** Auf der Karte `G` oder «▭ Arbeitsgebiet» (braucht die Automatik), dann zwei Ecken antippen. Gemietete Pontons baggern das Rechteck (Baggerkorridor; das Ufer im Ausbaustreifen erst, wenn das Wasser im Gebiet die Tiefe hat und «Ufer verbreitern» mit Löffelbagger an ist) auf die Gebietstiefe, bevor sie andere Stellen suchen. Im Panel «Flotte» stellst du je Gebiet die Tiefe ein, wählst «alle Pontons» oder ein bestimmtes Ponton und löschst Gebiete (höchstens 4).
 - **Eigener Hafen auf der Karte:** Das Hafenbecken ist eine flache Bucht am Ufer (⚓ Hafen, mit Kaimauer). Die Bucht ist gelb markiert, bis 80 % davon die Zieltiefe (2,3 m) erreichen. Schiffe legen nur an, wenn das Becken tief genug für ihre Klasse ist; dafür vertiefst du die Bucht wie jede Rinne (Ponton dort ankern, ausbaggern). Das Becken zählt nicht zur Fahrrinne der Schiffe.
 

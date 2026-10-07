@@ -60,17 +60,18 @@ export function dismissUnit(g, id) {
 }
 
 // Sperren für die automatischen Pontons: Naturschutzzone (Flachwasser am Ufer) und Altlastenbereiche nicht abtragen
-export function setAvoid(g, nature, altlast) { g.fleet.noNature = !!nature; g.fleet.noAltlast = !!altlast; }
+const bump = (g) => { g.fleet.rev = (g.fleet.rev ?? 0) + 1; }; // Einstellung geändert: arbeitende Pontons wählen sofort neu
+export function setAvoid(g, nature, altlast) { g.fleet.noNature = !!nature; g.fleet.noAltlast = !!altlast; bump(g); }
 export function cellAllowed(g, i) {
   const F = g.fleet, r = g.river;
   if (F.noAltlast && r.kind[i] === KIND.altlast && r.top[i] - r.rock[i] > 0.05) return false;
   if (F.noNature && !r.zone[i] && r.ext[i] === 2) return false;
   return true;
 }
-export function setMine(g, on) { g.fleet.mine = !!on; }
-export function setPour(g, on) { g.fleet.pour = !!on; }
-export function setWiden(g, on, w) { g.fleet.widen = !!on; if (w) g.fleet.widenW = Math.max(1, Math.min(5, Math.round(w))); }
-export function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === clsId) ? clsId : null; }
+export function setMine(g, on) { g.fleet.mine = !!on; bump(g); }
+export function setPour(g, on) { g.fleet.pour = !!on; bump(g); }
+export function setWiden(g, on, w) { g.fleet.widen = !!on; if (w) g.fleet.widenW = Math.max(1, Math.min(5, Math.round(w))); bump(g); }
+export function setGoal(g, clsId) { g.fleet.goal = SHIPS.some((s) => s.id === clsId) ? clsId : null; bump(g); }
 
 // Ausbauklasse: gewählt oder die kleinste, die noch nicht fährt (und endlich ist)
 export function targetClass(g) {
@@ -158,12 +159,12 @@ export function addArea(g, xa, ya, xb, yb, depth) {
   if (!any) return null; // nur Wasser im Baggerkorridor oder Ausbaustreifen lässt sich bearbeiten
   const cls = targetClass(g), d = depth ?? Math.min(CONFIG.echolot.maxDepth, (cls ? cls.draught + CONFIG.clearance : CONFIG.echolot.defaultDepth) + 0.2);
   const a = { id: ++F.areaSeq, x0, x1, y0, y1, depth: Math.round(d * 10) / 10, unit: null };
-  F.areas.push(a);
+  F.areas.push(a); bump(g);
   return a;
 }
-export function removeArea(g, id) { const F = g.fleet, i = (F.areas ?? []).findIndex((a) => a.id === id); if (i < 0) return false; F.areas.splice(i, 1); return true; }
-export function setAreaDepth(g, id, d) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.depth = Math.round(Math.min(CONFIG.echolot.maxDepth, Math.max(CONFIG.echolot.minDepth, d)) * 10) / 10; return true; }
-export function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; return true; }
+export function removeArea(g, id) { const F = g.fleet, i = (F.areas ?? []).findIndex((a) => a.id === id); if (i < 0) return false; F.areas.splice(i, 1); bump(g); return true; }
+export function setAreaDepth(g, id, d) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.depth = Math.round(Math.min(CONFIG.echolot.maxDepth, Math.max(CONFIG.echolot.minDepth, d)) * 10) / 10; bump(g); return true; }
+export function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; bump(g); return true; }
 
 // Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
 // die Tiefe hat und "Ufer verbreitern" mit Löffelbagger an ist; vorher baggern die Pontons nur die Rinne.
@@ -341,12 +342,16 @@ function stepUnit(g, u, dt) {
   const sim = (u.sim ??= makeSim(g, u));
   sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom; sim.concreteAvail = g.concrete;
   let inp = { dx: 0, dy: 0, suction: false };
+  if ((u.state === 'travel' || u.state === 'work') && u.rev !== (g.fleet.rev ?? 0)) { // Einstellungen geändert: Arbeit abbrechen und neu wählen
+    if (sim.mode === 'slice') sim.leave();
+    u.state = 'idle'; u.idle = 0; u.site = null; u.note = 'wählt neu (Einstellung geändert)';
+  }
   if (u.state === 'idle') {
     u.idle -= dt;
     if (u.idle <= 0) {
       const s = pickSite(g, u);
       if (s.none) { u.idle = CONFIG.fleet.idleRetry; u.note = s.none; }
-      else { u.site = s; u.state = 'travel'; u.travelT = 0; u.note = `fährt zu Spalte ${s.col + 1}`; }
+      else { u.site = s; u.rev = g.fleet.rev ?? 0; u.state = 'travel'; u.travelT = 0; u.note = `fährt zu Spalte ${s.col + 1}`; }
     }
   } else if (u.state === 'travel') {
     const s = u.site, route = g.fair?.[g.level.classes[0]];

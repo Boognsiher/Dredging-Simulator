@@ -597,7 +597,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
-import { updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+import { setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
 
 function bankSlice(levels = { loeffel: 3 }) {
   const g = new Game(3, 'hochrhein'), r = g.river;
@@ -1590,4 +1590,16 @@ test('Flotte: festgesetztes Ponton im Flachwasser kommt wieder frei', () => {
   const x0 = u.sim.x, y0 = u.sim.y;
   for (let t = 0; t < 6; t += 0.05) updateFleet(g, 0.05);
   assert.ok(Math.hypot(u.sim.x - x0, u.sim.y - y0) > 2 || u.state !== 'travel', 'Ponton muss sich lösen');
+});
+
+test('Flotte: Einstellungsänderung lässt arbeitende Pontons sofort neu wählen', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false;
+  g.money = 1e6; g.buyUpgrade('auto'); g.buyUpgrade('auto'); hireUnit(g);
+  const u = g.fleet.units[0];
+  for (let t = 0; t < 120 && u.state !== 'work'; t += 0.1) updateFleet(g, 0.1);
+  assert.equal(u.state, 'work');
+  setGoal(g, 'lastkahn');
+  updateFleet(g, 0.1);
+  assert.notEqual(u.state, 'work');
+  assert.equal(u.sim.mode, 'map');
 });
