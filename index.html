@@ -79,7 +79,45 @@
     <aside id="panel">
       <button id="panel-handle">▲ Wasserstrasse &amp; Ausrüstung</button>
       <button id="btn-menu-close">✕ Menü schliessen</button>
-      <details id="help"><summary>Steuerung &amp; Legende</summary>
+      <nav id="ptabs" aria-label="Menü"></nav>
+      <div class="ptab" data-tab="home">
+        <section class="psec"><h2>Verkehrsziel</h2><div id="goal"></div></section>
+        <section class="psec"><h2>Anlage an Land</h2>
+      <div id="plant">
+        <div>Puffer: <b id="p-stock"></b> / <span id="p-cap"></span> m³ · Durchsatz <span id="p-thru"></span> m³/s</div>
+        <progress id="p-prog" max="1" value="0"></progress>
+        <div id="p-mats"></div>
+        <label><input type="checkbox" id="chk-fritz" checked> Flussmeister Fritz gibt Tipps (B)</label>
+      </div>
+        </section>
+        <section class="psec"><h2>Journal</h2><ul id="log"></ul></section>
+      </div>
+      <div class="ptab" data-tab="river" hidden>
+        <section class="psec"><h2>Wasserstrasse</h2><div id="fairway"></div></section>
+        <section class="psec" data-gate="sec_traffic" hidden><h2>Verkehr</h2><div id="trafficpanel"></div></section>
+        <section class="psec" data-gate="sec_shore" hidden><h2>Uferstreifen</h2><div id="shore"></div></section>
+        <section class="psec" data-gate="sec_hazard" hidden><h2>Altlasten</h2><div id="hazard"></div></section>
+        <section class="psec" data-gate="sec_deposits" hidden><h2>Rohstoffgebiete</h2><div id="deposits"></div></section>
+      </div>
+      <div class="ptab" data-tab="gear" hidden>
+        <div id="upgrades"></div>
+        <section class="psec" data-gate="up_gear" hidden><h2>Beton</h2><div id="concrete"></div></section>
+      </div>
+      <div class="ptab" data-tab="fleet" hidden>
+        <section class="psec"><h2>Flotte</h2><div id="fleet"></div></section>
+      </div>
+      <div class="ptab" data-tab="trade" hidden>
+        <section class="psec"><h2>Frachtmarkt</h2><div id="market"></div></section>
+        <section class="psec"><h2>Frachtaufträge</h2><div id="contracts"></div></section>
+      </div>
+      <div class="ptab" data-tab="maps" hidden>
+        <h2 id="h-maps" hidden>Karten</h2>
+        <div id="maps" hidden></div>
+        <h2 id="h-ship" hidden>Reederei</h2>
+        <div id="shipping" hidden></div>
+      </div>
+      <div class="ptab" data-tab="more" hidden>
+        <details id="help"><summary>Steuerung &amp; Legende</summary>
         <div id="hints" aria-label="Steuerung"></div>
         <div id="legend" aria-label="Legende">
           <span><i style="background:linear-gradient(90deg,#96cdd7,#2c5f70)"></i>flach → tief</span>
@@ -100,48 +138,14 @@
           <span><i style="background:rgba(150,90,200,.7)"></i>Fels im Weg</span>
         </div>
       </details>
-      <details id="save-tools"><summary>Spielstand sichern &amp; laden</summary>
+        <details id="save-tools"><summary>Spielstand sichern &amp; laden</summary>
         <p><small>Der Spielstand liegt nur in diesem Browser. Zum Sichern, Weitergeben oder für den Wechsel zwischen Geräten:</small></p>
         <div class="row"><button id="btn-export">⬇ Exportieren (Datei)</button><button id="btn-copy">📋 In Zwischenablage</button></div>
         <div class="row"><button id="btn-import">⬆ Importieren (Datei)</button><input type="file" id="file-import" accept=".json,application/json,text/plain" hidden></div>
         <small id="save-msg"></small>
       </details>
-      <h2 id="h-maps" hidden>Karten</h2>
-      <div id="maps" hidden></div>
-      <h2 id="h-ship" hidden>Reederei</h2>
-      <div id="shipping" hidden></div>
-      <h2>Verkehrsziel</h2>
-      <div id="goal"></div>
-      <h2>Wasserstrasse</h2>
-      <div id="fairway"></div>
-      <h2>Rohstoffgebiete</h2>
-      <div id="deposits"></div>
-      <h2>Uferstreifen</h2>
-      <div id="shore"></div>
-      <h2>Altlasten</h2>
-      <div id="hazard"></div>
-      <h2>Verkehr</h2>
-      <div id="trafficpanel"></div>
-      <h2>Flotte</h2>
-      <div id="fleet"></div>
-      <h2>Frachtmarkt</h2>
-      <div id="market"></div>
-      <h2>Frachtaufträge</h2>
-      <div id="contracts"></div>
-      <h2>Anlage an Land</h2>
-      <div id="plant">
-        <div>Puffer: <b id="p-stock"></b> / <span id="p-cap"></span> m³ · Durchsatz <span id="p-thru"></span> m³/s</div>
-        <progress id="p-prog" max="1" value="0"></progress>
-        <div id="p-mats"></div>
-        <label><input type="checkbox" id="chk-fritz" checked> Flussmeister Fritz gibt Tipps (B)</label>
+        <div class="row"><button id="btn-pause">⏸ Pause (P)</button><button id="btn-sound2">🔊 Ton an (M)</button></div>
       </div>
-      <h2>Beton</h2>
-      <div id="concrete"></div>
-      <div id="upgrades"></div>
-      <button id="btn-pause">⏸ Pause (P)</button>
-      <button id="btn-sound2">🔊 Ton an (M)</button>
-      <h2>Journal</h2>
-      <ul id="log"></ul>
     </aside>
   </main>
   <script type="module" src="src/main.js"></script>

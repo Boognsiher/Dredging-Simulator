@@ -79,6 +79,7 @@ export class Game {
     this.today = freshDay();
     this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
+    this.tabsSeen = {}; // freigeschaltete Menü-Bereiche (Stufensystem der Oberfläche), bleiben freigeschaltet
     this.fairSig = {}; // zuletzt bekannter Zustand je Klasse (für Meldungen "jetzt befahrbar")
     this.status = 'playing'; // 'playing' | 'ended'
     this.end = null; // { reason: 'goal' | 'deadline' | 'bankrupt', finalMoney, goalReached }

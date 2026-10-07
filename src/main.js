@@ -114,9 +114,9 @@ const upRows = {};
 // Ausrüstung in Reitern (Übersicht): jeder Reiter listet seine Verbesserungen
 const UP_TABS = [
   { id: 'pump', label: '🌀 Pumpe', ids: ['power', 'radius', 'speed', 'winch', 'curtain'] },
-  { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr'] },
-  { id: 'plant', label: '🏭 Anlage', ids: ['plant', 'dewater', 'sorter', 'mixer'] },
-  { id: 'traffic', label: '🚢 Verkehr', ids: ['beacons', 'signals', 'tugs', 'vts', 'pilot'] },
+  { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr'], gate: 'up_gear' },
+  { id: 'plant', label: '🏭 Anlage', ids: ['plant', 'dewater', 'sorter', 'mixer'], gate: 'up_plant' },
+  { id: 'traffic', label: '🚢 Verkehr', ids: ['beacons', 'signals', 'tugs', 'vts', 'pilot'], gate: 'up_traffic' },
 ];
 let upTab = 'pump';
 const upTabBtns = {}, upTabBodies = {};
@@ -564,7 +564,56 @@ function trackMoney(dt) {
   lastMoney = game.money;
 }
 
-function updatePanel() { updateMaps(); updateShipping(); updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+// ---------- Menü in Reitern mit Stufensystem: Bereiche erscheinen erst, wenn sie gebraucht werden ----------
+const PTABS = [
+  { id: 'home', label: '🏠', name: 'Ziel' },
+  { id: 'river', label: '🌊', name: 'Fluss' },
+  { id: 'gear', label: '⚙', name: 'Technik' },
+  { id: 'fleet', label: '🚤', name: 'Flotte', gate: 'tab_fleet' },
+  { id: 'trade', label: '💰', name: 'Handel', gate: 'tab_trade' },
+  { id: 'maps', label: '🗺', name: 'Karten', gate: 'tab_maps' },
+  { id: 'more', label: '☰', name: 'Mehr' },
+];
+// Freischaltung: Bedingung → Name (für die Meldung «Neu»). Einmal erfüllt bleibt der Bereich offen.
+const GATES = {
+  tab_fleet: { when: (g) => g.stats.autoLevel >= 1 || g.fleet.units.length > 0 || g.totals.removed >= 600, text: 'Flotte: gemietete Pontons baggern selbstständig' },
+  tab_trade: { when: (g) => g.totals.removed >= 150, text: 'Handel: Frachtmarkt und Aufträge' },
+  tab_maps: { when: (g) => g.endless, text: 'Karten' },
+  sec_traffic: { when: (g) => g.totals.ships >= 3, text: 'Verkehr: Kreuzungsstellen und Warteplätze (Reiter Fluss)' },
+  sec_hazard: { when: (g) => g.totals.removed >= 300, text: 'Altlasten (Reiter Fluss)' },
+  sec_deposits: { when: (g) => g.day >= 3 || g.totals.removed >= 400, text: 'Rohstoffgebiete (Reiter Fluss)' },
+  sec_shore: { when: (g) => g.totals.removed >= 800, text: 'Uferstreifen: breitere Rinne (Reiter Fluss)' },
+  up_plant: { when: (g) => g.totals.removed >= 200, text: 'Technik: Anlage ausbauen' },
+  up_traffic: { when: (g) => g.totals.ships >= 2, text: 'Technik: Verkehr verbessern' },
+  up_gear: { when: (g) => g.totals.removed >= 200, text: 'Technik: Geräte' },
+};
+let curTab = 'home', ptabsInit = false, newTabs = new Set(), unlockSilent = true;
+function gateOpen(id) { return !id || !!game.tabsSeen?.[id]; }
+function updateUnlocks() {
+  game.tabsSeen ??= {};
+  for (const [id, G] of Object.entries(GATES)) {
+    if (game.tabsSeen[id] || !G.when(game)) continue;
+    game.tabsSeen[id] = true;
+    if (!unlockSilent) { toast(`Neu freigeschaltet: ${G.text}`, 'good', true); if (id.startsWith('tab_')) newTabs.add(id.slice(4)); else if (id.startsWith('sec_')) newTabs.add('river'); else newTabs.add('gear'); }
+  }
+  unlockSilent = false;
+  for (const el of document.querySelectorAll('#panel [data-gate]')) el.hidden = !gateOpen(el.dataset.gate);
+  for (const [tid, b] of Object.entries(upTabBtns)) { const g = UP_TABS.find((t) => t.id === tid)?.gate; b.hidden = !gateOpen(g); }
+  if (upTabBtns[upTab]?.hidden) { upTab = 'pump'; showUpTab(); }
+  const vis = PTABS.filter((t) => gateOpen(t.gate));
+  if (!vis.some((t) => t.id === curTab)) curTab = 'home';
+  const nav = $('ptabs'), sig = vis.map((t) => t.id).join() + curTab + [...newTabs].join();
+  if (nav.dataset.sig !== sig) {
+    nav.dataset.sig = sig; nav.innerHTML = '';
+    for (const t of vis) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = `ptab-btn${t.id === curTab ? ' on' : ''}`; b.innerHTML = `<span>${t.label}</span><small>${t.name}</small>${newTabs.has(t.id) ? '<i class="dot"></i>' : ''}`;
+      b.onclick = () => { curTab = t.id; newTabs.delete(t.id); nav.dataset.sig = ''; updateUnlocks(); $('panel').scrollTop = 0; };
+      nav.append(b);
+    }
+  }
+  for (const el of document.querySelectorAll('#panel .ptab')) el.hidden = el.dataset.tab !== curTab;
+}
+function updatePanel() { updateUnlocks(); updateMaps(); updateShipping(); updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -874,6 +923,7 @@ function showLevels(note = '') {
 }
 
 function restart(loaded = null) {
+  curTab = 'home'; newTabs = new Set(); unlockSilent = true; $('ptabs').dataset.sig = '';
   game = loaded instanceof Game ? loaded : loaded && typeof loaded === 'object' ? new Game(loaded.seed, loaded.levelId) : new Game(undefined, typeof loaded === 'string' ? loaded : game.levelId);
   sim = game.createSession(); sim.autoRange = game.autoRange ?? null; paused = false; endShown = false;
   $('btn-pause').textContent = '⏸ Pause (P)';
