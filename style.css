@@ -344,3 +344,51 @@ body.mode-slice #hints { display: none; }
   body.mode-slice .cls { padding: 2px 6px; } body.mode-slice #classbar { padding: 2px 0; }
 }
 body.mode-slice #shift-hud span { white-space: nowrap; } body.mode-slice #s-turbzone { display: none; }
+
+/* =====================================================================================================
+   Kartenansicht im Vollbild: das Spielfeld füllt den ganzen Bildschirm, oben liegt ein Dashboard
+   (Kopfzeile, Schiffsklassen, Knöpfe), das Menü (Panel) fährt von rechts herein. Der Querschnitt (Saugen) behält sein Layout.
+   ===================================================================================================== */
+:root { --hdr-h: 44px; }
+#btn-menu, #btn-menu-close, #scrim { display: none; }
+#help { margin: 8px 0; background: #ffffff0d; border-radius: 8px; padding: 4px 10px; } #help summary { cursor: pointer; font-weight: 600; padding: 4px 0; color: var(--muted); }
+#panel #hints { display: flex !important; padding: 4px 0; } #panel #legend { display: flex !important; padding: 4px 0; }
+
+body.mode-map { height: 100dvh; overflow: hidden; padding: 0 !important; display: block; }
+body.mode-map header { position: fixed; top: 0; left: 0; right: 0; z-index: 12; padding: 4px 10px; background: #0b1a26e6; backdrop-filter: blur(4px); flex-wrap: nowrap; gap: 8px 14px; justify-content: flex-start; }
+body.mode-map header h1 { font-size: 14px; white-space: nowrap; } body.mode-map header h1 small { display: none; }
+body.mode-map #hud { flex: 1; min-width: 0; font-size: 13px; gap: 2px 14px; flex-wrap: wrap; } body.mode-map #hud span { white-space: nowrap; }
+body.mode-map #btn-menu { display: block; order: 5; flex: none; margin: 0; padding: 6px 12px; min-height: 0; font-weight: 600; background: #24415c; }
+body.mode-map main { display: block; padding: 0; gap: 0; }
+body.mode-map #stage { position: fixed; inset: 0; width: 100%; height: 100dvh; align-self: stretch; border-radius: 0; background: #0a1219; overflow: hidden; display: block; }
+body.mode-map #stage > canvas { position: absolute; margin: 0 !important; clip-path: none !important; }
+body.mode-map #topbar { position: absolute; top: var(--hdr-h); left: 0; right: 0; z-index: 11; padding: 4px 6px 0; pointer-events: none; }
+body.mode-map #topbar > * { pointer-events: auto; }
+body.mode-map #classbar { padding: 0; gap: 4px; }
+body.mode-map .cls { background: #12283bd9; backdrop-filter: blur(3px); padding: 3px 8px; min-width: 112px; } body.mode-map .cls.ok { background: #1f4a37e0; }
+body.mode-map #shift-actions { position: absolute; top: calc(var(--hdr-h) + 64px); left: 6px; right: auto; bottom: auto; width: auto; z-index: 11; display: flex; flex-direction: column; align-items: flex-start; flex-wrap: nowrap; gap: 4px; margin: 0; padding: 0; }
+body.mode-map #shift-actions button { flex: none; width: auto; margin: 0; min-height: 0; height: auto; padding: 5px 10px; font-size: 13px; background: #12283bd9; backdrop-filter: blur(3px); white-space: nowrap; }
+body.mode-map #shift-actions button.primary { background: var(--accent); color: #04222b; }
+body.mode-map #shift-hud { display: flex; position: absolute; left: 6px; bottom: 6px; top: auto; right: auto; transform: none; z-index: 11; background: #0b1a26cc; border-radius: 8px; padding: 3px 10px; font-size: 12px; gap: 4px 12px; flex-wrap: wrap; max-width: calc(100vw - 12px); pointer-events: none; }
+body.mode-map #shift-hud #s-mode, body.mode-map #shift-hud > span:nth-child(n+3) { display: none; }
+body.mode-map #toast { position: fixed; top: calc(var(--hdr-h) + 70px); left: 8px; right: 8px; z-index: 13; }
+body.mode-map #stage { -webkit-user-select: none; user-select: none; }
+/* Menü: Panel als Schublade von rechts */
+body.mode-map #panel { position: fixed; top: 0; bottom: 0; right: 0; left: auto; width: min(94vw, 430px); max-height: none; z-index: 25; border-radius: 0; padding: 0 14px 24px; overflow-y: auto; transform: translateX(105%); transition: transform .2s ease; box-shadow: -8px 0 28px #000a; }
+body.mode-map.menu-open #panel { transform: none; }
+body.mode-map #panel-handle { display: none; }
+body.mode-map #btn-menu-close { display: block; position: sticky; top: 0; z-index: 2; width: 100%; margin: 0 0 6px; padding: 12px; border-radius: 0 0 10px 10px; background: #1d3650; font-weight: 600; }
+body.mode-map #scrim { display: block; position: fixed; inset: 0; z-index: 24; background: #0006; } body.mode-map #scrim[hidden] { display: none; }
+body.mode-map #touch-ui { bottom: 8px; }
+body.touch.mode-map #topbar #btn-pause2 { display: block; }
+@media (max-width: 860px) {
+  body.mode-map header { padding: 3px 8px; } body.mode-map #hud { font-size: 12px; gap: 0 10px; } body.mode-map header h1 { display: none; }
+  body.mode-map #shift-actions { top: calc(var(--hdr-h) + 58px); }
+  body.mode-map #shift-actions button { font-size: 12px; padding: 4px 8px; }
+  body.mode-map .cls { min-width: 96px; } body.mode-map .cls small { font-size: 10.5px; }
+}
+@media (max-width: 860px) and (orientation: landscape) and (max-height: 560px) {
+  body.mode-map #classbar { display: flex; } body.mode-map .cls small { display: none; } body.mode-map .cls { min-width: 0; padding: 2px 8px; }
+  body.mode-map #shift-actions { top: calc(var(--hdr-h) + 56px); }
+  body.mode-map #touch-ui { bottom: 4px; }
+}

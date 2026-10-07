@@ -353,11 +353,60 @@ body.mode-slice #hints { display: none; }
 }
 body.mode-slice #shift-hud span { white-space: nowrap; } body.mode-slice #s-turbzone { display: none; }
 
+/* =====================================================================================================
+   Kartenansicht im Vollbild: das Spielfeld füllt den ganzen Bildschirm, oben liegt ein Dashboard
+   (Kopfzeile, Schiffsklassen, Knöpfe), das Menü (Panel) fährt von rechts herein. Der Querschnitt (Saugen) behält sein Layout.
+   ===================================================================================================== */
+:root { --hdr-h: 44px; }
+#btn-menu, #btn-menu-close, #scrim { display: none; }
+#help { margin: 8px 0; background: #ffffff0d; border-radius: 8px; padding: 4px 10px; } #help summary { cursor: pointer; font-weight: 600; padding: 4px 0; color: var(--muted); }
+#panel #hints { display: flex !important; padding: 4px 0; } #panel #legend { display: flex !important; padding: 4px 0; }
+
+body.mode-map { height: 100dvh; overflow: hidden; padding: 0 !important; display: block; }
+body.mode-map header { position: fixed; top: 0; left: 0; right: 0; z-index: 12; padding: 4px 10px; background: #0b1a26e6; backdrop-filter: blur(4px); flex-wrap: nowrap; gap: 8px 14px; justify-content: flex-start; }
+body.mode-map header h1 { font-size: 14px; white-space: nowrap; } body.mode-map header h1 small { display: none; }
+body.mode-map #hud { flex: 1; min-width: 0; font-size: 13px; gap: 2px 14px; flex-wrap: wrap; } body.mode-map #hud span { white-space: nowrap; }
+body.mode-map #btn-menu { display: block; order: 5; flex: none; margin: 0; padding: 6px 12px; min-height: 0; font-weight: 600; background: #24415c; }
+body.mode-map main { display: block; padding: 0; gap: 0; }
+body.mode-map #stage { position: fixed; inset: 0; width: 100%; height: 100dvh; align-self: stretch; border-radius: 0; background: #0a1219; overflow: hidden; display: block; }
+body.mode-map #stage > canvas { position: absolute; margin: 0 !important; clip-path: none !important; }
+body.mode-map #topbar { position: absolute; top: var(--hdr-h); left: 0; right: 0; z-index: 11; padding: 4px 6px 0; pointer-events: none; }
+body.mode-map #topbar > * { pointer-events: auto; }
+body.mode-map #classbar { padding: 0; gap: 4px; }
+body.mode-map .cls { background: #12283bd9; backdrop-filter: blur(3px); padding: 3px 8px; min-width: 112px; } body.mode-map .cls.ok { background: #1f4a37e0; }
+body.mode-map #shift-actions { position: absolute; top: calc(var(--hdr-h) + 64px); left: 6px; right: auto; bottom: auto; width: auto; z-index: 11; display: flex; flex-direction: column; align-items: flex-start; flex-wrap: nowrap; gap: 4px; margin: 0; padding: 0; }
+body.mode-map #shift-actions button { flex: none; width: auto; margin: 0; min-height: 0; height: auto; padding: 5px 10px; font-size: 13px; background: #12283bd9; backdrop-filter: blur(3px); white-space: nowrap; }
+body.mode-map #shift-actions button.primary { background: var(--accent); color: #04222b; }
+body.mode-map #shift-hud { display: flex; position: absolute; left: 6px; bottom: 6px; top: auto; right: auto; transform: none; z-index: 11; background: #0b1a26cc; border-radius: 8px; padding: 3px 10px; font-size: 12px; gap: 4px 12px; flex-wrap: wrap; max-width: calc(100vw - 12px); pointer-events: none; }
+body.mode-map #shift-hud #s-mode, body.mode-map #shift-hud > span:nth-child(n+3) { display: none; }
+body.mode-map #toast { position: fixed; top: calc(var(--hdr-h) + 70px); left: 8px; right: 8px; z-index: 13; }
+body.mode-map #stage { -webkit-user-select: none; user-select: none; }
+/* Menü: Panel als Schublade von rechts */
+body.mode-map #panel { position: fixed; top: 0; bottom: 0; right: 0; left: auto; width: min(94vw, 430px); max-height: none; z-index: 25; border-radius: 0; padding: 0 14px 24px; overflow-y: auto; transform: translateX(105%); transition: transform .2s ease; box-shadow: -8px 0 28px #000a; }
+body.mode-map.menu-open #panel { transform: none; }
+body.mode-map #panel-handle { display: none; }
+body.mode-map #btn-menu-close { display: block; position: sticky; top: 0; z-index: 2; width: 100%; margin: 0 0 6px; padding: 12px; border-radius: 0 0 10px 10px; background: #1d3650; font-weight: 600; }
+body.mode-map #scrim { display: block; position: fixed; inset: 0; z-index: 24; background: #0006; } body.mode-map #scrim[hidden] { display: none; }
+body.mode-map #touch-ui { bottom: 8px; }
+body.touch.mode-map #topbar #btn-pause2 { display: block; }
+@media (max-width: 860px) {
+  body.mode-map header { padding: 3px 8px; } body.mode-map #hud { font-size: 12px; gap: 0 10px; } body.mode-map header h1 { display: none; }
+  body.mode-map #shift-actions { top: calc(var(--hdr-h) + 58px); }
+  body.mode-map #shift-actions button { font-size: 12px; padding: 4px 8px; }
+  body.mode-map .cls { min-width: 96px; } body.mode-map .cls small { font-size: 10.5px; }
+}
+@media (max-width: 860px) and (orientation: landscape) and (max-height: 560px) {
+  body.mode-map #classbar { display: flex; } body.mode-map .cls small { display: none; } body.mode-map .cls { min-width: 0; padding: 2px 8px; }
+  body.mode-map #shift-actions { top: calc(var(--hdr-h) + 56px); }
+  body.mode-map #touch-ui { bottom: 4px; }
+}
+
 </style>
 </head>
-<body>
-  <header>
+<body class="mode-map">
+  <header id="header-bar">
     <h1 id="title">Fahrrinne frei! <small id="level-name"></small></h1>
+    <button id="btn-menu" aria-label="Menü">☰ Menü</button>
     <div id="hud">
       <span>Tag <b id="h-day"></b> <small id="h-left"></small></span>
       <span>Geld <b id="h-money"></b> <small id="h-income"></small></span>
@@ -368,25 +417,11 @@ body.mode-slice #shift-hud span { white-space: nowrap; } body.mode-slice #s-turb
     </div>
   </header>
 
+  <div id="scrim" hidden></div>
   <main>
     <section id="stage">
       <div id="topbar"><div id="classbar" aria-label="Schiffsklassen"></div><button id="btn-pause2" aria-label="Pause">⏸</button></div>
       <canvas id="canvas"></canvas>
-      <div id="hints" aria-label="Steuerung"></div>
-      <div id="legend" aria-label="Legende">
-        <span><i style="background:linear-gradient(90deg,#96cdd7,#2c5f70)"></i>flach → tief</span>
-        <span><i style="background:rgba(120,200,120,.5)"></i>Naturschutz</span>
-        <span><i style="background:rgba(255,120,40,.7)"></i>☢ Altlast</span>
-        <span><i style="background:rgba(90,95,105,.8)"></i>Fels</span>
-        <span><i style="background:repeating-linear-gradient(45deg,#2a3a4a,#2a3a4a 2px,#8fa6ba 2px,#8fa6ba 3px)"></i>harte Schicht</span>
-        <span><i style="background:#fff;border:1px solid #222"></i>Fremdstoff</span>
-        <span><i style="background:rgba(235,200,70,.6)"></i>Ausbaustreifen (Löffel)</span>
-        <span><i style="background:rgba(255,215,80,.7)"></i>Rohstoffgebiet</span>
-        <span><i style="background:rgba(205,208,214,.85)"></i>Beton</span>
-        <span><i style="background:rgba(160,230,90,.6)"></i>Kreuzungsstelle</span>
-        <span><i style="background:rgba(255,70,60,.7)"></i>zu flach (Klasse)</span>
-        <span><i style="background:rgba(150,90,200,.7)"></i>Fels im Weg</span>
-      </div>
       <div id="shift-hud" hidden>
         <span id="s-mode"></span>
         <span><b id="s-removed"></b></span>
@@ -427,6 +462,24 @@ body.mode-slice #shift-hud span { white-space: nowrap; } body.mode-slice #s-turb
 
     <aside id="panel">
       <button id="panel-handle">▲ Wasserstrasse &amp; Ausrüstung</button>
+      <button id="btn-menu-close">✕ Menü schliessen</button>
+      <details id="help"><summary>Steuerung &amp; Legende</summary>
+        <div id="hints" aria-label="Steuerung"></div>
+        <div id="legend" aria-label="Legende">
+          <span><i style="background:linear-gradient(90deg,#96cdd7,#2c5f70)"></i>flach → tief</span>
+          <span><i style="background:rgba(120,200,120,.5)"></i>Naturschutz</span>
+          <span><i style="background:rgba(255,120,40,.7)"></i>☢ Altlast</span>
+          <span><i style="background:rgba(90,95,105,.8)"></i>Fels</span>
+          <span><i style="background:repeating-linear-gradient(45deg,#2a3a4a,#2a3a4a 2px,#8fa6ba 2px,#8fa6ba 3px)"></i>harte Schicht</span>
+          <span><i style="background:#fff;border:1px solid #222"></i>Fremdstoff</span>
+          <span><i style="background:rgba(235,200,70,.6)"></i>Ausbaustreifen (Löffel)</span>
+          <span><i style="background:rgba(255,215,80,.7)"></i>Rohstoffgebiet</span>
+          <span><i style="background:rgba(205,208,214,.85)"></i>Beton</span>
+          <span><i style="background:rgba(160,230,90,.6)"></i>Kreuzungsstelle</span>
+          <span><i style="background:rgba(255,70,60,.7)"></i>zu flach (Klasse)</span>
+          <span><i style="background:rgba(150,90,200,.7)"></i>Fels im Weg</span>
+        </div>
+      </details>
       <h2>Verkehrsziel</h2>
       <div id="goal"></div>
       <h2>Wasserstrasse</h2>
@@ -545,7 +598,7 @@ const readInput = createInput(canvas);
 sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
-let sheetOpen = false;
+let sheetOpen = false, menuOpen = false, mapFull = false;
 let areaMode = false; // Arbeitsgebiet für gemietete Pontons aufziehen (Karte): zwei Ecken antippen
 let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
@@ -932,6 +985,7 @@ function placeHud() { // Anzeigen (Trübung, Puffer) liegen im Querschnitt über
 }
 function placeToast() {
   const t = $('toast');
+  if (mapFull) { t.style.right = '8px'; t.style.top = ''; return; }
   const visTop = canvas.offsetTop + (cropVis !== null ? panY : 0), visH = cropVis !== null ? cropVis : canvas.clientHeight;
   t.style.right = '8px'; t.style.top = `${Math.max(8, visTop + visH - t.offsetHeight - 12)}px`;
 }
@@ -953,9 +1007,17 @@ function focusY(lh, h) {
   return ((sim.y * CELL) / lh) * h;
 }
 function panCanvas(dt) {
-  const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('topbar').offsetHeight}/${innerHeight}`;
+  const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('topbar').offsetHeight}/${$('header-bar').offsetHeight}/${innerHeight}/${innerWidth}`;
   if (sig !== layoutSig) { layoutSig = sig; fitCanvas(); }
   const stageW = $('stage').clientWidth, cw = parseFloat(canvas.style.width) || stageW, ch = parseFloat(canvas.style.height) || 0;
+  if (mapFull) {
+    const AW = innerWidth, AH = innerHeight, fxp = tow ? cw / 2 : ((OX + sim.x * CELL) / canvas.logicalW) * cw;
+    const want = cw <= AW ? (AW - cw) / 2 : Math.min(0, Math.max(AW - cw, AW / 2 - fxp));
+    panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1);
+    canvas.style.left = `${panX}px`; canvas.style.top = `${(AH - ch) / 2}px`;
+    canvas.style.marginLeft = canvas.style.marginTop = canvas.style.marginBottom = canvas.style.clipPath = '';
+    return;
+  }
   if (zoom > 1 && sim.mode === 'slice') {
     const sl = sim.slice, fxp = ((sl.x - sl.x0) / 16) * cw;
     const want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
@@ -984,7 +1046,16 @@ function fitCanvas() {
   const portrait = narrow() && matchMedia('(orientation: portrait)').matches;
   zoom = 1; cropVis = null;
   let w, h;
-  if (portrait && sim.mode === 'slice') {
+  document.documentElement.style.setProperty('--hdr-h', `${$('header-bar').offsetHeight}px`);
+  mapFull = document.body.classList.contains('mode-map');
+  if (mapFull) { // Karte und Schleppen: das Bild füllt den ganzen Bildschirm (hochkant: Höhe füllen, seitlich dem Ponton folgen)
+    const AW = innerWidth, AH = innerHeight, aspect = lw / lh;
+    if (AW / AH < 1.5) { w = Math.min(AH * aspect, AW * 2.1); h = w / aspect; } // schmale Bildschirme: bis 2,1-fach vergrössert, seitlich dem Ponton folgen
+    else { h = AW / aspect > AH ? AH : AW / aspect; w = h * aspect; } // sonst die ganze Karte
+    canvas.style.position = 'absolute';
+  } else { canvas.style.position = ''; canvas.style.left = ''; canvas.style.top = ''; }
+  if (mapFull) { /* oben berechnet */ }
+  else if (portrait && sim.mode === 'slice') {
     const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
     zoom = Math.min(MAX_ZOOM_SLICE, Math.max(1, visAvail / nat));
     w = stageW * zoom; h = w * (lh / lw);
@@ -1016,7 +1087,7 @@ function syncMode() {
   const mode = curMode();
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
-  document.body.classList.toggle('mode-slice', mode === 'slice'); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
+  document.body.classList.toggle('mode-slice', mode === 'slice'); document.body.classList.toggle('mode-map', mode !== 'slice'); if (mode === 'slice') setMenu(false); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
   $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
@@ -1082,6 +1153,12 @@ function togglePause() {
   $('btn-pause').textContent = paused ? '▶ Weiter (P)' : '⏸ Pause (P)';
   $('btn-pause2').textContent = paused ? '▶' : '⏸';
   if (paused) saveGame();
+}
+function setMenu(open) { // Menü (Panel) im Kartenvollbild: Schublade von rechts; auf dem Handy pausiert das Spiel wie beim Panel
+  menuOpen = open && document.body.classList.contains('mode-map');
+  document.body.classList.toggle('menu-open', menuOpen); $('scrim').hidden = !menuOpen;
+  sheetOpen = menuOpen && narrow() ? true : (document.body.classList.contains('mode-map') ? false : sheetOpen);
+  if (menuOpen) { saveGame(); updatePanel(); }
 }
 function setSheet(open) {
   sheetOpen = open && narrow();
@@ -1190,6 +1267,7 @@ addEventListener('resize', () => { fitCanvas(); placeToast(); });
 addEventListener('orientationchange', () => setTimeout(fitCanvas, 200));
 $('btn-pause2').onclick = togglePause;
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
+$('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
 addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
 
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
@@ -1251,6 +1329,8 @@ let last = performance.now(), panelTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   ui.dt = dt; ui.t += dt;
+  if (readInput.tap('Tab')) setMenu(!menuOpen);
+  if (menuOpen && readInput.tap('Escape')) setMenu(false);
   if (readInput.tap('KeyH')) togglePort();
   if (portOpen() && readInput.tap('Escape')) togglePort();
   if (portOpen()) { portUi.render(); portUi.tick(dt); }

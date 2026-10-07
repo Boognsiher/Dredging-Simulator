@@ -57,7 +57,7 @@ const readInput = createInput(canvas);
 sizeCanvas(canvas);
 let mapTarget = null;
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
-let sheetOpen = false;
+let sheetOpen = false, menuOpen = false, mapFull = false;
 let areaMode = false; // Arbeitsgebiet für gemietete Pontons aufziehen (Karte): zwei Ecken antippen
 let zoneMode = false; // Kreuzungsstellen setzen/entfernen (Karte)
 let tow = null; // Minispiel: Aufläufer freischleppen
@@ -444,6 +444,7 @@ function placeHud() { // Anzeigen (Trübung, Puffer) liegen im Querschnitt über
 }
 function placeToast() {
   const t = $('toast');
+  if (mapFull) { t.style.right = '8px'; t.style.top = ''; return; }
   const visTop = canvas.offsetTop + (cropVis !== null ? panY : 0), visH = cropVis !== null ? cropVis : canvas.clientHeight;
   t.style.right = '8px'; t.style.top = `${Math.max(8, visTop + visH - t.offsetHeight - 12)}px`;
 }
@@ -465,9 +466,17 @@ function focusY(lh, h) {
   return ((sim.y * CELL) / lh) * h;
 }
 function panCanvas(dt) {
-  const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('topbar').offsetHeight}/${innerHeight}`;
+  const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('topbar').offsetHeight}/${$('header-bar').offsetHeight}/${innerHeight}/${innerWidth}`;
   if (sig !== layoutSig) { layoutSig = sig; fitCanvas(); }
   const stageW = $('stage').clientWidth, cw = parseFloat(canvas.style.width) || stageW, ch = parseFloat(canvas.style.height) || 0;
+  if (mapFull) {
+    const AW = innerWidth, AH = innerHeight, fxp = tow ? cw / 2 : ((OX + sim.x * CELL) / canvas.logicalW) * cw;
+    const want = cw <= AW ? (AW - cw) / 2 : Math.min(0, Math.max(AW - cw, AW / 2 - fxp));
+    panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1);
+    canvas.style.left = `${panX}px`; canvas.style.top = `${(AH - ch) / 2}px`;
+    canvas.style.marginLeft = canvas.style.marginTop = canvas.style.marginBottom = canvas.style.clipPath = '';
+    return;
+  }
   if (zoom > 1 && sim.mode === 'slice') {
     const sl = sim.slice, fxp = ((sl.x - sl.x0) / 16) * cw;
     const want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
@@ -496,7 +505,16 @@ function fitCanvas() {
   const portrait = narrow() && matchMedia('(orientation: portrait)').matches;
   zoom = 1; cropVis = null;
   let w, h;
-  if (portrait && sim.mode === 'slice') {
+  document.documentElement.style.setProperty('--hdr-h', `${$('header-bar').offsetHeight}px`);
+  mapFull = document.body.classList.contains('mode-map');
+  if (mapFull) { // Karte und Schleppen: das Bild füllt den ganzen Bildschirm (hochkant: Höhe füllen, seitlich dem Ponton folgen)
+    const AW = innerWidth, AH = innerHeight, aspect = lw / lh;
+    if (AW / AH < 1.5) { w = Math.min(AH * aspect, AW * 2.1); h = w / aspect; } // schmale Bildschirme: bis 2,1-fach vergrössert, seitlich dem Ponton folgen
+    else { h = AW / aspect > AH ? AH : AW / aspect; w = h * aspect; } // sonst die ganze Karte
+    canvas.style.position = 'absolute';
+  } else { canvas.style.position = ''; canvas.style.left = ''; canvas.style.top = ''; }
+  if (mapFull) { /* oben berechnet */ }
+  else if (portrait && sim.mode === 'slice') {
     const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
     zoom = Math.min(MAX_ZOOM_SLICE, Math.max(1, visAvail / nat));
     w = stageW * zoom; h = w * (lh / lw);
@@ -528,7 +546,7 @@ function syncMode() {
   const mode = curMode();
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
-  document.body.classList.toggle('mode-slice', mode === 'slice'); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
+  document.body.classList.toggle('mode-slice', mode === 'slice'); document.body.classList.toggle('mode-map', mode !== 'slice'); if (mode === 'slice') setMenu(false); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
   $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
@@ -594,6 +612,12 @@ function togglePause() {
   $('btn-pause').textContent = paused ? '▶ Weiter (P)' : '⏸ Pause (P)';
   $('btn-pause2').textContent = paused ? '▶' : '⏸';
   if (paused) saveGame();
+}
+function setMenu(open) { // Menü (Panel) im Kartenvollbild: Schublade von rechts; auf dem Handy pausiert das Spiel wie beim Panel
+  menuOpen = open && document.body.classList.contains('mode-map');
+  document.body.classList.toggle('menu-open', menuOpen); $('scrim').hidden = !menuOpen;
+  sheetOpen = menuOpen && narrow() ? true : (document.body.classList.contains('mode-map') ? false : sheetOpen);
+  if (menuOpen) { saveGame(); updatePanel(); }
 }
 function setSheet(open) {
   sheetOpen = open && narrow();
@@ -702,6 +726,7 @@ addEventListener('resize', () => { fitCanvas(); placeToast(); });
 addEventListener('orientationchange', () => setTimeout(fitCanvas, 200));
 $('btn-pause2').onclick = togglePause;
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
+$('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
 addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
 
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
@@ -763,6 +788,8 @@ let last = performance.now(), panelTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   ui.dt = dt; ui.t += dt;
+  if (readInput.tap('Tab')) setMenu(!menuOpen);
+  if (menuOpen && readInput.tap('Escape')) setMenu(false);
   if (readInput.tap('KeyH')) togglePort();
   if (portOpen() && readInput.tap('Escape')) togglePort();
   if (portOpen()) { portUi.render(); portUi.tick(dt); }
