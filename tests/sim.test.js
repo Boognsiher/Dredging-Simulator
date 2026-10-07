@@ -1652,3 +1652,20 @@ test('Baggerroute: Zellen entlang der Linie, Pontons baggern sie auch über das 
   assert.ok(g.totals.landRemoved > 20, 'Flotte trägt Ufer/Land entlang der Route ab');
   assert.equal(addRoute(g, [{ x: 1, y: 1 }], 2), null);
 });
+
+test('Zwei Rinnen: bei einseitigem Andrang fahren beide Spuren, Gegenverkehr nutzt die zweite', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false;
+  const cid = Object.keys(g.fair).find((id) => g.fair[id].passable), f = g.fair[cid];
+  f.twoWay = true; f.secondPath = { ...f.path, points: f.path.points.map((p) => ({ ...p, y: p.y + 1.5 })) };
+  const mk = (dir) => { let s = null; for (let k = 0; k < 40 && !s; k++) s = spawnShip(g); s.dir = dir; s.cls = cid; return s; };
+  const a = [mk(1), mk(1), mk(1)];
+  for (let t = 0; t < 25; t += 0.1) { g.time += 0.1; updateTraffic(g, 0.1); }
+  const used = new Set(a.filter((s) => s.state === 'sail' || s.state === 'done').map((s) => !!s.alt));
+  assert.ok(a.some((s) => s.state === 'sail' || s.state === 'done'));
+  assert.ok(used.has(true) && used.has(false), 'beide Spuren genutzt');
+  // Gegenverkehr: fährt auf der zweiten Spur, solange die Hauptspur nicht blockiert ist
+  const g2 = new Game(7, 'hochrhein'); g2.eventsOn = false; const f2 = g2.fair[cid]; f2.twoWay = true; f2.secondPath = { ...f2.path, points: f2.path.points.map((p) => ({ ...p, y: p.y + 1.5 })) };
+  let s2 = null; for (let k = 0; k < 40 && !s2; k++) s2 = spawnShip(g2); s2.dir = -1; s2.cls = cid;
+  for (let t = 0; t < 5; t += 0.1) updateTraffic(g2, 0.1);
+  assert.equal(s2.state, 'sail'); assert.equal(s2.alt, true);
+});

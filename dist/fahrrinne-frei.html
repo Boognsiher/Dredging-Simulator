@@ -4597,6 +4597,8 @@ function updateTraffic(g, dt) {
   for (const cls of SHIPS) { // liegt der Ponton in dieser Rinne?
     const pts = g.fair?.[cls.id]?.path?.points;
     near[cls.id] = !!(pts && sites.some((site) => pts.some((p) => Math.hypot(p.x - site.x, p.y - site.y) < C.siteRadius)));
+    const pts2 = g.fair?.[cls.id]?.secondPath?.points; // Ponton in der zweiten Rinne?
+    near[`${cls.id}:2`] = !!(pts2 && sites.some((site) => pts2.some((p) => Math.hypot(p.x - site.x, p.y - site.y) < C.siteRadius)));
   }
   const sailing = () => ships.filter((s) => s.state === 'sail' || s.state === 'grounded');
   const byId = new Map(ships.map((s) => [s.id, s]));
@@ -4605,7 +4607,7 @@ function updateTraffic(g, dt) {
     if (ship.state !== 'sail' && ship.state !== 'grounded') continue;
     const cls = shipById(ship.cls);
     if (!ship.path) { // nach dem Laden: Pfad der Klasse wieder einsetzen
-      ship.path = g.fair?.[ship.cls]?.path;
+      ship.path = ship.alt ? g.fair?.[ship.cls]?.secondPath : g.fair?.[ship.cls]?.path;
       if (!ship.path) { ship.state = 'left'; continue; }
       ship.s = Math.min(ship.s, ship.path.length);
     }
@@ -4634,7 +4636,7 @@ function updateTraffic(g, dt) {
     if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow;
     let gapMin = Infinity;
     for (const o of ships) {
-      if (o === ship || o.dir !== ship.dir || (o.state !== 'sail' && o.state !== 'grounded') || o.s <= ship.s) continue;
+      if (o === ship || o.dir !== ship.dir || !!o.alt !== !!ship.alt || (o.state !== 'sail' && o.state !== 'grounded') || o.s <= ship.s) continue;
       const gap = o.s - ship.s - (shipById(o.cls).len + cls.len) / 2;
       if (gap < gapMin) gapMin = gap;
     }
@@ -4691,10 +4693,18 @@ function updateTraffic(g, dt) {
       continue;
     }
     if (!open || !f?.passable || !f.path) continue;
-    const lane = f.twoWay && !near[ship.cls] ? 'two' : 'one';
-    let ok = true, meets = [];
+    // zwei getrennte Rinnen: Richtung > 0 fährt standardmässig die Hauptrinne, Richtung < 0 die zweite; ist die eigene Spur an der Einfahrt belegt,
+    // weicht das Schiff auf die andere Spur aus, solange dort kein Gegenverkehr fährt (so fahren bei einseitigem Andrang beide Rinnen)
+    const lane = f.twoWay && !near[ship.cls] && !near[`${ship.cls}:2`] && f.secondPath ? 'two' : 'one';
+    let ok = true, meets = [], alt = false;
     const sl = sailing();
-    for (const o of sl) if (o.dir === ship.dir && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2) { ok = false; break; }
+    const blockedAt = (a) => sl.some((o) => o.dir === ship.dir && !!o.alt === a && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2);
+    if (lane === 'two') {
+      const own = ship.dir < 0, headOn = (a) => sl.some((o) => o.dir !== ship.dir && !!o.alt === a);
+      if (!headOn(own) && !blockedAt(own)) alt = own;
+      else if (!headOn(!own) && !blockedAt(!own)) alt = !own;
+      else ok = false;
+    } else for (const o of sl) if (o.dir === ship.dir && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2) { ok = false; break; }
     if (ok && lane === 'one') { // Einbahnrinne: Gegenverkehr nur mit freier Kreuzungsstelle dazwischen
       const opposing = sl.filter((o) => o.dir !== ship.dir && o.lane === 'one');
       if (opposing.length) { const a = assignMeets(g, ship, opposing, ships); if (a) meets = a; else ok = false; }
@@ -4706,7 +4716,7 @@ function updateTraffic(g, dt) {
     if (!ok) continue;
     ship.meets = meets; ship.latZones = meets.map((m) => m.zone);
     for (const m of meets) { const o = byId.get(m.with); o?.meets?.push({ zone: m.zone, with: ship.id }); if (o) (o.latZones ??= []).push(m.zone); }
-    ship.state = 'sail'; ship.s = 0; ship.lane = lane; ship.path = f.path;
+    ship.state = 'sail'; ship.s = 0; ship.lane = lane; ship.alt = lane === 'two' && alt; ship.path = ship.alt ? f.secondPath : f.path;
   }
   T.ships = ships.filter((s) => s.state !== 'done' && s.state !== 'left');
 }
