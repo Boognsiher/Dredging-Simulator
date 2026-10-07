@@ -1,7 +1,7 @@
 import { CONFIG, shipById } from '../config.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } from '../sim/land.js';
-import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } from '../sim/port.js';
+import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit } from '../sim/port.js';
 import { priceOf, ratioOf } from '../sim/market.js';
 
 // Hafen-Seite: Vollbild-Overlay mit Bauplätzen, Lagern, Handel und Automatik. Die Simulation läuft im Hintergrund weiter.
@@ -68,7 +68,7 @@ export function setupPort(root, getGame, onChange) {
           h += `</div>`; return;
         }
         const B = PORT.buildings[sl.type], cm = B.commodity, up = B.up && sl.level <= B.up.length;
-        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'werk' ? `Anlage bis Stufe ${6 + 2 * sl.level} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
+        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'werk' ? `Diese Halle: +${2 * sl.level} Anlagenstufen · Anlage jetzt bis Stufe ${plantLimit(g)} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
           ${up ? `<button data-act="up" data-slot="${i}" ${upgradeBlock(g, i) ? 'disabled' : ''}>Ausbauen · ${chf(B.up[sl.level - 1])}</button>` : ''}<button class="ghost" data-act="demo" data-slot="${i}">Abreissen</button></div>`;
       });
       h += `</div>`;

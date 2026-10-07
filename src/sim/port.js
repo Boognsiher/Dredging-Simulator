@@ -86,7 +86,8 @@ export const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).m
 // Anlage: ohne Halle ist bei Stufe 6 Schluss, jede Hallenstufe (beste aller Karten) erlaubt zwei Stufen mehr
 export const PLANT_BASE = 6;
 export const werkLevel = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => slotsOf(m.port, 'werk')[0]?.level ?? 0));
-export const plantLimit = (g) => PLANT_BASE + 2 * werkLevel(g);
+export const werkLevels = (g) => (g.maps ?? [{ port: g.port }]).reduce((a, m) => a + (slotsOf(m.port, 'werk')[0]?.level ?? 0), 0); // Summe aller Hallenstufen (jede Karte hat ihren eigenen Hafen)
+export const plantLimit = (g) => PLANT_BASE + 2 * werkLevels(g);
 export const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
 export const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
 

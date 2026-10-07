@@ -775,7 +775,7 @@ function updateUpgrades() {
     r.small.textContent = `Stufe ${game.levels[id]}/${def.maxLevel} · ${def.desc}`;
     r.btn.textContent = game.upgradeLocked(id) ? '🔒 Hafen' : cost === null ? 'Max' : chf(cost);
     r.btn.disabled = cost === null || game.money < cost || game.status !== 'playing';
-    if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: Aufbereitungshalle im Hafen bauen/ausbauen';
+    if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: Aufbereitungshalle im Hafen bauen/ausbauen (jede Karte mit Halle zählt)';
     const refund = game.refundFor(id);
     if (!r.armed()) r.sell.textContent = '↩';
     if (refund !== null) r.small.textContent += ` · Rückbau +${chf(refund)}`;
@@ -2060,7 +2060,7 @@ const UPGRADES = {
   mixer: { group: 'plant', name: 'Betonwerk', desc: 'Mischt Beton aus Kies und Sand des Flusses (plus Zement), viel billiger als Zukaufen', maxLevel: 3, baseCost: 16000, growth: 1.7, apply: (s, l) => { s.mixer = l; s.mixRate = 0.2 * l; } },
   echolot: { group: 'ponton', name: 'Echolot', desc: 'Genauere Peilung: die Automatik trifft die Solltiefe besser', maxLevel: 2, baseCost: 9000, growth: 1.8, apply: (s, l) => { s.echolot = l; } },
   auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 12000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
-  plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer (ab Stufe 7 braucht es die Aufbereitungshalle im Hafen)', maxLevel: 12, baseCost: 7000, growth: 1.5, apply: (s, l) => { s.plantCapacity += l * 2 + l * l * 0.25; s.bufferCapacity += l * 60 + l * l * 5; } },
+  plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 24, baseCost: 7000, growth: 1.5, costAt: (l) => (l < 12 ? 7000 * 1.5 ** l : 7000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.plantCapacity += l * 2 + l * l * 0.25; s.bufferCapacity += l * 60 + l * l * 5; } },
   dewater: { group: 'plant', name: 'Entwässerung', desc: 'Trockeneres Material: Entsorgung wird günstiger', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.disposalFactor = Math.max(0.4, 1 - l * 0.15); } },
   sorter: { group: 'plant', name: 'Sortieranlage', desc: 'Kies und Sand besser verkaufen', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.sortBonus = 1 + l * 0.2; } },
   beacons: { group: 'traffic', name: 'Betonnung & Leuchtfeuer', desc: 'Sicher auch bei Nacht: mehr Schiffe pro Tag', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.trafficMult = 1 + l * 0.18; } },
@@ -2482,7 +2482,8 @@ const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) 
 // Anlage: ohne Halle ist bei Stufe 6 Schluss, jede Hallenstufe (beste aller Karten) erlaubt zwei Stufen mehr
 const PLANT_BASE = 6;
 const werkLevel = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => slotsOf(m.port, 'werk')[0]?.level ?? 0));
-const plantLimit = (g) => PLANT_BASE + 2 * werkLevel(g);
+const werkLevels = (g) => (g.maps ?? [{ port: g.port }]).reduce((a, m) => a + (slotsOf(m.port, 'werk')[0]?.level ?? 0), 0); // Summe aller Hallenstufen (jede Karte hat ihren eigenen Hafen)
+const plantLimit = (g) => PLANT_BASE + 2 * werkLevels(g);
 const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
 const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
 
@@ -2672,7 +2673,7 @@ function portDay(g) {
   }
 }
 
-return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, machineOf: machineOf, portShip: portShip, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, machineOf: machineOf, portShip: portShip, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 
@@ -4296,6 +4297,7 @@ function computeStats(levels = {}) {
 
 function upgradeCost(id, level) {
   const def = UPGRADES[id];
+  if (def.costAt) return Math.round(def.costAt(level) / 100) * 100;
   return Math.round((def.baseCost * def.growth ** level) / 100) * 100;
 }
 
@@ -5671,7 +5673,7 @@ function(){
 const { CONFIG, shipById } = __m(2);
 const { needDepth, minNeedDepth } = __m(3);
 const { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } = __m(5);
-const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac } = __m(4);
+const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit } = __m(4);
 const { priceOf, ratioOf } = __m(6);
 
 
@@ -5743,7 +5745,7 @@ function setupPort(root, getGame, onChange) {
           h += `</div>`; return;
         }
         const B = PORT.buildings[sl.type], cm = B.commodity, up = B.up && sl.level <= B.up.length;
-        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'werk' ? `Anlage bis Stufe ${6 + 2 * sl.level} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
+        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'werk' ? `Diese Halle: +${2 * sl.level} Anlagenstufen · Anlage jetzt bis Stufe ${plantLimit(g)} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
           ${up ? `<button data-act="up" data-slot="${i}" ${upgradeBlock(g, i) ? 'disabled' : ''}>Ausbauen · ${chf(B.up[sl.level - 1])}</button>` : ''}<button class="ghost" data-act="demo" data-slot="${i}">Abreissen</button></div>`;
       });
       h += `</div>`;

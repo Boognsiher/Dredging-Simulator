@@ -1621,3 +1621,19 @@ test('Vorkommen: leere verschwinden, mit der Zeit erscheinen neue zum Kauf', () 
   assert.ok(fresh.every((d) => d.known && !d.owned && !d.depleted && r.depositRemaining(d.id) > 6));
   const rt = restoreGame(serializeGame(g)); assert.equal(rt.river.deposits.length, r.deposits.length);
 });
+
+test('Endlos: Hallen aller Karten zählen für den Anlagenausbau (bis Stufe 24)', () => {
+  const g = new Game(11, 'endlos'); g.eventsOn = false; g.money = 1e9; g.unlocked.motor = true;
+  assert.ok(g.endless);
+  g.addMap(); g.addMap(); assert.equal(g.maps.length, 3);
+  for (let k = 0; k < 3; k++) {
+    g.switchMap(k); g.unlocked.motor = true;
+    assert.ok(openPort(g)); for (const s of g.port.sites) s.ready = true;
+    assert.ok(build(g, 0, 'kai')); assert.ok(build(g, 1, 'werk')); assert.ok(upgrade(g, 1)); assert.ok(upgrade(g, 1));
+  }
+  g.levels.plant = 12; g._stats = null;
+  assert.ok(g.nextUpgradeCost('plant') > 0);
+  for (let i = 12; i < 24; i++) assert.ok(g.buyUpgrade('plant'), 'Stufe ' + (i + 1));
+  assert.equal(g.levels.plant, 24); assert.equal(g.nextUpgradeCost('plant'), null);
+  assert.ok(g.stats.plantCapacity > 150);
+});

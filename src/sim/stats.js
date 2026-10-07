@@ -9,5 +9,6 @@ export function computeStats(levels = {}) {
 
 export function upgradeCost(id, level) {
   const def = UPGRADES[id];
+  if (def.costAt) return Math.round(def.costAt(level) / 100) * 100;
   return Math.round((def.baseCost * def.growth ** level) / 100) * 100;
 }
