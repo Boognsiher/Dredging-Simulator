@@ -79,16 +79,24 @@ function buildClassbar() {
   bar.replaceChildren(...nodes);
 }
 function chooseClass(id) {
+  if (mapFull && sim.mode !== 'slice') { // Kartenvollbild: nur eine Klasse sichtbar, Antippen schaltet zur nächsten um
+    const ids = game.level.classes, cur = pickedClass(); id = ids[(ids.indexOf(cur) + 1) % ids.length];
+    classSel = id; ui.classSel = id; updateClassbar(); return;
+  }
   if (sim.mode === 'slice') { classSel = id; setDepthValue(Math.round((needDepth(shipById(id)) + 0.25) * 10) / 10); } // im Querschnitt: Solltiefe für diese Klasse
   else classSel = classSel === id ? null : id; // auf der Karte: Engstellen ein/aus
   ui.classSel = classSel;
   updateClassbar();
 }
+function pickedClass() { // die eine Klasse, die das Kartenvollbild anzeigt
+  const ids = game.level.classes;
+  return classSel && ids.includes(classSel) ? classSel : ids.find((id) => game.fair?.[id] && !game.fair[id].passable) ?? ids[ids.length - 1];
+}
 function updateClassbar() {
-  const wait = waitingByClass(game);
+  const wait = waitingByClass(game), pick = pickedClass();
   for (const b of $('classbar').children) {
     const id = b.dataset.id, f = game.fair?.[id], cls = shipById(id);
-    b.classList.toggle('ok', !!f?.passable); b.classList.toggle('on', classSel === id);
+    b.classList.toggle('ok', !!f?.passable); b.classList.toggle('on', classSel === id); b.classList.toggle('pick', id === pick);
     const small = b.querySelector('small'), w = b.querySelector('.wait');
     const need = `${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)}`;
     small.textContent = !f ? '' : f.passable ? `${Math.round(f.loadFactor * 100)} % Ladung${f.twoWay ? ' · ⇄' : ''}${f.loadFrac < 0.999 ? ` · +${num(f.fullVolume)} m³ bis voll` : ' · voll'}` : `${game.unlocked[id] ? '⚠ gesperrt' : '🔒'} ${need} m · ${f.volume === Infinity ? 'Korridor zu schmal' : `fehlt ${num(f.volume)} m³`}`;
@@ -465,7 +473,13 @@ function focusY(lh, h) {
   if (sim.mode === 'slice') return (sliceHeadScreen(sim.slice).y / lh) * h;
   return ((sim.y * CELL) / lh) * h;
 }
+// Kartenvollbild nur auf Rechner und Handy quer; Handy hochkant behält das bisherige Layout (Karte oben, Bedienung unten)
+function applyLayoutMode() {
+  const want = curMode() !== 'slice' && !(narrow() && matchMedia('(orientation: portrait)').matches);
+  if (document.body.classList.contains('mode-map') !== want) { document.body.classList.toggle('mode-map', want); if (!want) setMenu(false); layoutSig = ''; }
+}
 function panCanvas(dt) {
+  applyLayoutMode();
   const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('topbar').offsetHeight}/${$('header-bar').offsetHeight}/${innerHeight}/${innerWidth}`;
   if (sig !== layoutSig) { layoutSig = sig; fitCanvas(); }
   const stageW = $('stage').clientWidth, cw = parseFloat(canvas.style.width) || stageW, ch = parseFloat(canvas.style.height) || 0;
@@ -546,7 +560,7 @@ function syncMode() {
   const mode = curMode();
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
-  document.body.classList.toggle('mode-slice', mode === 'slice'); document.body.classList.toggle('mode-map', mode !== 'slice'); if (mode === 'slice') setMenu(false); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
+  document.body.classList.toggle('mode-slice', mode === 'slice'); applyLayoutMode(); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
   $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1;
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
@@ -880,6 +894,7 @@ function frame(now) {
     $('s-removed').textContent = tow ? `Schleppen: ${Math.round((tow.progress / tow.need) * 100)} % · noch ${Math.ceil(tow.timeLeft)} s` : sim.mode === 'slice'
       ? `${game.totals.removed.toFixed(0)} m³ gebaggert · ${sim.slice.restCount()} Zellen über Solltiefe${sim.bufferFull ? ' · Puffer voll, Pumpe pausiert!' : ''}`
       : `${game.traffic.ships.filter((s) => s.state === 'sail').length} Schiffe unterwegs · ${game.traffic.ships.filter((s) => s.state === 'queue').length} wartend`;
+    $('h-ships').textContent = `${game.traffic.ships.filter((s) => s.state === 'sail').length} unterwegs · ${game.traffic.ships.filter((s) => s.state === 'queue').length} wartend`;
     $('s-turb').value = sim.turbidity;
     $('s-buf').value = Math.min(1, game.stockTotal / game.stats.bufferCapacity); $('s-buf').classList.toggle('hot', game.stockTotal >= game.stats.bufferCapacity * 0.9);
     $('s-open').textContent = sim.mode === 'slice' ? `${sim.slice.restCount()} offen` : '';

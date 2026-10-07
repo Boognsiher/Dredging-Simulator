@@ -392,3 +392,19 @@ body.touch.mode-map #topbar #btn-pause2 { display: block; }
   body.mode-map #shift-actions { top: calc(var(--hdr-h) + 56px); }
   body.mode-map #touch-ui { bottom: 4px; }
 }
+
+/* ---- Kartenvollbild, reduziert: eine Schiffsklasse (Antippen schaltet um), Aktionsknöpfe unten nebeneinander ---- */
+body.mode-map #classbar .cls { display: none; }
+body.mode-map #classbar .cls.pick { display: block; flex: 0 1 280px; max-width: 280px; position: relative; padding-right: 26px; cursor: pointer; }
+body.mode-map #classbar .cls.pick::after { content: '⇄'; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 15px; }
+body.mode-map #shift-hud { display: none; }
+body.mode-map #shift-actions { top: auto; bottom: 8px; left: 50%; transform: translateX(-50%); flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; width: max-content; max-width: calc(100vw - 16px); gap: 6px; }
+body.mode-map #shift-actions button { padding: 7px 12px; font-size: 13px; }
+body.mode-map #touch-ui { bottom: 52px; }
+@media (max-width: 860px) and (orientation: landscape) and (max-height: 560px) {
+  body.mode-map #shift-actions { top: auto; bottom: 4px; max-width: calc(100vw - 300px); gap: 4px; }
+  body.mode-map #shift-actions button { padding: 3px 8px; font-size: 12px; }
+  body.mode-map #touch-ui { bottom: 4px; }
+  body.mode-map #classbar .cls.pick small { display: block; }
+}
+body.mode-map #toast { top: calc(var(--hdr-h) + 62px); }
