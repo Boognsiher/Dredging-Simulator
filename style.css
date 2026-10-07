@@ -415,3 +415,7 @@ body.mode-map #toast { top: calc(var(--hdr-h) + 62px); }
 .seedrow button { margin: 0; width: auto; } .seedrow .primary { flex: 1; position: static; }
 #map-select { background: #24415c; color: var(--ink); border: 0; border-radius: 6px; padding: 6px 8px; font: inherit; max-width: 170px; }
 body.mode-map #map-select { order: 4; flex: none; }
+
+.ship .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; } .ship select { background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; border-radius: 6px; padding: 4px 6px; font: inherit; }
+.ship label { font-size: 12px; display: inline-flex; gap: 4px; align-items: center; margin-right: 8px; } .ship { align-items: flex-start; }
+.shipbuy { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; } .shipbuy button { margin: 0; text-align: left; }

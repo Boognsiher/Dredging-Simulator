@@ -1,4 +1,4 @@
-import { CONFIG, SHIPS, shipById } from '../config.js';
+import { CONFIG, SHIPS, KIND, shipById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { zoneSupports } from './traffic.js';
 
@@ -7,7 +7,7 @@ import { zoneSupports } from './traffic.js';
 // Sie nutzen dieselbe Physik wie dein eigener Ponton (DredgeSim/SliceSim), nur ohne Anzeige. Das Ausbauziel ist eine Schiffsklasse
 // (Standard: die kleinste Klasse, die noch nicht fährt). Pontons ohne Arbeit warten und melden, was fehlt.
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
-export const createFleet = () => ({ units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0 });
+export const createFleet = () => ({ units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false });
 
 export const nextHireCost = (g) => CONFIG.fleet.costs[g.fleet.units.length] ?? null;
 
@@ -39,6 +39,14 @@ export function dismissUnit(g, id) {
   return true;
 }
 
+// Sperren für die automatischen Pontons: Naturschutzzone (Flachwasser am Ufer) und Altlastenbereiche nicht abtragen
+export function setAvoid(g, nature, altlast) { g.fleet.noNature = !!nature; g.fleet.noAltlast = !!altlast; }
+export function cellAllowed(g, i) {
+  const F = g.fleet, r = g.river;
+  if (F.noAltlast && r.kind[i] === KIND.altlast && r.top[i] - r.rock[i] > 0.05) return false;
+  if (F.noNature && !r.zone[i] && r.ext[i] === 2) return false;
+  return true;
+}
 export function setMine(g, on) { g.fleet.mine = !!on; }
 export function setPour(g, on) { g.fleet.pour = !!on; }
 export function setWiden(g, on, w) { g.fleet.widen = !!on; if (w) g.fleet.widenW = Math.max(1, Math.min(5, Math.round(w))); }
@@ -59,17 +67,21 @@ export function openColumns(g, cls) {
   const f = g.fair?.[cls.id];
   if (!f?.nodes) return [];
   const r = g.river, needTop = g.wl - f.need + 0.06, lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo, cols = new Map();
+  let avoided = 0;
   for (const p of f.nodes) {
     for (let k = p.y - lo; k <= p.y + hi; k++) {
       const i = k * r.cols + p.x;
       if (!r.zone[i] || r.top[i] <= needTop) continue;
+      if (!cellAllowed(g, i)) { avoided++; continue; }
       const c = cols.get(p.x) ?? { x: p.x, rock: false, armor: false, y: p.y + (hi - lo) / 2 + 0.5 };
       if (r.rock[i] > needTop) c.rock = true;
       if (r.armor[i] > 0) c.armor = true; // Beton muss aufgebrochen werden
       cols.set(p.x, c);
     }
   }
-  return [...cols.values()].sort((a, b) => a.x - b.x);
+  const out = [...cols.values()].sort((a, b) => a.x - b.x);
+  out.avoided = avoided; // so viele Zellen blieben wegen der Sperren (Altlast, Naturschutz) ausgelassen
+  return out;
 }
 
 const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
@@ -88,7 +100,7 @@ export function openWidenColumns(g) {
       for (let k = 0; k < r.rows; k++) { const y = side < 0 ? k : r.rows - 1 - k, i = y * r.cols + x; if (r.zone[i] && !r.ext[i]) { edge = y; break; } }
       if (edge === null) continue;
       const rows = [];
-      for (let k = 1; k <= W; k++) { const y = edge + side * k; if (y < 0 || y >= r.rows || !r.ext[y * r.cols + x]) break; rows.push(y); }
+      for (let k = 1; k <= W; k++) { const y = edge + side * k; if (y < 0 || y >= r.rows || !r.ext[y * r.cols + x] || !cellAllowed(g, y * r.cols + x)) break; rows.push(y); }
       let open = false, rock = false, armor = false;
       for (const y of rows) { const i = y * r.cols + x; if (r.top[i] > needTop) { open = true; if (r.rock[i] > needTop) rock = true; if (r.armor[i] > 0) armor = true; } }
       if (open) out.push({ x, side, edge, rows, rock, armor, depth: Math.min(CONFIG.echolot.maxDepth, (f?.need ?? base.draught + CONFIG.clearance) + CONFIG.fleet.margin) });
@@ -101,7 +113,7 @@ function pickLane(g, u) {
   const cls = targetClass(g);
   if (!cls) return { none: 'Keine Engstelle: alle Klassen fahren' };
   const open = openColumns(g, cls), res = reservedBy(g, u), B = CONFIG.box.cols;
-  if (!open.length) return { none: `${cls.name}: Rinne ist frei` };
+  if (!open.length) return { none: open.avoided ? 'Altlast im Weg: Meiden ist aktiv (Flotte)' : `${cls.name}: Rinne ist frei` };
   let rockSkipped = 0, armorSkipped = 0;
   for (const c of open) {
     if (u.skip[c.x] && g.time < u.skip[c.x]) continue;
@@ -140,7 +152,7 @@ export function openAreaColumns(g, a) {
     let open = false, rock = false, armor = false, land = false, y0 = Infinity, y1 = -Infinity;
     for (let y = a.y0; y <= a.y1; y++) {
       const i = y * r.cols + x;
-      if (!(r.zone[i] || (loeff && r.ext[i])) || r.top[i] <= needTop) continue;
+      if (!(r.zone[i] || (loeff && r.ext[i])) || r.top[i] <= needTop || !cellAllowed(g, i)) continue;
       open = true; y0 = Math.min(y0, y); y1 = Math.max(y1, y);
       if (!r.zone[i]) land = true;
       if (r.rock[i] > needTop) rock = true;
@@ -236,7 +248,10 @@ function pickZone(g, u) {
     if (u.skip[`Z${z.id}`] && g.time < u.skip[`Z${z.id}`]) continue;
     const cid = z.cls ?? g.zoneClassId, plan = g.zonePlanFor(z.x, cid);
     if (!plan.wins || plan.volume === Infinity) { note = 'Kreuzungsstelle: kein Platz'; continue; }
-    const loeff = g.stats.loeffel > 0;
+    const loeff = g.stats.loeffel > 0, needTopZ = plan.needTop;
+    let blockedZ = false;
+    for (const w of plan.wins) for (const a0 of [w.a, w.b]) for (let k = a0; k < a0 + plan.beam; k++) { const i = k * r.cols + w.x; if (r.top[i] > needTopZ && !cellAllowed(g, i)) blockedZ = true; }
+    if (blockedZ) { note = 'Kreuzungsstelle: Altlast oder Naturschutz im Weg (Meiden aktiv)'; continue; }
     if ((plan.land || plan.armor) && !loeff) { note = plan.armor ? 'Beton im Weg: braucht den Löffelbagger' : 'Kreuzungsstelle braucht den Löffelbagger (Uferabtrag)'; continue; }
     if (plan.rock && !canRock(g)) { note = 'Fels im Weg: braucht Felsfräse oder Löffelbagger'; continue; }
     const c0 = Math.min(Math.max(0, z.x - 1), r.cols - B);
@@ -328,7 +343,7 @@ function stepUnit(g, u, dt) {
           sim.tool = toolAvailable(g.stats, s.tool) ? s.tool : 'pump';
           if (sim.anchor()) {
             const sl = sim.slice;
-            sl.soundNoise = CONFIG.fleet.soundNoise; sl.sound();
+            sl.soundNoise = CONFIG.fleet.soundNoise; sl.avoidAltlast = !!g.fleet.noAltlast; sl.avoidNature = !!g.fleet.noNature; sl.sound();
             if (s.pour) { sl.autoPour = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; }
             else if (s.mine) { sl.autoRange = [s.rows[0] - 1, s.rows[1] + 1]; }
             else if (s.area) { if (s.land) sl.autoLand = true; sl.autoRange = [s.rows[0], s.rows[1]]; } // Arbeitsgebiet: genau das Rechteck

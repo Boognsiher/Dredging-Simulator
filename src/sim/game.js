@@ -8,6 +8,7 @@ import { computeStats, upgradeCost } from './stats.js';
 import { createRng } from './rng.js';
 import { createMarket, stepMarket } from './market.js';
 import { createPort, portDay, refundFrac, updatePort, carveBay } from './port.js';
+import { createShipping, updateShipping } from './shipping.js';
 import { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } from './traffic.js';
 import { processPlant, stockTotal, materialPrice } from './plant.js';
 import { updateContracts } from './contracts.js';
@@ -58,6 +59,7 @@ export class Game {
     this.market = createMarket();
     this.traffic = createTraffic();
     this.fleet = createFleet();
+    this.shipping = createShipping(); // eigene Reederei (global)
     this.port = createPort(); // Hafen an Land (Kai, Lager, Handel)
     this.zones = []; // Kreuzungsstellen: { id, x (Spalte der Mitte), w }
     this.zoneSeq = 0;
@@ -104,8 +106,10 @@ export class Game {
     this.money -= cost;
     let name = MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
     const river = River.generate(createRng(seed), endlessRiver(this.seed, k)); river.wl = this.wl;
-    this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null });
+    const br = createRng(seed ^ 0x9e3779b9), bias = {}; for (const id of ['kies', 'oel']) bias[id] = +br.range(-0.28, 0.28).toFixed(2); // regionale Preise: Handel zwischen den Karten lohnt sich
+    this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
     this.mapIdx = k;
+    this.port.bay = carveBay(this.river, this.wl);
     this.analyze();
     carveFairway(this.river, this.wl, SHIPS.find((s) => s.id === this.level.classes[0]));
     this.analyze(true);
@@ -342,7 +346,7 @@ export class Game {
 
     const mixerOn = this.stats.mixer > 0 && this.divertAgg, C = CONFIG.concrete;
     const divert = mixerOn ? { [KIND.kies]: { room: C.aggCap - this.agg.kies }, [KIND.sand]: { room: C.aggCap - this.agg.sand } } : null;
-    const pl = processPlant(this.stock, dt, this.stats, this.market, divert);
+    const pl = processPlant(this.stock, dt, this.stats, this.maps[0].market, divert); // die Anlage verkauft zu den Preisen der ersten Karte
     if (mixerOn) { this.agg.kies += pl.moved[KIND.kies]; this.agg.sand += pl.moved[KIND.sand]; }
     if (this.stats.mixer > 0) { // Betonwerk: mischt aus Kies und Sand des Flusses (plus Zement)
       const m = Math.min(this.stats.mixRate * dt, C.stockCap - this.concrete, this.agg.kies / C.mix.kies, this.agg.sand / C.mix.sand);
@@ -357,7 +361,6 @@ export class Game {
       for (let k = 0; k < 5; k++) { if (pl.by[k] >= 0) this.totals.sold += pl.by[k]; else this.totals.disposal -= pl.by[k]; }
     }
 
-    updatePort(this, dt);
     const cur = this.mapIdx; // alle Karten laufen weiter: Flotte, Verkehr und Flussbett der anderen Karten arbeiten im Hintergrund
     for (let k = 0; k < this.maps.length; k++) {
       this.mapIdx = k;
@@ -367,9 +370,11 @@ export class Game {
       if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.sedClock = 0; }
       this.fairClock -= dt;
       if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
+      updatePort(this, dt);
       updateFleet(this, dt);
       updateTraffic(this, dt);
     }
+    updateShipping(this, dt);
     this.mapIdx = cur;
 
     const day = Math.floor(this.time / CONFIG.daySeconds) + 1;
@@ -389,8 +394,7 @@ export class Game {
     y.costs += cost + wages;
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();
-    stepMarket(this.market, this.rng);
-    portDay(this);
+    { const c0 = this.mapIdx; for (let k = 0; k < this.maps.length; k++) { this.mapIdx = k; stepMarket(this.market, this.rng); portDay(this); } this.mapIdx = c0; }
     const cur = this.mapIdx;
     for (const e of this.eventsOn ? EVENTS : []) {
       if (this.rng() < e.chance && (!e.when || e.when(this))) {
@@ -421,6 +425,6 @@ export class Game {
 }
 
 // Felder der aktuellen Karte: Game.river, .traffic, .fleet, .zones ... lesen und schreiben in maps[mapIdx]
-for (const key of ['river', 'traffic', 'fleet', 'zones', 'zoneSeq', 'unlocked', 'fairSig', 'fair', 'fairClock', 'sedClock', 'rejectedBy', 'site']) {
+for (const key of ['market', 'port', 'river', 'traffic', 'fleet', 'zones', 'zoneSeq', 'unlocked', 'fairSig', 'fair', 'fairClock', 'sedClock', 'rejectedBy', 'site']) {
   Object.defineProperty(Game.prototype, key, { get() { return this.maps[this.mapIdx][key]; }, set(v) { this.maps[this.mapIdx][key] = v; }, enumerable: false, configurable: true });
 }

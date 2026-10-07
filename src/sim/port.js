@@ -50,7 +50,7 @@ export function carveBay(river, wl) {
 // Tiefe, die 80 % des Hafenbeckens mindestens haben (m unter Wasser)
 export function bayDepth(g) {
   const bay = g.port.bay; if (!bay?.cells?.length) return PORT.bay.target; // alte Spielstände: kein Becken, kein Hindernis
-  const d = bay.cells.map((i) => g.wl - (g.maps?.[0]?.river ?? g.river).top[i]).sort((a, b) => a - b); // der Hafen liegt an der ersten Karte
+  const d = bay.cells.map((i) => g.wl - g.river.top[i]).sort((a, b) => a - b); // der Hafen liegt an der ersten Karte
   return d[Math.floor(d.length * 0.2)];
 }
 export const bayReady = (g) => bayDepth(g) >= PORT.bay.target - 0.05;
@@ -66,7 +66,7 @@ export function createPort() {
 const slotsOf = (p, type) => p.slots.filter((s) => s?.type === type);
 export const hasKai = (g) => g.port.open && slotsOf(g.port, 'kai').length > 0;
 export const capacity = (g, id) => slotsOf(g.port, id === 'oel' ? 'tank' : 'kies').reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0);
-export const refundFrac = (g) => { const s = slotsOf(g.port, 'sanierung')[0]; return s ? PORT.buildings.sanierung.refund[s.level - 1] : 0; };
+export const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => { const s = slotsOf(m.port, 'sanierung')[0]; return s ? PORT.buildings.sanierung.refund[s.level - 1] : 0; })); // beste Sanierungsanlage aller Karten
 export const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
 export const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
 
@@ -196,7 +196,6 @@ export function sell(g, id, tons) {
 export const machineOf = (g) => (slotsOf(g.port, 'kran').length ? 'kran' : 'radlader');
 export function portShip(g, ship) {
   const p = g.port, J = PORT.jobs; p.jobs ??= []; if (!hasKai(g) || !PORT.commodities[ship.cargo] || capacity(g, ship.cargo) <= 0) return;
-  if ((g.mapIdx ?? 0) !== 0) return; // nur Schiffe der Hafenkarte laufen den Hafen an
   if (ship.cls && bayDepth(g) < minNeedDepth(shipById(ship.cls))) return; // Hafenbecken zu flach für dieses Schiff
   if (p.jobs.length >= J.max) return; // Kai ausgelastet: Schiff fährt ohne Umschlag weiter
   const id = ship.cargo, price = priceOf(g.market, id), out = ratioOf(g.market, id) >= 1;

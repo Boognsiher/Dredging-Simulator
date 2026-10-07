@@ -288,6 +288,8 @@ test('Uferstreifen freikaufen: Naturschutz wird zum Baggerkorridor', () => {
 
 const fullLane = (g, id) => { carveFairway(g.river, g.wl, shipById(id), CONFIG.partialDepth + 0.1); g.analyze(true); }; // Rinne gleich auf volle Ladetiefe
 import { ENDLESS } from '../src/config.js';
+import { buyShip, sellShip, setRoute, routeInfo, updateShipping, SHIPPING, withMap } from '../src/sim/shipping.js';
+import { setAvoid, cellAllowed } from '../src/sim/fleet.js';
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
 import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
@@ -1411,4 +1413,53 @@ test('Endlos: Seed bestimmt die Karte, weitere Karten erschliessen, alle laufen 
   for (let i = 0; i < a.maps.length; i++) assert.deepEqual([...r.maps[i].river.top.slice(0, 300)], [...a.maps[i].river.top.slice(0, 300)]);
   assert.ok(r.maps.every((m) => m.fair && typeof m.river.centerY === 'function'));
   for (let i = 0; i < 200; i++) r.update(0.05);
+});
+
+function twoPorts() {
+  const g = new Game(4242, 'endlos'); g.eventsOn = false; g.money = 2e6; g.addMap();
+  for (let i = 0; i < 2; i++) withMap(g, i, () => {
+    const p = g.port; p.open = true; p.slots[0] = { type: 'kai', level: 1 }; p.slots[1] = { type: 'kies', level: 2 }; p.slots[2] = { type: 'tank', level: 1 };
+    for (const c of p.bay.cells) g.river.top[c] = g.wl - 3.5;
+  });
+  return g;
+}
+
+test('Regionale Preise: jede Karte hat einen eigenen Markt', () => {
+  const g = new Game(4242, 'endlos'); g.money = 1e6; g.addMap();
+  assert.notEqual(priceOf(g.maps[0].market, 'kies'), priceOf(g.maps[1].market, 'kies'));
+  assert.notEqual(g.maps[0].port, g.maps[1].port); assert.ok(g.maps[1].port.bay.cells.length > 0, 'jede Karte hat ein Hafenbecken');
+});
+
+test('Eigene Reederei: Route zwischen Karten, Ladung hängt von der Rinne ab, Niedrigwasser macht Fracht teurer', () => {
+  const g = twoPorts();
+  assert.equal(buyShip(g, 'tank') !== null, true);
+  const s = buyShip(g, 'kahn'); setRoute(g, s.id, { from: 0, to: 1, cargo: 'kies' });
+  const hi = routeInfo(g, s); assert.ok(hi.ok, hi.reason); assert.ok(hi.eff > 0 && hi.perT > 0);
+  // Niedrigwasser: Teilbeladung sinkt, Fracht je Tonne steigt
+  const lf = g.maps.map((m) => m.fair.kahn.loadFactor); for (const m of g.maps) m.fair.kahn.loadFactor = Math.max(0.3, lf[0] * 0.5);
+  const lo = routeInfo(g, s); assert.ok(lo.eff < hi.eff && lo.perT > hi.perT, 'weniger Ladung, teurere Fracht');
+  for (let i = 0; i < 2; i++) g.maps[i].fair.kahn.loadFactor = lf[i];
+  // gesperrte Rinne stoppt die Route
+  g.maps[1].fair.kahn.passable = false; assert.equal(routeInfo(g, s).ok, false); g.maps[1].fair.kahn.passable = true;
+  // Fahrt: kaufen, liefern, verkaufen; Preisunterschied wirkt
+  g.maps[0].market.bias.kies = -0.25; g.maps[1].market.bias.kies = 0.25;
+  const m0 = g.money; for (let i = 0; i < 14 * 12 * 20; i++) updateShipping(g, 0.05);
+  assert.ok(s.trips >= 1 && s.profit > 0, 'Arbitrage bringt Gewinn');
+  // Ziel einlagern statt verkaufen
+  setRoute(g, s.id, { toStock: true }); const st0 = g.maps[1].port.stock.kies;
+  for (let i = 0; i < 14 * 12 * 20; i++) updateShipping(g, 0.05);
+  assert.ok(g.maps[1].port.stock.kies > st0, 'Ware liegt im Zwischenlager des Zielhafens');
+  assert.equal(sellShip(g, s.id) || s.state === 'sail', true);
+  void m0;
+});
+
+test('Flotte: Naturschutzzonen und Altlastenbereiche lassen sich sperren', () => {
+  const g = new Game(3, 'hochrhein'); const r = g.river;
+  let alt = -1, nat = -1; for (let i = 0; i < r.top.length; i++) { if (alt < 0 && r.zone[i] && r.kind[i] === KIND.altlast && r.top[i] - r.rock[i] > 0.1) alt = i; if (nat < 0 && !r.zone[i] && r.ext[i] === 2) nat = i; }
+  assert.ok(alt >= 0 && nat >= 0);
+  assert.ok(cellAllowed(g, alt) && cellAllowed(g, nat));
+  setAvoid(g, false, true); assert.equal(cellAllowed(g, alt), false); assert.ok(cellAllowed(g, nat));
+  setAvoid(g, true, false); assert.equal(cellAllowed(g, nat), false); assert.ok(cellAllowed(g, alt));
+  const sl = new SliceSim(r, computeStats({}), 20, 12, createRng(1)); sl.avoidAltlast = true;
+  const col = alt % r.cols; void col;
 });

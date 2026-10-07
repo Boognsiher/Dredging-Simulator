@@ -1,5 +1,7 @@
 import { Game, endlessRiver } from './game.js';
 import { createRng } from './rng.js';
+import { createMarket } from './market.js';
+import { createPort } from './port.js';
 import { levelById } from '../config.js';
 import { River } from './river.js';
 
@@ -48,6 +50,7 @@ export function restoreGame(text) {
       for (const k of ['traffic', 'fleet', 'zones', 'zoneSeq', 'unlocked', 'fairSig', 'fairClock', 'sedClock', 'rejectedBy']) { m[k] = d[k]; delete d[k]; }
       d.maps = [m]; d.mapIdx = 0; s.rivers = [s.river];
     }
+    const topPort = s.data.port, topMarket = s.data.market; delete s.data.port; delete s.data.market; // ältere Stände: Hafen und Markt gehörten dem ganzen Spiel (jetzt je Karte)
     const game = new Game(s.data.seed, s.data.levelId);
     const fresh = game.maps[0].river; // gleicher Seed: liefert die Anzeige-Hilfen (Mittellinie, Breite) der ersten Karte
     Object.assign(game, s.data);
@@ -60,6 +63,7 @@ export function restoreGame(text) {
       const ref = i === 0 ? fresh : River.generate(createRng(m.seed), game.level.endless ? endlessRiver(game.seed, i) : game.level.river);
       river.centerY = ref.centerY; river.halfW = ref.halfW;
       m.river = river; m.site = null; m.fair = null;
+      m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort();
       m.fairClock = m.fairClock ?? 0; m.sedClock = m.sedClock ?? 0;
     });
     game.rng.setState(s.rng);

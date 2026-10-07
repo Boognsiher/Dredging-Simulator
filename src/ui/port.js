@@ -43,7 +43,7 @@ export function setupPort(root, getGame, onChange) {
     const s = JSON.stringify([view, siteOpen, Math.floor(g.money / 200), Object.keys(PORT.commodities).map((id) => Math.round(priceOf(g.market, id))), pick, !!g.unlocked.motor]);
     if (s === sig && !force) return;
     sig = s;
-    let h = `<div class="port-head"><h2>🏗 Hafen</h2><span class="port-money">${chf(g.money)}</span><button id="port-close">✕ Schliessen (H)</button></div>`;
+    let h = `<div class="port-head"><h2>🏗 Hafen${g.endless ? " · " + g.map.name : ""}</h2><span class="port-money">${chf(g.money)}</span><button id="port-close">✕ Schliessen (H)</button></div>`;
     if (!p.open) {
       const b = openBlock(g);
       h += `<div class="port-card"><p>Ein eigener Hafen an Land: Kai mit Verladestation, Kies-Lager, Tanklager und Sanierungsanlage. Du kaufst Waren, wenn sie günstig sind, lagerst sie und verkaufst sie an die Schiffe oder von Hand, sobald der Preis steigt.</p>

@@ -4,15 +4,16 @@ import { CONFIG, CARGOS } from '../config.js';
 // Hohe Preise locken mehr Schiffe dieser Fracht an (demand), der Frachtwert bestimmt deine Abgabe. Reine Daten, damit speicherbar.
 const gauss = (rng) => Math.sqrt(-2 * Math.log(Math.max(1e-9, rng()))) * Math.cos(2 * Math.PI * rng());
 
-export function createMarket() {
-  const m = { dev: {}, history: {} };
+// bias: dauerhafter Preisaufschlag/-abschlag je Fracht (regionale Knappheit, Endlos-Karten); priceOf = Basis × (1 + Abweichung + Bias)
+export function createMarket(bias = {}) {
+  const m = { dev: {}, history: {}, bias: { ...bias } };
   for (const c of CARGOS) { m.dev[c.id] = 0; m.history[c.id] = [c.base]; }
   return m;
 }
 
 export const priceOf = (m, id) => {
   const c = CARGOS.find((x) => x.id === id), K = CONFIG.market;
-  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0)));
+  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0) + (m.bias?.[id] ?? 0)));
 };
 export const ratioOf = (m, id) => priceOf(m, id) / CARGOS.find((x) => x.id === id).base;
 
