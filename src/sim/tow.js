@@ -30,7 +30,7 @@ export class TowSim {
     if (this.over) return;
     const T = CONFIG.tow, ship = this.ship;
     if (!ship || ship.state !== 'grounded') { this.over = true; this.events.push({ kind: 'gone' }); return; } // von selbst frei oder abgeschleppt
-    this.t += dt;
+    this.t += dt; ship.towT = this.game.time;
     this.timeLeft -= dt;
     this.tension += (hold ? T.gain : -T.drain) * dt + Math.sin(this.t * 3.1 + this.shipId) * 0.18 * dt; // Wellengang
     this.tension = Math.min(1.05, Math.max(0, this.tension));

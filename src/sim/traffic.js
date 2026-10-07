@@ -166,7 +166,7 @@ export function updateTraffic(g, dt) {
       ship.s = Math.min(ship.s, ship.path.length);
     }
     if (ship.state === 'grounded') {
-      ship.ground -= dt;
+      if (g.time - (ship.towT ?? -9) > 0.5) ship.ground -= dt; // solange du schleppst, läuft die Wartezeit nicht ab
       if (ship.ground <= 0) {
         const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
         if (depth >= cls.draught - C.groundMargin - 0.1 * vts) { ship.state = 'sail'; g.say(`${cls.name} ist wieder flott.`, 'info'); }
@@ -226,7 +226,7 @@ export function updateTraffic(g, dt) {
     const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
     if (!(ship.safeT > 0) && p.x > 0 && p.x < g.river.cols && depth < cls.draught - C.groundMargin - 0.1 * vts) {
       const cost = Math.round((cls.fee * C.salvageFactor * (1 - 0.25 * vts)) / 10) * 10;
-      ship.state = 'grounded'; ship.ground = C.groundSeconds * (1 - 0.25 * vts) * (g.stats.tugs >= UPGRADES.tugs.maxLevel ? 0.6 : 1); ship.salvage = cost;
+      ship.state = 'grounded'; ship.ground = C.groundSeconds; ship.salvage = cost;
       g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost;
       g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
       g.notify(`${g.maps.length > 1 ? `${g.map.name}: ` : ''}${cls.name} aufgelaufen bei Spalte ${Math.floor(p.x) + 1}! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad', { goto: { map: g.mapIdx, ship: ship.id } });
