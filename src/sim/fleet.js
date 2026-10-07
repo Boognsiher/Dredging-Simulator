@@ -338,6 +338,27 @@ function makeSim(g, u) {
   return sim;
 }
 
+// Weg über schwimmfähige Zellen (8 Nachbarn, ohne Ecken zu schneiden) vom Ponton zum Ziel; null, wenn das Ziel nicht erreichbar ist
+function floatPath(sim, from, to) {
+  const r = sim.river, W = r.cols, Hh = r.rows, ok = (x, y) => x >= 0 && y >= 0 && x < W && y < Hh && sim.canFloat(x + 0.5, y + 0.5);
+  const sx = Math.min(W - 1, Math.max(0, Math.floor(from.x))), sy = Math.min(Hh - 1, Math.max(0, Math.floor(from.y))), gx = Math.floor(to.x), gy = Math.floor(to.y);
+  if (!ok(gx, gy)) return null;
+  const prev = new Int32Array(W * Hh).fill(-2), q = [sy * W + sx]; prev[q[0]] = -1;
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h], cx = c % W, cy = (c / W) | 0; if (cx === gx && cy === gy) break;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = cx + dx, ny = cy + dy, n = ny * W + nx;
+      if (!ok(nx, ny) || prev[n] !== -2) continue;
+      if (dx && dy && (!ok(cx + dx, cy) || !ok(cx, cy + dy))) continue;
+      prev[n] = c; q.push(n);
+    }
+  }
+  const goal = gy * W + gx; if (prev[goal] === -2) return null;
+  const path = []; for (let c = goal; c !== -1; c = prev[c]) path.push({ x: (c % W) + 0.5, y: ((c / W) | 0) + 0.5 });
+  return path.reverse();
+}
+
 function stepUnit(g, u, dt) {
   const sim = (u.sim ??= makeSim(g, u));
   sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom; sim.concreteAvail = g.concrete;
@@ -363,11 +384,13 @@ function stepUnit(g, u, dt) {
       let near = route.nodes[0], nd = Infinity, ni = 0;
       route.nodes.forEach((n, i) => { const d = Math.hypot(n.x + 0.5 - sim.x, n.y + 0.5 - sim.y); if (d < nd) { nd = d; near = n; ni = i; } });
       const gi = route.nodes.findIndex((n) => n.x >= Math.floor(goal.x));
-      let aim = goal;
-      if (nd > 1.2) aim = { x: near.x + 0.5, y: near.y + 0.5 }; // erst zur Rinne
-      else if (Math.abs(gi - ni) > 2) { const n = route.nodes[ni + Math.sign(gi - ni)]; aim = { x: n.x + 0.5, y: n.y + 0.5 }; }
+      let aim = goal, blocked = false;
+      const key = skipKey(s);
+      if (!u.path || u.pathKey !== key || g.time - u.pathT > 2) { u.path = floatPath(sim, { x: sim.x, y: sim.y }, goal); u.pathKey = key; u.pathT = g.time; }
+      if (!u.path) { u.skip[key] = g.time + 45; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Weg zur Stelle'; u.path = null; blocked = true; aim = { x: sim.x, y: sim.y }; }
+      else { let pi = 0, pd = Infinity; u.path.forEach((p, i) => { const d = Math.hypot(p.x - sim.x, p.y - sim.y); if (d < pd) { pd = d; pi = i; } }); const nx = u.path.slice(pi).find((p) => Math.hypot(p.x - sim.x, p.y - sim.y) > 0.8); aim = nx ?? goal; if (Math.hypot(goal.x - sim.x, goal.y - sim.y) < 1.2) aim = goal; }
       const dx = aim.x - sim.x, dy = aim.y - sim.y, dist = Math.hypot(dx, dy);
-      if (Math.hypot(goal.x - sim.x, goal.y - sim.y) < 0.5 || u.travelT > 90) { // angekommen (oder zu lange unterwegs): ankern, Automatik an
+      if (!blocked && (Math.hypot(goal.x - sim.x, goal.y - sim.y) < 0.5 || u.travelT > 90)) { // angekommen (oder zu lange unterwegs): ankern, Automatik an
         u.travelT = 0;
         if (!sim.canFloat(goal.x, goal.y)) { u.skip[skipKey(s)] = g.time + 60; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         else {
