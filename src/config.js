@@ -83,7 +83,8 @@ export const CONFIG = {
     gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
     enterGap: 3.0,
     groundMargin: 0.2, // m: so viel darf die Sohle über dem Tiefgang liegen, ohne dass das Schiff aufläuft (Kielfreiheit von 0,3 m ist ein Puffer)
-    groundSeconds: 18, salvageFactor: 2.0, // Havarie: Schlepper-Zeit; Bergungskosten = Faktor * Gebühr
+    groundSeconds: 18, tugFreeSeconds: 8, // Schlepper auf Maximalstufe befreien aufgelaufene Schiffe (und sind schneller)
+    salvageFactor: 2.0, // Havarie: Schlepper-Zeit; Bergungskosten = Faktor * Gebühr
     siteRadius: 3.5, siteSlow: 0.5, // Ponton in der Rinne: langsame Fahrt, Wechselverkehr
     switchAfter: 10, // Sekunden Wartezeit auf der Gegenseite, ab der in einer Einbahnrinne die Richtung gewechselt wird
     maxShips: 28,
@@ -173,7 +174,7 @@ export const UPGRADES = {
   sorter: { group: 'plant', name: 'Sortieranlage', desc: 'Kies und Sand besser verkaufen', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.sortBonus = 1 + l * 0.2; } },
   beacons: { group: 'traffic', name: 'Betonnung & Leuchtfeuer', desc: 'Sicher auch bei Nacht: mehr Schiffe pro Tag', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.trafficMult = 1 + l * 0.18; } },
   signals: { group: 'traffic', name: 'Rotlichter (Signalanlage)', desc: 'Regeln den Gegenverkehr: eine Kreuzungsstelle mehr und ein Schiff mehr im Warteplatz je Stufe', maxLevel: 3, baseCost: 9000, growth: 1.7, apply: (s, l) => { s.signals = l; } },
-  tugs: { group: 'traffic', name: 'Schlepper', desc: 'Halten Schiffe im Warteplatz (ein Platz mehr je Stufe) und beschleunigen grosse Schiffe (Tiefgang ab 2,6 m)', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.tugs = l; } },
+  tugs: { group: 'traffic', name: 'Schlepper', desc: 'Halten Schiffe im Warteplatz (ein Platz mehr je Stufe) und beschleunigen grosse Schiffe (Tiefgang ab 2,6 m); auf Stufe 3 schleppen sie aufgelaufene Schiffe frei', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.tugs = l; } },
   vts: { group: 'traffic', name: 'Verkehrsleitsystem', desc: 'Kürzere Abstände, schnellere Bergung bei Havarien', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.vts = l; } },
   pilot: { group: 'traffic', name: 'Lotsendienst', desc: 'Höhere Gebühren pro Schiff', maxLevel: 3, baseCost: 10000, growth: 1.7, apply: (s, l) => { s.pilot = l; } },
 };

@@ -1,5 +1,5 @@
 import { portShip } from './port.js';
-import { CONFIG, SHIPS, CARGOS, DEBRIS, shipById, cargoById } from '../config.js';
+import { CONFIG, UPGRADES, SHIPS, CARGOS, DEBRIS, shipById, cargoById } from '../config.js';
 import { priceOf, ratioOf } from './market.js';
 import { minDepthAt, pointOnPath } from './fairway.js';
 import { creditContracts } from './contracts.js';
@@ -168,6 +168,7 @@ export function updateTraffic(g, dt) {
       if (ship.ground <= 0) {
         const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
         if (depth >= cls.draught - C.groundMargin - 0.1 * vts) { ship.state = 'sail'; g.say(`${cls.name} ist wieder flott.`, 'info'); }
+        else if (g.stats.tugs >= UPGRADES.tugs.maxLevel) { ship.state = 'sail'; ship.safeT = C.tugFreeSeconds; g.totals.freed = (g.totals.freed ?? 0) + 1; g.say(`Schlepper haben ${cls.name} freigeschleppt.`, 'good'); } // Schlepper auf Maximalstufe: das Schiff kommt auch aus dem Flachen frei, fährt weiter und sinkt nicht
         else if (g.rng() < (C0.sinking.risk[ship.cargo] ?? 0.2)) { sinkShip(g, ship, p); ship.state = 'left'; }
         else { ship.state = 'left'; g.totals.towed++; g.say(`${cls.name} wurde abgeschleppt (ohne Gebühr).`, 'bad'); }
       }
@@ -219,10 +220,11 @@ export function updateTraffic(g, dt) {
       g.flash.push({ x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
       continue;
     }
+    if (ship.safeT > 0) ship.safeT -= dt; // frisch freigeschleppt: kurz geschützt vor erneutem Auflaufen
     const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
-    if (p.x > 0 && p.x < g.river.cols && depth < cls.draught - C.groundMargin - 0.1 * vts) {
+    if (!(ship.safeT > 0) && p.x > 0 && p.x < g.river.cols && depth < cls.draught - C.groundMargin - 0.1 * vts) {
       const cost = Math.round((cls.fee * C.salvageFactor * (1 - 0.25 * vts)) / 10) * 10;
-      ship.state = 'grounded'; ship.ground = C.groundSeconds * (1 - 0.25 * vts); ship.salvage = cost;
+      ship.state = 'grounded'; ship.ground = C.groundSeconds * (1 - 0.25 * vts) * (g.stats.tugs >= UPGRADES.tugs.maxLevel ? 0.6 : 1); ship.salvage = cost;
       g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost;
       g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
       g.notify(`${cls.name} aufgelaufen! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad');

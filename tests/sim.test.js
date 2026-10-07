@@ -1556,3 +1556,14 @@ test('Aufbereitungshalle schaltet Anlagenstufen über 6 frei', () => {
   assert.ok(!g.buyUpgrade('plant'));
   assert.ok(upgrade(g, 1)); assert.ok(g.buyUpgrade('plant'));
 });
+
+test('Schlepper auf Maximalstufe schleppen aufgelaufene Schiffe frei', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false;
+  const mk = (tugs) => { g.levels.tugs = tugs; g._stats = null; const ship = spawnShip(g); return ship ?? g.traffic.ships[g.traffic.ships.length - 1]; };
+  const ship = mk(3); assert.ok(ship);
+  ship.state = 'grounded'; ship.ground = 0.01; g.wl -= 5; // so flach, dass es allein nicht reicht
+  updateTraffic(g, 0.1);
+  assert.equal(ship.state, 'sail'); assert.equal(g.totals.freed, 1);
+  const s2 = mk(2); s2.state = 'grounded'; s2.ground = 0.01; updateTraffic(g, 0.1);
+  assert.notEqual(s2.state, 'grounded'); assert.ok(!(s2.state === 'sail' && g.totals.freed > 1));
+});
