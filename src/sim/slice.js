@@ -3,7 +3,7 @@ import { CONFIG, DEBRIS, KIND } from '../config.js';
 // Querschnitt: Seitenansicht quer zum Fluss. Die Pumpe fährt über die Flussbreite (x = Zellkoordinate quer zum Fluss, absolut),
 // Höhe h in m über dem Bezugshorizont. Der Kasten umfasst CONFIG.box.cols Spalten in Flussrichtung; die Pumpenleistung
 // verteilt sich auf alle. Die Anzeige zeigt die Hüllkurve (höchster Punkt = engste Stelle für Schiffe).
-// work = Arbeitsrichtung: nur nach rechts wird gesaugt; der Rückweg saugt nicht.
+// work = Arbeitsrichtung der Automatik (saugt nach rechts, fährt zurück); von Hand wird in beide Richtungen gesaugt.
 export const SLICE = { cols: 16, viewH: 7.6, below: 6.1, work: { x: 1, y: 1 }, returnBoost: 1.6, minWaterDepth: 0.5 };
 
 const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0, dep: {} };
@@ -254,7 +254,7 @@ export class SliceSim {
 
     const along = dx * SLICE.work.x + dy * SLICE.work.y;
     const pumpOk = !a.on || input.pumpOn !== false;
-    const working = !!ctl.suction && pumpOk && !clogged && !this.blocked && along > -0.05;
+    const working = !!ctl.suction && pumpOk && !clogged && !this.blocked; // saugen geht in beide Richtungen
     const af = a.on ? CONFIG.auto.speedFactor[lvl] : 1;
     const speed = s.headSpeed * this.speedSetting * af * (working ? s.suctionSpeedFactor : along < -0.05 ? SLICE.returnBoost : 1);
 

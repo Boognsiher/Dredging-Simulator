@@ -175,7 +175,7 @@ test('Pfad: Punkt auf Strecke liegt im Bereich und steigt in x', () => {
   assert.ok(minDepthAt(r, r.wl, 10, 12.5, 3) < 3, 'flache Zelle unter dem Rumpf wird erkannt');
 });
 
-test('Querschnitt: Pumpe saugt nur nach rechts, nur im Wasser, Karte bleibt in Balance', () => {
+test('Querschnitt: Pumpe saugt in beide Richtungen, nur im Wasser, Karte bleibt in Balance', () => {
   const r = flat(2.5); r.kind.fill(KIND.sand);
   const stats = computeStats({});
   const sl = new SliceSim(r, stats, 20, 12, createRng(1));
@@ -189,7 +189,7 @@ test('Querschnitt: Pumpe saugt nur nach rechts, nur im Wasser, Karte bleibt in B
   back.x = back.x0 + 10; back.h = r.wl - 2.4;
   let r2 = 0;
   for (let i = 0; i < 20; i++) r2 += back.update(0.05, { dx: -1, dy: 0, suction: true }).removed;
-  assert.equal(r2, 0, 'rückwärts wird nicht gesaugt');
+  assert.ok(r2 > 0 && back.x < back.x0 + 10, 'saugen geht auch nach links');
 });
 
 test('Querschnitt: Fremdstoff verstopft, Freispülen löst nach Treffern', () => {
