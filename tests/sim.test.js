@@ -1898,9 +1898,9 @@ test('Festgelegte Rinne: Analyse folgt der Linie (±1 Zelle); Löschen stellt di
   assert.deepEqual(g.fair.kahn.nodes.map((p) => p.y), free);
 });
 
-test('Fokus: ohne festgelegte Rinne wirkungslos, mit Rinne baut die Flotte nur dort', () => {
+test('Fokus: auch ohne festgelegte Rinne aktiv, mit Rinne baut die Flotte nur dort', () => {
   const g = new Game(6, 'hochrhein'); g.eventsOn = false;
-  setFocus(g, true); assert.equal(focusActive(g), false);
+  setFocus(g, true); assert.equal(focusActive(g), true, 'auch ohne festgelegte Rinne: automatische Fahrrinne');
   g.setTrasse(0, [{ x: 0.5, y: 10.5 }, { x: 40.5, y: 10.5 }]);
   assert.equal(focusActive(g), true);
 });

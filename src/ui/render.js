@@ -739,7 +739,7 @@ export function drawSlice(ctx, game, sim, ui = {}) {
     ctx.strokeStyle = cls.color; ctx.globalAlpha = on ? 0.95 : 0.4; ctx.lineWidth = on ? 2 : 1; ctx.setLineDash([2, 6]);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
     if (on) { const ym = Y(wl - minNeedDepth(cls)); ctx.globalAlpha = 0.55; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(0, ym); ctx.lineTo(W, ym); ctx.stroke(); ctx.setLineDash([]); } // Mindesttiefe
-    ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const lf = game.fair?.[cls.id]?.loadFactor, label = `${ok ? '✓ ' : ''}${cls.name} ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m${ok ? ` · ${Math.round(lf * 100)} % Ladung` : ''}`; const tw = ctx.measureText(label).width;
+    ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const ff = game.fair?.[cls.id], lf = ff?.loadFactor, label = `${ok ? '✓ ' : ''}${cls.name} ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m${ok ? ` · ${Math.round(lf * 100)} % Ladung${ff.loadFrac < 0.999 ? ` · +${Math.round(ff.fullVolume).toLocaleString('de-CH')} m³ bis voll` : ''}` : ff && ff.volume < Infinity ? ` · fehlt ${Math.round(ff.volume).toLocaleString('de-CH')} m³` : ''}`; const tw = ctx.measureText(label).width;
     ctx.fillRect(VX1 - tw - 12, y - fs(12) + 1, tw + 8, fs(12) + 3); ctx.fillStyle = on ? '#fff' : cls.color; ctx.fillText(label, VX1 - 6, y);
     ctx.globalAlpha = 1;
   }

@@ -146,8 +146,8 @@ function secondClass(g, cls) {
   return [...SHIPS].reverse().find((c) => g.level.classes.includes(c.id) && ok(c)) ?? null;
 }
 export function setFocus(g, on) { g.fleet.focus = !!on; bump(g); }
-// Fokus auf die festgelegte Rinne: Pontons bauen nur noch Pfähle (Wand) und die Trasse aus, nichts sonst
-export const focusActive = (g) => !!g.fleet.focus && !!g.river.trasse?.[0];
+// Fokus auf die Fahrrinne: Pontons bauen nur noch Pfähle (Wand) und die Rinne aus (festgelegt oder automatisch), nichts sonst
+export const focusActive = (g) => !!g.fleet.focus; // auch ohne festgelegte Rinne: dann gilt die automatisch gewählte Fahrrinne
 export function setSecond(g, on) { g.fleet.second = !!on; bump(g); }
 function pickLane(g, u) {
   let cls = targetClass(g), lane2 = false, open = cls ? openColumns(g, cls) : [];
