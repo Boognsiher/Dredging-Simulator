@@ -1,7 +1,7 @@
 import { CONFIG, shipById } from '../config.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } from '../sim/land.js';
-import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit } from '../sim/port.js';
+import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked } from '../sim/port.js';
 import { priceOf, ratioOf } from '../sim/market.js';
 
 // Hafen-Seite: Vollbild-Overlay mit Bauplätzen, Lagern, Handel und Automatik. Die Simulation läuft im Hintergrund weiter.
@@ -40,7 +40,7 @@ export function setupPort(root, getGame, onChange) {
   addEventListener('keyup', (e) => { if (!root.hidden && e.code === 'Space') { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   const render = (force = false) => {
     const g = getGame(), p = g.port;
-    const view = { ...p, jobs: (p.jobs ?? []).map((j) => j.id), sites: (p.sites ?? []).map((q) => q && { h: q.h, mx: q.mx, my: q.my, carry: q.carry, ready: q.ready }) };
+    const view = { ...p, jobs: (p.jobs ?? []).map((j) => j.id + (j.state ?? '')), berths: berthsOf(g), sites: (p.sites ?? []).map((q) => q && { h: q.h, mx: q.mx, my: q.my, carry: q.carry, ready: q.ready }) };
     const s = JSON.stringify([view, siteOpen, Math.floor(g.money / 200), Object.keys(PORT.commodities).map((id) => Math.round(priceOf(g.market, id))), pick, !!g.unlocked.motor]);
     if (s === sig && !force) return;
     sig = s;
@@ -68,7 +68,7 @@ export function setupPort(root, getGame, onChange) {
           h += `</div>`; return;
         }
         const B = PORT.buildings[sl.type], cm = B.commodity, up = B.up && sl.level <= B.up.length;
-        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'werk' ? `Diese Halle: +${2 * sl.level} Anlagenstufen · Anlage jetzt bis Stufe ${plantLimit(g)} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
+        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'kai' ? `Liegeplätze: ${B.berths[sl.level - 1]}` : sl.type === 'werk' ? `Diese Halle: +${2 * sl.level} Anlagenstufen · Anlage jetzt bis Stufe ${plantLimit(g)} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
           ${up ? `<button data-act="up" data-slot="${i}" ${upgradeBlock(g, i) ? 'disabled' : ''}>Ausbauen · ${chf(B.up[sl.level - 1])}</button>` : ''}<button class="ghost" data-act="demo" data-slot="${i}">Abreissen</button></div>`;
       });
       h += `</div>`;
@@ -79,11 +79,11 @@ export function setupPort(root, getGame, onChange) {
         h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>${ok ? `tief genug (${d.toFixed(1)} m): alle Schiffe können anlegen` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: Schiffe legen nur an, wenn das Becken tief genug für sie ist (Lastkahn ab ${minNeedDepth(shipById('kahn')).toFixed(1)} m, Motorschiff ${minNeedDepth(shipById('motor')).toFixed(1)}–${needDepth(shipById('motor')).toFixed(1)} m). Die Bucht ist auf der Karte markiert: dort mit dem Ponton ankern und ausbaggern.`}</small></div>`; }
       if (!hasKai(g)) h += `<div class="port-card"><b>Ohne Kai kein Handel.</b> Baue zuerst einen Kai mit Verladestation.</div>`;
       else {
-        const jobs = p.jobs ?? [], M = PORT.machines[machineOf(g)];
-        h += `<div class="port-card"><b>${M.icon} Verladen mit ${M.name}</b> <small>${jobs.length ? 'Leertaste oder Knopf, wenn der Zeiger im grünen Bereich ist: mehr Tonnen pro Treffer, schneller fertig gibt Zeitbonus' : 'Kein Schiff am Kai. Kommen Schiffe mit Kies oder Öl vorbei, entstehen hier Aufträge.'}</small>`;
+        const jobs = (p.jobs ?? []).slice().sort((a, b) => (isDocked(b) ? 1 : 0) - (isDocked(a) ? 1 : 0)), M = PORT.machines[machineOf(g)], docked = jobs.filter(isDocked).length;
+        h += `<div class="port-card"><b>${M.icon} Verladen mit ${M.name}</b> · <small>Liegeplätze ${jobs.length}/${berthsOf(g)} (${docked} angelegt, ${jobs.length - docked} reserviert) · Kai ausbauen für mehr</small><br><small>${docked ? 'Leertaste oder Knopf, wenn der Zeiger im grünen Bereich ist: mehr Tonnen pro Treffer, schneller fertig gibt Zeitbonus' : 'Kein Schiff am Kai. Schiffe mit Kies, Öl oder Containern reservieren einen freien Liegeplatz und legen hier an.'}</small>`;
         if (jobs.length) {
-          h += jobs.map((j, k) => `<div class="job" data-job="${j.id}"><small>${k === 0 ? '▶ ' : ''}${PORT.commodities[j.cargo].icon} ${j.out ? 'Laden' : 'Entladen'} ${t(j.tons)} · Frist <span class="jl">${Math.max(0, Math.round(j.left))}</span> s</small><div class="bar"><i class="jb" style="width:${(j.done / j.tons) * 100}%"></i></div></div>`).join('');
-          h += `<div class="track" id="pg-track"><div id="pg-zone"></div><div id="pg-mark"></div></div><button class="primary" id="pg-hit" data-act="hit">${M.icon} Laden! (Leertaste)</button><small id="pg-msg"></small>`;
+          h += jobs.map((j, k) => `<div class="job" data-job="${j.id}"><small>${isDocked(j) ? (k === 0 ? '▶ ' : '⚓ ') : '🕒 unterwegs · '}${PORT.commodities[j.cargo].icon} ${j.out ? 'Laden' : 'Entladen'} ${t(j.tons)} · Frist <span class="jl">${Math.max(0, Math.round(j.left))}</span> s</small><div class="bar"><i class="jb" style="width:${(j.done / j.tons) * 100}%"></i></div></div>`).join('');
+          if (docked) h += `<div class="track" id="pg-track"><div id="pg-zone"></div><div id="pg-mark"></div></div><button class="primary" id="pg-hit" data-act="hit">${M.icon} Laden! (Leertaste)</button><small id="pg-msg"></small>`;
         }
         h += `</div><div class="port-trade">`;
         for (const [id, C] of Object.entries(PORT.commodities)) {

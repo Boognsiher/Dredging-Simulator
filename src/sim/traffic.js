@@ -1,4 +1,4 @@
-import { portShip } from './port.js';
+import { reserveBerth, dockShip } from './port.js';
 import { CONFIG, UPGRADES, SHIPS, CARGOS, DEBRIS, shipById, cargoById } from '../config.js';
 import { priceOf, ratioOf } from './market.js';
 import { minDepthAt, pointOnPath } from './fairway.js';
@@ -210,6 +210,10 @@ export function updateTraffic(g, dt) {
       ship.meets = ship.meets.filter((m) => !m.done);
     }
     ship.s += v * dt;
+    if (ship.berth && g.port?.bay?.cells?.length) { // Hafen erreicht: anlegen
+      const bay = g.port.bay, bx = (bay.x0 + bay.x1 + 1) / 2, pn = shipPos(ship);
+      if (pn && (ship.dir > 0 ? pn.x >= bx : pn.x <= bx)) { if (dockShip(g, ship)) continue; ship.berth = null; }
+    }
     if (ship.s >= ship.path.length) {
       ship.state = 'done';
       const inc = income(g, ship);
@@ -218,7 +222,6 @@ export function updateTraffic(g, dt) {
       t.ships++; t.tons += ship.tons; t.trafficIncome += inc; t.byCargo[ship.cargo] = (t.byCargo[ship.cargo] ?? 0) + ship.tons; t.byClass[ship.cls] = (t.byClass[ship.cls] ?? 0) + 1;
       g.today.ships++; g.today.tons += ship.tons; g.today.income += inc;
       creditContracts(g, ship.cargo, ship.tons);
-      portShip(g, ship);
       g.flash.push({ x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
       continue;
     }
@@ -274,6 +277,7 @@ export function updateTraffic(g, dt) {
     ship.meets = meets; ship.latZones = meets.map((m) => m.zone);
     for (const m of meets) { const o = byId.get(m.with); o?.meets?.push({ zone: m.zone, with: ship.id }); if (o) (o.latZones ??= []).push(m.zone); }
     ship.state = 'sail'; ship.s = 0; ship.lane = lane; ship.alt = lane === 'two' && alt; ship.path = ship.alt ? f.secondPath : f.path;
+    ship.berth = reserveBerth(g, ship)?.id ?? null; // Liegeplatz im Hafen reservieren, falls einer frei ist
   }
   T.ships = ships.filter((s) => s.state !== 'done' && s.state !== 'left');
 }

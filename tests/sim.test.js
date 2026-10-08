@@ -296,7 +296,7 @@ import { setAvoid, cellAllowed } from '../src/sim/fleet.js';
 import { lendPonton, recallPonton, lendBlock, lentUnit, nextHireCost } from '../src/sim/fleet.js';
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
-import { openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
+import { berthsOf, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
   assert.ok(openBlock(g), 'ohne Motorschiff gesperrt');
@@ -1695,4 +1695,26 @@ test('Freigeschleppt: Schiff fährt mindestens 5 s und über die Untiefe, ohne w
   const g0 = g.totals.groundings;
   for (let t = 0; t < 12; t += 0.1) { g.time += 0.1; updateTraffic(g, 0.1); }
   assert.ok(g.totals.groundings >= g0); // nach 25 s darf es wieder auflaufen (flache Strecke ohne Ende)
+});
+
+test('Hafen: Liegeplätze werden reserviert, Schiffe legen an und fahren nach dem Verladen weiter', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.money = 1e7; g.unlocked.motor = true;
+  assert.ok(openPort(g)); for (const s of g.port.sites) s.ready = true;
+  assert.ok(build(g, 0, 'kai')); assert.ok(build(g, 1, 'kies'));
+  for (const i of g.port.bay.cells) g.river.top[i] = g.wl - 3; // Becken tief genug
+  assert.equal(berthsOf(g), 2);
+  const cid = Object.keys(g.fair).find((id) => g.fair[id].passable);
+  const mk = () => { let s = null; for (let k = 0; k < 60 && !s; k++) s = spawnShip(g); s.cls = cid; s.dir = 1; s.cargo = 'kies'; s.tons = 400; return s; };
+  g.market.dev.kies = -0.4; // billig: Schiffe entladen, das dauert
+  const ships = [mk(), mk(), mk()];
+  let docked = 0, maxJobs = 0;
+  for (let t = 0; t < 120; t += 0.1) {
+    g.time += 0.1; updateTraffic(g, 0.1); updatePort(g, 0.1);
+    docked = Math.max(docked, ships.filter((s) => s.state === 'dock').length); maxJobs = Math.max(maxJobs, g.port.jobs.length);
+  }
+  assert.ok(docked >= 1, 'mindestens ein Schiff legt an');
+  assert.ok(maxJobs <= 2, 'nie mehr Aufträge als Liegeplätze');
+  assert.ok(ships.every((s) => s.state !== 'dock'), 'alle haben wieder abgelegt');
+  assert.ok(g.port.jobsDone >= 1 || g.port.ships >= 1);
+  assert.equal(g.port.jobs.length, 0);
 });

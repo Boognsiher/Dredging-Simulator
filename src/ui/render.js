@@ -3,7 +3,7 @@ import { SLICE } from '../sim/slice.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
 import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
-import { PORT, bayDepth, bayReady } from '../sim/port.js';
+import { PORT, bayDepth, bayReady, dockPos } from '../sim/port.js';
 import { areaWork } from '../sim/fleet.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } from '../sim/land.js';
 import { Chain, drawChain } from './chain.js';
@@ -175,7 +175,7 @@ function drawShips(ctx, game, ui) {
   for (const s of ships) {
     const cls = shipById(s.cls);
     let p;
-    if (s.state === 'queue') { const rank = ranks[s.dir]++; p = queuePos(game, s, rank); counts[s.dir]++; } else p = shipPos(s);
+    if (s.state === 'queue') { const rank = ranks[s.dir]++; p = queuePos(game, s, rank); counts[s.dir]++; } else if (s.state === 'dock') p = dockPos(game, s); else p = shipPos(s);
     if (!p) continue;
     drawShip(ctx, cls, s, p, game, ui);
   }
@@ -195,7 +195,7 @@ function drawShips(ctx, game, ui) {
 
 function drawShip(ctx, cls, ship, p, game, ui) {
   const q = mapPx(p.x, p.y), L = cls.len * CELL, B = cls.beam * CELL * 0.78;
-  ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(p.angle);
+  ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(p.angle); if (ship.state === 'dock') ctx.scale(0.5, 0.5); // im Hafenbecken kleiner gezeichnet
   ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(1, 3, L / 2 + 2, B / 2 + 1, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = cls.color; ctx.strokeStyle = '#10202c'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(-L / 2, -B / 2); ctx.lineTo(L / 2 - B * 0.6, -B / 2); ctx.lineTo(L / 2, 0); ctx.lineTo(L / 2 - B * 0.6, B / 2); ctx.lineTo(-L / 2, B / 2); ctx.closePath(); ctx.fill(); ctx.stroke();
