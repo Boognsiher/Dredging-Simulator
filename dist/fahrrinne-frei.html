@@ -533,6 +533,15 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
   body.pile-mode #pile-bar button { min-height: 38px; padding: 6px 10px; } body.pile-mode #pile-bar { gap: 5px; padding-bottom: 4px; }
 }
 
+/* Legende im Querschnitt */
+#legend-btn { position: absolute; top: 8px; right: 8px; z-index: 13; width: 34px; height: 34px; padding: 0; margin: 0; border-radius: 50%; font-size: 18px; background: #12283bdd; }
+#legend-btn[hidden], #slice-legend[hidden] { display: none; }
+#slice-legend { position: absolute; top: 46px; right: 8px; z-index: 13; max-width: min(88vw, 330px); max-height: 70%; overflow-y: auto; padding: 10px 12px; background: #0b1c2cee; border-radius: 10px; box-shadow: 0 2px 14px #000a; font-size: 12.5px; line-height: 1.3; }
+#slice-legend b { display: block; margin-bottom: 6px; }
+#slice-legend div { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; }
+#slice-legend i { flex: none; width: 24px; min-height: 14px; border-radius: 3px; font-style: normal; text-align: center; }
+#slice-legend i.tx { color: #ff7a6b; font-weight: 700; font-size: 12px; }
+
 </style>
 </head>
 <body>
@@ -594,6 +603,8 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
       <button id="harbor-back" hidden>↩ Hauptkarte (Esc)</button>
       <div id="toast"></div>
       <div id="port-page" hidden></div>
+      <button id="legend-btn" hidden aria-label="Legende">ⓘ</button>
+      <div id="slice-legend" hidden></div>
       <div id="load-bar" hidden><small id="lb-text"></small><div class="lb-track"><div id="lb-zone"></div><div id="lb-mark"></div></div><button id="lb-hit" class="primary">🏗 Laden! (L)</button></div>
       <div id="overlay"></div>
       <div id="bruno" hidden></div>
@@ -1568,6 +1579,27 @@ function updateHints() {
 }
 
 // ---------- Modus: Karte / Querschnitt ----------
+// Legende für den Querschnitt (Pumpbild): Farben und Markierungen erklärt
+const LEGEND = [
+  ['sw:#6e5f4b', 'Schlick (weich, kostet Entsorgung)'], ['sw:#c8b27c', 'Sand'], ['sw:#9d9488', 'Kies'], ['sw:#7a4a33', 'Altlast (orange getönt, teure Entsorgung)'], ['sw:#6f747a', 'Fels & Bruch (grau, nur mit Fräse/Löffel)'],
+  ['sw:#3a2a1ab0', 'Dunkle Schicht: verdichtet / hart (mehrere Überfahrten)'], ['sw:#ffd75066', 'Goldene Tönung: Rohstoffvorkommen'],
+  ['sw:#46e66e66', 'Grün schraffiert: Naturschutz (Busse pro m³)'], ['sw:#c9b050', 'Gelber Streifen: Ausbaustreifen (nur Löffelbagger)'],
+  ['sw:#aeb4bc', 'Graue Säule: Betonpfahl bis auf den Fels (Pumpe kann ihn nicht abtragen)'], ['sw:#6e96c840', 'Blau getönt: durch Pfähle gesicherte Strecke'],
+  ['ln:#ffae3d', 'Orange gestrichelt: Solltiefe'], ['ln:#9be3ff', 'Dünne Linien: nötige Tiefe je Schiffsklasse'],
+  ['tx:▼ 43', 'Rote Pfeile: so viele cm liegt die Sohle noch über der Solltiefe'], ['tx:Fels', 'Lila «Fels»: hier steckt Fels über der Solltiefe'],
+  ['ln:#7fe3ff', 'Türkise Linien: Bereich der Automatik (ziehbar)'], ['ln:#ffd24d', 'Gelbe Linie am Kasten: Pumpe saugt (türkis = Leerlauf)'], ['tx:⚪', 'Weisser Kreis: Fremdkörper, Kopf anheben oder Freispülen'],
+];
+function buildLegend() {
+  const box = $('slice-legend'); box.replaceChildren();
+  const h = document.createElement('b'); h.textContent = 'Legende Querschnitt'; box.append(h);
+  for (const [k, text] of LEGEND) {
+    const row = document.createElement('div'), sw = document.createElement('i'), [kind, val] = [k.slice(0, 2), k.slice(3)];
+    if (kind === 'sw') sw.style.background = val; else if (kind === 'ln') { sw.style.borderTop = `3px dashed ${val}`; sw.style.height = '0'; sw.style.alignSelf = 'center'; } else { sw.textContent = val; sw.className = 'tx'; }
+    row.append(sw, document.createTextNode(text)); box.append(row);
+  }
+}
+buildLegend();
+$('legend-btn').onclick = () => { $('slice-legend').hidden = !$('slice-legend').hidden; };
 function syncMode() {
   const mode = curMode();
   fx.clear(); audio.hum(false, 0);
@@ -1575,6 +1607,7 @@ function syncMode() {
   document.body.classList.toggle('mode-slice', mode === 'slice'); document.body.classList.toggle('mode-tow', mode === 'tow'); applyLayoutMode(); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
   $('btn-land').hidden = mode !== 'map' || !game.port.open; $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden; syncAreaButtons();
+  $('legend-btn').hidden = mode !== 'slice'; if (mode !== 'slice') $('slice-legend').hidden = true;
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
   if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
@@ -4434,7 +4467,7 @@ const { CONFIG, DEBRIS, KIND } = __m(2);
 // Querschnitt: Seitenansicht quer zum Fluss. Die Pumpe fährt über die Flussbreite (x = Zellkoordinate quer zum Fluss, absolut),
 // Höhe h in m über dem Bezugshorizont. Der Kasten umfasst CONFIG.box.cols Spalten in Flussrichtung; die Pumpenleistung
 // verteilt sich auf alle. Die Anzeige zeigt die Hüllkurve (höchster Punkt = engste Stelle für Schiffe).
-// work = Arbeitsrichtung der Automatik (saugt nach rechts, fährt zurück); von Hand wird in beide Richtungen gesaugt.
+// Saugen geht in beide Richtungen (von Hand und in der Automatik); work legt nur die Grundrichtung fest.
 const SLICE = { cols: 16, viewH: 7.6, below: 6.1, work: { x: 1, y: 1 }, returnBoost: 1.6, minWaterDepth: 0.5 };
 
 const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0, dep: {} };
@@ -4646,7 +4679,7 @@ class SliceSim {
     if (a.dir === 'sweep' && this.x >= hiX - CONFIG.pump.offsetX - 0.05) a.dir = 'return';
     else if (a.dir === 'return' && this.x <= Math.max(a.startX, lo) + 0.05) { a.dir = 'sweep'; this.sound(); }
     const need = this._colOpen(this.mouthCol());
-    return a.dir === 'sweep' ? { dx: 1, dy: 0, suction: need } : { dx: -1, dy: 0, suction: false };
+    return a.dir === 'sweep' ? { dx: 1, dy: 0, suction: need } : { dx: -1, dy: 0, suction: need }; // auch der Rückweg saugt, wo noch etwas fehlt (keine Leerfahrt)
   }
 
   // input: { dx, dy (dy>0 = nach unten), suction }
@@ -4683,11 +4716,10 @@ class SliceSim {
     dx = clamp(dx, -1, 1); dy = clamp(dy, -1, 1);
     this.moving = Math.abs(dx) + Math.abs(dy) > 0.01;
 
-    const along = dx * SLICE.work.x + dy * SLICE.work.y;
     const pumpOk = !a.on || input.pumpOn !== false;
     const working = !!ctl.suction && pumpOk && !clogged && !this.blocked; // saugen geht in beide Richtungen
     const af = a.on ? CONFIG.auto.speedFactor[lvl] : 1;
-    const speed = s.headSpeed * this.speedSetting * af * (working ? s.suctionSpeedFactor : along < -0.05 ? SLICE.returnBoost : 1);
+    const speed = s.headSpeed * this.speedSetting * af * (working ? s.suctionSpeedFactor : 1);
 
     const b = this.bounds();
     this.x = clamp(this.x + dx * speed * dt, b.min, b.max - P.offsetX);

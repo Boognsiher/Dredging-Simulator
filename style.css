@@ -518,3 +518,12 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
   body.pile-mode #pile-bar { position: static; transform: none; flex-wrap: wrap; justify-content: center; overflow: visible; left: auto; right: auto; max-width: none; padding: 8px 8px 12px; }
   body.pile-mode #pile-bar button { min-height: 38px; padding: 6px 10px; } body.pile-mode #pile-bar { gap: 5px; padding-bottom: 4px; }
 }
+
+/* Legende im Querschnitt */
+#legend-btn { position: absolute; top: 8px; right: 8px; z-index: 13; width: 34px; height: 34px; padding: 0; margin: 0; border-radius: 50%; font-size: 18px; background: #12283bdd; }
+#legend-btn[hidden], #slice-legend[hidden] { display: none; }
+#slice-legend { position: absolute; top: 46px; right: 8px; z-index: 13; max-width: min(88vw, 330px); max-height: 70%; overflow-y: auto; padding: 10px 12px; background: #0b1c2cee; border-radius: 10px; box-shadow: 0 2px 14px #000a; font-size: 12.5px; line-height: 1.3; }
+#slice-legend b { display: block; margin-bottom: 6px; }
+#slice-legend div { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; }
+#slice-legend i { flex: none; width: 24px; min-height: 14px; border-radius: 3px; font-style: normal; text-align: center; }
+#slice-legend i.tx { color: #ff7a6b; font-weight: 700; font-size: 12px; }

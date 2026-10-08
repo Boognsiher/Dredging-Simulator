@@ -854,6 +854,27 @@ function updateHints() {
 }
 
 // ---------- Modus: Karte / Querschnitt ----------
+// Legende für den Querschnitt (Pumpbild): Farben und Markierungen erklärt
+const LEGEND = [
+  ['sw:#6e5f4b', 'Schlick (weich, kostet Entsorgung)'], ['sw:#c8b27c', 'Sand'], ['sw:#9d9488', 'Kies'], ['sw:#7a4a33', 'Altlast (orange getönt, teure Entsorgung)'], ['sw:#6f747a', 'Fels & Bruch (grau, nur mit Fräse/Löffel)'],
+  ['sw:#3a2a1ab0', 'Dunkle Schicht: verdichtet / hart (mehrere Überfahrten)'], ['sw:#ffd75066', 'Goldene Tönung: Rohstoffvorkommen'],
+  ['sw:#46e66e66', 'Grün schraffiert: Naturschutz (Busse pro m³)'], ['sw:#c9b050', 'Gelber Streifen: Ausbaustreifen (nur Löffelbagger)'],
+  ['sw:#aeb4bc', 'Graue Säule: Betonpfahl bis auf den Fels (Pumpe kann ihn nicht abtragen)'], ['sw:#6e96c840', 'Blau getönt: durch Pfähle gesicherte Strecke'],
+  ['ln:#ffae3d', 'Orange gestrichelt: Solltiefe'], ['ln:#9be3ff', 'Dünne Linien: nötige Tiefe je Schiffsklasse'],
+  ['tx:▼ 43', 'Rote Pfeile: so viele cm liegt die Sohle noch über der Solltiefe'], ['tx:Fels', 'Lila «Fels»: hier steckt Fels über der Solltiefe'],
+  ['ln:#7fe3ff', 'Türkise Linien: Bereich der Automatik (ziehbar)'], ['ln:#ffd24d', 'Gelbe Linie am Kasten: Pumpe saugt (türkis = Leerlauf)'], ['tx:⚪', 'Weisser Kreis: Fremdkörper, Kopf anheben oder Freispülen'],
+];
+function buildLegend() {
+  const box = $('slice-legend'); box.replaceChildren();
+  const h = document.createElement('b'); h.textContent = 'Legende Querschnitt'; box.append(h);
+  for (const [k, text] of LEGEND) {
+    const row = document.createElement('div'), sw = document.createElement('i'), [kind, val] = [k.slice(0, 2), k.slice(3)];
+    if (kind === 'sw') sw.style.background = val; else if (kind === 'ln') { sw.style.borderTop = `3px dashed ${val}`; sw.style.height = '0'; sw.style.alignSelf = 'center'; } else { sw.textContent = val; sw.className = 'tx'; }
+    row.append(sw, document.createTextNode(text)); box.append(row);
+  }
+}
+buildLegend();
+$('legend-btn').onclick = () => { $('slice-legend').hidden = !$('slice-legend').hidden; };
 function syncMode() {
   const mode = curMode();
   fx.clear(); audio.hum(false, 0);
@@ -861,6 +882,7 @@ function syncMode() {
   document.body.classList.toggle('mode-slice', mode === 'slice'); document.body.classList.toggle('mode-tow', mode === 'tow'); applyLayoutMode(); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
   $('btn-land').hidden = mode !== 'map' || !game.port.open; $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden; syncAreaButtons();
+  $('legend-btn').hidden = mode !== 'slice'; if (mode !== 'slice') $('slice-legend').hidden = true;
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
   if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }

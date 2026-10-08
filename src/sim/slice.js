@@ -3,7 +3,7 @@ import { CONFIG, DEBRIS, KIND } from '../config.js';
 // Querschnitt: Seitenansicht quer zum Fluss. Die Pumpe fährt über die Flussbreite (x = Zellkoordinate quer zum Fluss, absolut),
 // Höhe h in m über dem Bezugshorizont. Der Kasten umfasst CONFIG.box.cols Spalten in Flussrichtung; die Pumpenleistung
 // verteilt sich auf alle. Die Anzeige zeigt die Hüllkurve (höchster Punkt = engste Stelle für Schiffe).
-// work = Arbeitsrichtung der Automatik (saugt nach rechts, fährt zurück); von Hand wird in beide Richtungen gesaugt.
+// Saugen geht in beide Richtungen (von Hand und in der Automatik); work legt nur die Grundrichtung fest.
 export const SLICE = { cols: 16, viewH: 7.6, below: 6.1, work: { x: 1, y: 1 }, returnBoost: 1.6, minWaterDepth: 0.5 };
 
 const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0, dep: {} };
@@ -215,7 +215,7 @@ export class SliceSim {
     if (a.dir === 'sweep' && this.x >= hiX - CONFIG.pump.offsetX - 0.05) a.dir = 'return';
     else if (a.dir === 'return' && this.x <= Math.max(a.startX, lo) + 0.05) { a.dir = 'sweep'; this.sound(); }
     const need = this._colOpen(this.mouthCol());
-    return a.dir === 'sweep' ? { dx: 1, dy: 0, suction: need } : { dx: -1, dy: 0, suction: false };
+    return a.dir === 'sweep' ? { dx: 1, dy: 0, suction: need } : { dx: -1, dy: 0, suction: need }; // auch der Rückweg saugt, wo noch etwas fehlt (keine Leerfahrt)
   }
 
   // input: { dx, dy (dy>0 = nach unten), suction }
@@ -252,11 +252,10 @@ export class SliceSim {
     dx = clamp(dx, -1, 1); dy = clamp(dy, -1, 1);
     this.moving = Math.abs(dx) + Math.abs(dy) > 0.01;
 
-    const along = dx * SLICE.work.x + dy * SLICE.work.y;
     const pumpOk = !a.on || input.pumpOn !== false;
     const working = !!ctl.suction && pumpOk && !clogged && !this.blocked; // saugen geht in beide Richtungen
     const af = a.on ? CONFIG.auto.speedFactor[lvl] : 1;
-    const speed = s.headSpeed * this.speedSetting * af * (working ? s.suctionSpeedFactor : along < -0.05 ? SLICE.returnBoost : 1);
+    const speed = s.headSpeed * this.speedSetting * af * (working ? s.suctionSpeedFactor : 1);
 
     const b = this.bounds();
     this.x = clamp(this.x + dx * speed * dt, b.min, b.max - P.offsetX);
