@@ -187,7 +187,7 @@ export function updateTraffic(g, dt) {
       ship.lat = (ship.lat ?? 0) + (target - (ship.lat ?? 0)) * Math.min(1, dt * 4);
     }
     const p0 = shipPos(ship);
-    if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow;
+    if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow + (1 - C.siteSlow) * (g.stats.siteRelief ?? 0);
     let gapMin = Infinity;
     for (const o of ships) {
       if (o === ship || o.dir !== ship.dir || !!o.alt !== !!ship.alt || (o.state !== 'sail' && o.state !== 'grounded') || o.s <= ship.s) continue;

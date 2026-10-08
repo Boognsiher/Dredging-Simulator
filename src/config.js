@@ -135,7 +135,8 @@ export const BASE_STATS = {
   curtain: 0, // Trübungsschutz (0..1)
   suctionSpeedFactor: 0.55,
   plantCapacity: 8, // m³/s, die die Anlage verarbeitet
-  bufferCapacity: 160, // m³ Puffer vor der Anlage; ist er voll, muss das Saugen pausieren
+  bufferCapacity: 1000, // m³ Puffer (Stapelbecken) vor der Anlage; ist er voll, muss das Saugen pausieren
+  siteRelief: 0, // 0..0.8: so viel weniger bremsen Schiffe beim Vorbeifahren am Ponton (Upgrade «Leitbaken»)
   disposalFactor: 1, // Faktor auf Entsorgungskosten (Entwässerung senkt ihn)
   sortBonus: 1, // Faktor auf Verkaufserlöse (Sortieranlage hebt ihn)
   rockFirmness: 0.10, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
@@ -172,9 +173,11 @@ export const UPGRADES = {
   mixer: { group: 'plant', name: 'Betonwerk', desc: 'Mischt Beton aus Kies und Sand des Flusses (plus Zement), viel billiger als Zukaufen', maxLevel: 3, baseCost: 16000, growth: 1.7, apply: (s, l) => { s.mixer = l; s.mixRate = 0.2 * l; } },
   echolot: { group: 'ponton', name: 'Echolot', desc: 'Genauere Peilung: die Automatik trifft die Solltiefe besser', maxLevel: 2, baseCost: 9000, growth: 1.8, apply: (s, l) => { s.echolot = l; } },
   auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 12000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
-  plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 24, baseCost: 7000, growth: 1.5, costAt: (l) => (l < 12 ? 7000 * 1.5 ** l : 7000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.plantCapacity += l * 2 + l * l * 0.25; s.bufferCapacity += l * 60 + l * l * 5; } },
+  buffer: { group: 'plant', name: 'Stapelbecken', desc: 'Mehr Puffer vor der Anlage: die Pumpe muss seltener pausieren (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 24, baseCost: 4000, growth: 1.5, costAt: (l) => (l < 12 ? 4000 * 1.5 ** l : 4000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.bufferCapacity += l * 60 + l * l * 5; } },
+  plant: { group: 'plant', name: 'Verarbeitung', desc: 'Mehr Durchsatz: die Anlage sortiert und verkauft schneller (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 24, baseCost: 5000, growth: 1.5, costAt: (l) => (l < 12 ? 5000 * 1.5 ** l : 5000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.plantCapacity += l * 2 + l * l * 0.25; } },
   dewater: { group: 'plant', name: 'Entwässerung', desc: 'Trockeneres Material: Entsorgung wird günstiger', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.disposalFactor = Math.max(0.4, 1 - l * 0.15); } },
   sorter: { group: 'plant', name: 'Sortieranlage', desc: 'Kies und Sand besser verkaufen', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.sortBonus = 1 + l * 0.2; } },
+  guide: { group: 'traffic', name: 'Leitbaken am Ponton', desc: 'Schiffe fahren am arbeitenden Ponton schneller vorbei: weniger Verlangsamung (Stufe 4: kaum noch)', maxLevel: 4, baseCost: 8000, growth: 1.7, apply: (s, l) => { s.siteRelief = l * 0.2; } },
   beacons: { group: 'traffic', name: 'Betonnung & Leuchtfeuer', desc: 'Sicher auch bei Nacht: mehr Schiffe pro Tag', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.trafficMult = 1 + l * 0.18; } },
   signals: { group: 'traffic', name: 'Rotlichter (Signalanlage)', desc: 'Regeln den Gegenverkehr: eine Kreuzungsstelle mehr und ein Schiff mehr im Warteplatz je Stufe', maxLevel: 3, baseCost: 9000, growth: 1.7, apply: (s, l) => { s.signals = l; } },
   tugs: { group: 'traffic', name: 'Schlepper', desc: 'Halten Schiffe im Warteplatz (ein Platz mehr je Stufe) und beschleunigen grosse Schiffe (Tiefgang ab 2,6 m); auf Stufe 3 schleppen sie aufgelaufene Schiffe frei', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.tugs = l; } },

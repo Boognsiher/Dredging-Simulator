@@ -1942,3 +1942,18 @@ test('Level: Start = Level 1 (eine gemietete Flotte mit 1 Ponton), Hafen/Geräte
     assert.equal(rankOf2(g), 2); assert.equal(fleetMax(g), 2); assert.equal(g.zoneBlock(20) === null || !/Level/.test(g.zoneBlock(20)), true);
   } finally { UNLOCK.enabled = false; }
 });
+
+test('Anlage: Stapelbecken und Verarbeitung getrennt, frei nach 45 s vollem Puffer oder Level 2; Leitbaken bremsen weniger', () => {
+  UNLOCK.enabled = true;
+  try {
+    const g = new Game(6, 'hochrhein'); g.eventsOn = false; g.money = 1e8;
+    assert.equal(g.stats.bufferCapacity, 1000);
+    assert.equal(g.buyUpgrade('buffer'), false, 'gesperrt');
+    g.totals.bufFullSec = 46;
+    assert.equal(g.buyUpgrade('buffer'), true); assert.ok(g.stats.bufferCapacity > 1000);
+    const pc = g.stats.plantCapacity; assert.equal(g.buyUpgrade('plant'), true); assert.ok(g.stats.plantCapacity > pc);
+    g.totals.bufFullSec = 0; g.unlocked.motor = true; g.analyze(true);
+    assert.equal(g.buyUpgrade('dewater'), true, 'Level 2 öffnet die Anlage ebenfalls');
+    assert.equal(g.buyUpgrade('guide'), true); assert.ok(g.stats.siteRelief > 0);
+  } finally { UNLOCK.enabled = false; }
+});

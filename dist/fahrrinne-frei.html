@@ -701,7 +701,7 @@ const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit:
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(7);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
 const { Game } = __m(10);
-const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO } = __m(9);
+const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(9);
 const { acceptContract } = __m(17);
 const { waitingByClass, shipPos } = __m(16);
 const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
@@ -844,8 +844,8 @@ const upRows = {};
 const UP_TABS = [
   { id: 'pump', label: '🌀 Pumpe', ids: ['power', 'radius', 'speed', 'winch', 'curtain'] },
   { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr', 'piler'], gate: 'up_gear' },
-  { id: 'plant', label: '🏭 Anlage', ids: ['plant', 'dewater', 'sorter', 'mixer'], gate: 'up_plant' },
-  { id: 'traffic', label: '🚢 Verkehr', ids: ['beacons', 'signals', 'tugs', 'vts', 'pilot'], gate: 'up_traffic' },
+  { id: 'plant', label: '🏭 Anlage', ids: ['buffer', 'plant', 'dewater', 'sorter', 'mixer'], gate: 'up_plant' },
+  { id: 'traffic', label: '🚢 Verkehr', ids: ['guide', 'beacons', 'signals', 'tugs', 'vts', 'pilot'], gate: 'up_traffic' },
 ];
 let upTab = 'pump';
 const upTabBtns = {}, upTabBodies = {};
@@ -892,10 +892,10 @@ function updateUpgrades() {
   for (const [id, def] of Object.entries(UPGRADES)) {
     const cost = game.nextUpgradeCost(id), r = upRows[id];
     r.small.textContent = `Stufe ${game.levels[id]}/${def.maxLevel} · ${def.desc}`;
-    const rankLock = rankOf(game) < upgradeRank(id);
-    r.btn.textContent = rankLock ? `🔒 Level ${upgradeRank(id)}` : game.upgradeLocked(id) ? '🔒 Hafen' : cost === null ? 'Max' : chf(cost);
+    const rankLock = game.rankLocked(id), lockLvl = PLANT_IDS.includes(id) ? 2 : upgradeRank(id);
+    r.btn.textContent = rankLock ? `🔒 Level ${lockLvl}` : game.upgradeLocked(id) ? '🔒 Hafen' : cost === null ? 'Max' : chf(cost);
     r.btn.disabled = cost === null || game.money < cost || game.status !== 'playing';
-    if (rankLock) r.small.textContent += ` · gesperrt: braucht Level ${upgradeRank(id)} (${rankName(upgradeRank(id))} fährt)`;
+    if (rankLock) r.small.textContent += PLANT_IDS.includes(id) ? ` · gesperrt: Puffer insgesamt ${BUF_FULL_NEED} s voll (bisher ${Math.round(game.totals.bufFullSec ?? 0)} s) oder Level 2` : ` · gesperrt: braucht Level ${upgradeRank(id)} (${rankName(upgradeRank(id))} fährt)`;
     else if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: Aufbereitungshalle im Hafen bauen/ausbauen (jede Karte mit Halle zählt)';
     const refund = game.refundFor(id);
     if (!r.armed()) r.sell.textContent = '↩';
@@ -1274,7 +1274,7 @@ function updateFleet() {
     <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
     <div class="fleet-lane"><b>Fahrrinne festlegen</b><small> Ohne Vorgabe sucht das Spiel selbst die günstigste Linie. Mit Vorgabe gilt nur noch dein Verlauf (±1 Zelle).</small>
       <div class="row"><button id="lane-set0">🧭 Hauptrinne ${game.river.trasse?.[0] ? 'ändern' : 'festlegen'}</button><button id="lane-set1" ${game.river.trasse?.[0] ? '' : 'disabled'}>🧭 2. Rinne ${game.river.trasse?.[1] ? 'ändern' : 'festlegen'}</button><button id="lane-clr" ${game.river.trasse?.[0] || game.river.trasse?.[1] ? '' : 'disabled'}>🗑 Löschen</button></div>
-      <label class="fleet-widen"><input type="checkbox" id="fleet-focus" ${F.focus ? 'checked' : ''} ${game.river.trasse?.[0] ? '' : 'disabled'}> Pontons konzentrieren sich nur auf die festgelegte Rinne (sonst nichts)</label></div>
+      <label class="fleet-widen"><input type="checkbox" id="fleet-focus" ${F.focus ? 'checked' : ''}> Pontons baggern nur die Fahrrinne (sonst nichts; bei festgelegter Rinne genau diese)</label></div>
     <label class="fleet-widen"><input type="checkbox" id="fleet-second" ${F.second ? 'checked' : ''}> Zweite Rinne mit ausbauen, sobald die Hauptrinne fertig ist (Gegenverkehr ohne Warten, mehr Durchsatz; Vorschau: Klasse wählen)</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-mine" ${F.mine ? 'checked' : ''}> Rohstoffe abbauen: freie Pontons baggern Vorkommen mit Konzession (Preisaufschlag)</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-pour" ${F.pour ? 'checked' : ''} ${game.stats.betonrohr > 0 ? '' : 'disabled'}> Rinne betonieren (Betoniergerät und Beton nötig): freie Pontons verhärten Rinne und Böschung</label>
@@ -1392,7 +1392,7 @@ const GATES = {
   sec_hazard: { when: (g) => hasRank(g, 'hazard'), text: 'Altlasten (Reiter Fluss)' },
   sec_deposits: { when: (g) => hasRank(g, 'deposits'), text: 'Rohstoffgebiete (Reiter Fluss)' },
   sec_shore: { when: (g) => hasRank(g, 'shore'), text: 'Uferstreifen: breitere Rinne (Reiter Fluss)' },
-  up_plant: { when: (g) => hasRank(g, 'plantTab'), text: 'Technik: Anlage ausbauen' },
+  up_plant: { when: (g) => plantUnlocked(g), text: 'Technik: Anlage ausbauen' },
   up_traffic: { when: (g) => hasRank(g, 'trafficTab'), text: 'Technik: Verkehr verbessern' },
   up_gear: { when: () => true, text: 'Technik: Geräte' },
 };
@@ -2475,7 +2475,8 @@ const BASE_STATS = {
   curtain: 0, // Trübungsschutz (0..1)
   suctionSpeedFactor: 0.55,
   plantCapacity: 8, // m³/s, die die Anlage verarbeitet
-  bufferCapacity: 160, // m³ Puffer vor der Anlage; ist er voll, muss das Saugen pausieren
+  bufferCapacity: 1000, // m³ Puffer (Stapelbecken) vor der Anlage; ist er voll, muss das Saugen pausieren
+  siteRelief: 0, // 0..0.8: so viel weniger bremsen Schiffe beim Vorbeifahren am Ponton (Upgrade «Leitbaken»)
   disposalFactor: 1, // Faktor auf Entsorgungskosten (Entwässerung senkt ihn)
   sortBonus: 1, // Faktor auf Verkaufserlöse (Sortieranlage hebt ihn)
   rockFirmness: 0.10, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
@@ -2512,9 +2513,11 @@ const UPGRADES = {
   mixer: { group: 'plant', name: 'Betonwerk', desc: 'Mischt Beton aus Kies und Sand des Flusses (plus Zement), viel billiger als Zukaufen', maxLevel: 3, baseCost: 16000, growth: 1.7, apply: (s, l) => { s.mixer = l; s.mixRate = 0.2 * l; } },
   echolot: { group: 'ponton', name: 'Echolot', desc: 'Genauere Peilung: die Automatik trifft die Solltiefe besser', maxLevel: 2, baseCost: 9000, growth: 1.8, apply: (s, l) => { s.echolot = l; } },
   auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 12000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
-  plant: { group: 'plant', name: 'Aufbereitungsanlage', desc: 'Mehr Durchsatz und Puffer (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 24, baseCost: 7000, growth: 1.5, costAt: (l) => (l < 12 ? 7000 * 1.5 ** l : 7000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.plantCapacity += l * 2 + l * l * 0.25; s.bufferCapacity += l * 60 + l * l * 5; } },
+  buffer: { group: 'plant', name: 'Stapelbecken', desc: 'Mehr Puffer vor der Anlage: die Pumpe muss seltener pausieren (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 24, baseCost: 4000, growth: 1.5, costAt: (l) => (l < 12 ? 4000 * 1.5 ** l : 4000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.bufferCapacity += l * 60 + l * l * 5; } },
+  plant: { group: 'plant', name: 'Verarbeitung', desc: 'Mehr Durchsatz: die Anlage sortiert und verkauft schneller (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 24, baseCost: 5000, growth: 1.5, costAt: (l) => (l < 12 ? 5000 * 1.5 ** l : 5000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.plantCapacity += l * 2 + l * l * 0.25; } },
   dewater: { group: 'plant', name: 'Entwässerung', desc: 'Trockeneres Material: Entsorgung wird günstiger', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.disposalFactor = Math.max(0.4, 1 - l * 0.15); } },
   sorter: { group: 'plant', name: 'Sortieranlage', desc: 'Kies und Sand besser verkaufen', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.sortBonus = 1 + l * 0.2; } },
+  guide: { group: 'traffic', name: 'Leitbaken am Ponton', desc: 'Schiffe fahren am arbeitenden Ponton schneller vorbei: weniger Verlangsamung (Stufe 4: kaum noch)', maxLevel: 4, baseCost: 8000, growth: 1.7, apply: (s, l) => { s.siteRelief = l * 0.2; } },
   beacons: { group: 'traffic', name: 'Betonnung & Leuchtfeuer', desc: 'Sicher auch bei Nacht: mehr Schiffe pro Tag', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.trafficMult = 1 + l * 0.18; } },
   signals: { group: 'traffic', name: 'Rotlichter (Signalanlage)', desc: 'Regeln den Gegenverkehr: eine Kreuzungsstelle mehr und ein Schiff mehr im Warteplatz je Stufe', maxLevel: 3, baseCost: 9000, growth: 1.7, apply: (s, l) => { s.signals = l; } },
   tugs: { group: 'traffic', name: 'Schlepper', desc: 'Halten Schiffe im Warteplatz (ein Platz mehr je Stufe) und beschleunigen grosse Schiffe (Tiefgang ab 2,6 m); auf Stufe 3 schleppen sie aufgelaufene Schiffe frei', maxLevel: 3, baseCost: 12000, growth: 1.7, apply: (s, l) => { s.tugs = l; } },
@@ -3945,7 +3948,11 @@ const RANK_INFO = [
   { text: 'Eigene Frachtschiffe' },
 ];
 const NEED = { zone: 2, lane: 2, trafficTab: 2, plantTab: 2, deposits: 2, trade: 3, gear: 3, hazard: 3, shore: 3, port: 4, area: 4, ships: 5, maps: 3 };
-const UP_NEED = { cutter: 3, loeffel: 3, betonrohr: 3, mixer: 3, piler: 3, plant: 2, dewater: 2, sorter: 2, beacons: 2, signals: 2, tugs: 2, vts: 2, pilot: 2 };
+const UP_NEED = { cutter: 3, loeffel: 3, betonrohr: 3, mixer: 3, piler: 3, guide: 2, beacons: 2, signals: 2, tugs: 2, vts: 2, pilot: 2 };
+// Anlage (Stapelbecken, Verarbeitung, Entwässerung, Sortierung): frei, sobald der Puffer insgesamt 45 s voll war oder Level 2 erreicht ist
+const PLANT_IDS = ['buffer', 'plant', 'dewater', 'sorter'];
+const BUF_FULL_NEED = 45;
+const plantUnlocked = (g) => !UNLOCK.enabled || rankOf(g) >= 2 || (g.totals?.bufFullSec ?? 0) >= BUF_FULL_NEED;
 const upgradeRank = (id) => UP_NEED[id] ?? 1;
 const rankOf = (g) => (UNLOCK.enabled ? g.rank ?? 1 : 99);
 const hasRank = (g, key) => rankOf(g) >= (typeof key === 'number' ? key : NEED[key]);
@@ -3958,13 +3965,13 @@ function computeRank(g) {
   return r;
 }
 
-return { RANK_ORDER: RANK_ORDER, UNLOCK: UNLOCK, RANK_INFO: RANK_INFO, NEED: NEED, upgradeRank: upgradeRank, rankOf: rankOf, hasRank: hasRank, fleetMax: fleetMax, rankName: rankName, computeRank: computeRank };
+return { RANK_ORDER: RANK_ORDER, UNLOCK: UNLOCK, RANK_INFO: RANK_INFO, NEED: NEED, PLANT_IDS: PLANT_IDS, BUF_FULL_NEED: BUF_FULL_NEED, plantUnlocked: plantUnlocked, upgradeRank: upgradeRank, rankOf: rankOf, hasRank: hasRank, fleetMax: fleetMax, rankName: rankName, computeRank: computeRank };
 },
 function(){
 const { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } = __m(2);
 const { toolAvailable } = __m(11);
 const { River } = __m(5);
-const { rankOf, upgradeRank, computeRank, rankName, RANK_INFO, NEED } = __m(9);
+const { rankOf, PLANT_IDS, plantUnlocked, upgradeRank, computeRank, rankName, RANK_INFO, NEED } = __m(9);
 const { carveFairway, analyzeFairway, zonePlan } = __m(3);
 const { DredgeSim } = __m(12);
 const { EVENTS } = __m(13);
@@ -4132,7 +4139,8 @@ class Game {
   setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
 
   // gesperrt: Anlage über Stufe 6 braucht die Aufbereitungshalle im Hafen
-  upgradeLocked(id) { return rankOf(this) < upgradeRank(id) || id === 'plant' && this.levels.plant >= plantLimit(this) && this.levels.plant < UPGRADES.plant.maxLevel; }
+  rankLocked(id) { return PLANT_IDS.includes(id) ? !plantUnlocked(this) : rankOf(this) < upgradeRank(id); }
+  upgradeLocked(id) { return this.rankLocked(id) || ((id === 'plant' || id === 'buffer') && this.levels[id] >= plantLimit(this) && this.levels[id] < UPGRADES[id].maxLevel); }
   nextUpgradeCost(id) { return this.levels[id] >= UPGRADES[id].maxLevel || this.upgradeLocked(id) ? null : upgradeCost(id, this.levels[id]); }
 
   buyUpgrade(id) {
@@ -4373,6 +4381,7 @@ class Game {
 
     const mixerOn = this.stats.mixer > 0 && this.divertAgg, C = CONFIG.concrete;
     const divert = mixerOn ? { [KIND.kies]: { room: C.aggCap - this.agg.kies }, [KIND.sand]: { room: C.aggCap - this.agg.sand } } : null;
+    if (this.stockTotal >= this.stats.bufferCapacity - 1e-6) this.totals.bufFullSec = (this.totals.bufFullSec ?? 0) + dt; // Zeit mit vollem Puffer (schaltet die Anlage frei)
     const pl = processPlant(this.stock, dt, this.stats, this.maps[0].market, divert); // die Anlage verkauft zu den Preisen der ersten Karte
     if (mixerOn) { this.agg.kies += pl.moved[KIND.kies]; this.agg.sand += pl.moved[KIND.sand]; }
     if (this.stats.mixer > 0) { // Betonwerk: mischt aus Kies und Sand des Flusses (plus Zement)
@@ -5235,7 +5244,7 @@ function updateTraffic(g, dt) {
       ship.lat = (ship.lat ?? 0) + (target - (ship.lat ?? 0)) * Math.min(1, dt * 4);
     }
     const p0 = shipPos(ship);
-    if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow;
+    if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow + (1 - C.siteSlow) * (g.stats.siteRelief ?? 0);
     let gapMin = Infinity;
     for (const o of ships) {
       if (o === ship || o.dir !== ship.dir || !!o.alt !== !!ship.alt || (o.state !== 'sail' && o.state !== 'grounded') || o.s <= ship.s) continue;
@@ -5565,8 +5574,8 @@ function secondClass(g, cls) {
   return [...SHIPS].reverse().find((c) => g.level.classes.includes(c.id) && ok(c)) ?? null;
 }
 function setFocus(g, on) { g.fleet.focus = !!on; bump(g); }
-// Fokus auf die festgelegte Rinne: Pontons bauen nur noch Pfähle (Wand) und die Trasse aus, nichts sonst
-const focusActive = (g) => !!g.fleet.focus && !!g.river.trasse?.[0];
+// Fokus auf die Fahrrinne: Pontons bauen nur noch Pfähle (Wand) und die Rinne aus (festgelegt oder automatisch), nichts sonst
+const focusActive = (g) => !!g.fleet.focus; // auch ohne festgelegte Rinne: dann gilt die automatisch gewählte Fahrrinne
 function setSecond(g, on) { g.fleet.second = !!on; bump(g); }
 function pickLane(g, u) {
   let cls = targetClass(g), lane2 = false, open = cls ? openColumns(g, cls) : [];
@@ -6249,11 +6258,11 @@ class Advisor {
   recommend(game) {
     const t = this.t, L = game.levels, A = CONFIG.advisor;
     const order = [];
-    if (t.bufFull > A.bufferFull) order.push('plant', 'dewater');
+    if (t.bufFull > A.bufferFull) order.push('buffer', 'plant', 'dewater');
     if (t.turb > A.turbidity) order.push('curtain');
     if (this.rockBlocked(game)) order.push('cutter', 'loeffel');
     if (L.auto === 0 && game.totals.removed > 400) order.push('auto');
-    order.push('power', 'beacons', 'sorter', 'speed', 'radius', 'winch', 'pilot', 'vts', 'echolot', 'plant');
+    order.push('power', 'beacons', 'sorter', 'speed', 'radius', 'winch', 'pilot', 'vts', 'echolot', 'buffer', 'plant');
     for (const id of order) {
       if (!UPGRADES[id] || L[id] >= UPGRADES[id].maxLevel || game.upgradeLocked(id)) continue;
       const cost = upgradeCost(id, L[id]);
@@ -6291,8 +6300,8 @@ class Advisor {
       { id: 'start', prio: 100, when: () => game.totals.removed < 1 && game.day <= 3 && this.runTime > A.firstAfter,
         text: () => 'Willkommen an der Wasserstrasse, ich bin Fritz, dein Flussmeister! Oben siehst du, was jede Schiffsklasse braucht. Wähle eine, fahr mit dem Ponton zu den roten Engstellen, wirf den Anker und schalte die Pumpe ein. Je tiefer die Rinne, desto grössere Schiffe, desto mehr Gebühren.' },
       { id: 'buffer', prio: 90, when: () => t.bufFull > A.bufferFull && sim.mode !== 'map',
-        text: () => `Der Puffer ist schon wieder voll, die Pumpe steht rum wie ein Schleusenwärter im Feierabend. ${rec && ['plant', 'dewater'].includes(rec.id) ? `Wie wäre es mit mehr ${name(rec.id)}?` : 'Eine bessere Aufbereitungsanlage bringt das Baggergut schneller durch.'}`,
-        upgrade: () => (rec && ['plant', 'dewater'].includes(rec.id) ? rec : null) },
+        text: () => `Der Puffer ist schon wieder voll, die Pumpe steht rum wie ein Schleusenwärter im Feierabend. ${rec && ['buffer', 'plant', 'dewater'].includes(rec.id) ? `Wie wäre es mit mehr ${name(rec.id)}?` : 'Eine bessere Aufbereitungsanlage bringt das Baggergut schneller durch.'}`,
+        upgrade: () => (rec && ['buffer', 'plant', 'dewater'].includes(rec.id) ? rec : null) },
       { id: 'grounding', prio: 88, when: () => game.totals.groundings >= 1 && game.totals.groundings > (this.shownAt._g ?? 0),
         text: () => { this.shownAt._g = game.totals.groundings; return 'Ein Schiff ist aufgelaufen und hat die Rinne versperrt, die Bergung kostet. Meist ist Niedrigwasser oder die Verlandung schuld: lieber ein Stück tiefer baggern, als nur gerade so viel wie nötig. Ein Verkehrsleitsystem macht die Bergung schneller.'; } },
       { id: 'queue', prio: 80, when: () => !!stuck && (waiting[stuck.id] ?? 0) >= 2,
@@ -6435,7 +6444,7 @@ function restoreGame(text) {
     const fresh = game.maps[0].river; // gleicher Seed: liefert die Anzeige-Hilfen (Mittellinie, Breite) der ersten Karte
     Object.assign(game, s.data);
     game._stats = null;
-    game.levels ??= {}; for (const k of Object.keys(UPGRADES)) game.levels[k] ??= 0; // neue Geräte in älteren Ständen (sonst NaN als Preis)
+    game.levels ??= {}; if (game.levels.buffer === undefined && game.levels.plant) game.levels.buffer = game.levels.plant; for (const k of Object.keys(UPGRADES)) game.levels[k] ??= 0; // Anlage wurde geteilt (Stapelbecken/Verarbeitung); neue Geräte in älteren Ständen (sonst NaN als Preis)
     game.notes = []; game.flash = []; game.mapIdx = Math.min(game.mapIdx ?? 0, game.maps.length - 1);
     const types = { Float32Array, Uint8Array };
     game.maps.forEach((m, i) => {
@@ -7718,7 +7727,7 @@ function drawSlice(ctx, game, sim, ui = {}) {
     ctx.strokeStyle = cls.color; ctx.globalAlpha = on ? 0.95 : 0.4; ctx.lineWidth = on ? 2 : 1; ctx.setLineDash([2, 6]);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
     if (on) { const ym = Y(wl - minNeedDepth(cls)); ctx.globalAlpha = 0.55; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(0, ym); ctx.lineTo(W, ym); ctx.stroke(); ctx.setLineDash([]); } // Mindesttiefe
-    ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const lf = game.fair?.[cls.id]?.loadFactor, label = `${ok ? '✓ ' : ''}${cls.name} ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m${ok ? ` · ${Math.round(lf * 100)} % Ladung` : ''}`; const tw = ctx.measureText(label).width;
+    ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const ff = game.fair?.[cls.id], lf = ff?.loadFactor, label = `${ok ? '✓ ' : ''}${cls.name} ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m${ok ? ` · ${Math.round(lf * 100)} % Ladung${ff.loadFrac < 0.999 ? ` · +${Math.round(ff.fullVolume).toLocaleString('de-CH')} m³ bis voll` : ''}` : ff && ff.volume < Infinity ? ` · fehlt ${Math.round(ff.volume).toLocaleString('de-CH')} m³` : ''}`; const tw = ctx.measureText(label).width;
     ctx.fillRect(VX1 - tw - 12, y - fs(12) + 1, tw + 8, fs(12) + 3); ctx.fillStyle = on ? '#fff' : cls.color; ctx.fillText(label, VX1 - 6, y);
     ctx.globalAlpha = 1;
   }

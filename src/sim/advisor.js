@@ -34,11 +34,11 @@ export class Advisor {
   recommend(game) {
     const t = this.t, L = game.levels, A = CONFIG.advisor;
     const order = [];
-    if (t.bufFull > A.bufferFull) order.push('plant', 'dewater');
+    if (t.bufFull > A.bufferFull) order.push('buffer', 'plant', 'dewater');
     if (t.turb > A.turbidity) order.push('curtain');
     if (this.rockBlocked(game)) order.push('cutter', 'loeffel');
     if (L.auto === 0 && game.totals.removed > 400) order.push('auto');
-    order.push('power', 'beacons', 'sorter', 'speed', 'radius', 'winch', 'pilot', 'vts', 'echolot', 'plant');
+    order.push('power', 'beacons', 'sorter', 'speed', 'radius', 'winch', 'pilot', 'vts', 'echolot', 'buffer', 'plant');
     for (const id of order) {
       if (!UPGRADES[id] || L[id] >= UPGRADES[id].maxLevel || game.upgradeLocked(id)) continue;
       const cost = upgradeCost(id, L[id]);
@@ -76,8 +76,8 @@ export class Advisor {
       { id: 'start', prio: 100, when: () => game.totals.removed < 1 && game.day <= 3 && this.runTime > A.firstAfter,
         text: () => 'Willkommen an der Wasserstrasse, ich bin Fritz, dein Flussmeister! Oben siehst du, was jede Schiffsklasse braucht. Wähle eine, fahr mit dem Ponton zu den roten Engstellen, wirf den Anker und schalte die Pumpe ein. Je tiefer die Rinne, desto grössere Schiffe, desto mehr Gebühren.' },
       { id: 'buffer', prio: 90, when: () => t.bufFull > A.bufferFull && sim.mode !== 'map',
-        text: () => `Der Puffer ist schon wieder voll, die Pumpe steht rum wie ein Schleusenwärter im Feierabend. ${rec && ['plant', 'dewater'].includes(rec.id) ? `Wie wäre es mit mehr ${name(rec.id)}?` : 'Eine bessere Aufbereitungsanlage bringt das Baggergut schneller durch.'}`,
-        upgrade: () => (rec && ['plant', 'dewater'].includes(rec.id) ? rec : null) },
+        text: () => `Der Puffer ist schon wieder voll, die Pumpe steht rum wie ein Schleusenwärter im Feierabend. ${rec && ['buffer', 'plant', 'dewater'].includes(rec.id) ? `Wie wäre es mit mehr ${name(rec.id)}?` : 'Eine bessere Aufbereitungsanlage bringt das Baggergut schneller durch.'}`,
+        upgrade: () => (rec && ['buffer', 'plant', 'dewater'].includes(rec.id) ? rec : null) },
       { id: 'grounding', prio: 88, when: () => game.totals.groundings >= 1 && game.totals.groundings > (this.shownAt._g ?? 0),
         text: () => { this.shownAt._g = game.totals.groundings; return 'Ein Schiff ist aufgelaufen und hat die Rinne versperrt, die Bergung kostet. Meist ist Niedrigwasser oder die Verlandung schuld: lieber ein Stück tiefer baggern, als nur gerade so viel wie nötig. Ein Verkehrsleitsystem macht die Bergung schneller.'; } },
       { id: 'queue', prio: 80, when: () => !!stuck && (waiting[stuck.id] ?? 0) >= 2,

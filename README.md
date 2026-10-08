@@ -215,3 +215,5 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 **Pumpe in beide Richtungen:** Die Pumpe saugt von Hand und in der Automatik in beide Richtungen (keine Leerfahrt); beide Richtungen haben dasselbe Tempo. Im Querschnitt zeigt der Knopf «ⓘ» eine Legende der Farben und Markierungen.
 
 **Steuerung auf der Karte:** Der Touch-Stick fährt den Ponton in jede Richtung, auch schräg (vorher rastete er auf eine Achse ein).
+
+**Anlage:** Sie besteht aus zwei Upgrades: **Stapelbecken** (Puffer, startet bei 1000 m³) und **Verarbeitung** (Durchsatz). Beide, dazu Entwässerung und Sortierung, werden frei, sobald der Puffer insgesamt 45 s voll war oder Level 2 erreicht ist. **Leitbaken am Ponton** (Verkehr) reduzieren die Verlangsamung von Schiffen, die am Ponton vorbeifahren. Alte Spielstände übernehmen die bisherige Anlagenstufe für beide.

@@ -1,7 +1,7 @@
 import { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { River } from './river.js';
-import { rankOf, upgradeRank, computeRank, rankName, RANK_INFO, NEED } from './rank.js';
+import { rankOf, PLANT_IDS, plantUnlocked, upgradeRank, computeRank, rankName, RANK_INFO, NEED } from './rank.js';
 import { carveFairway, analyzeFairway, zonePlan } from './fairway.js';
 import { DredgeSim } from './dredge.js';
 import { EVENTS } from './events.js';
@@ -153,7 +153,8 @@ export class Game {
   setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
 
   // gesperrt: Anlage über Stufe 6 braucht die Aufbereitungshalle im Hafen
-  upgradeLocked(id) { return rankOf(this) < upgradeRank(id) || id === 'plant' && this.levels.plant >= plantLimit(this) && this.levels.plant < UPGRADES.plant.maxLevel; }
+  rankLocked(id) { return PLANT_IDS.includes(id) ? !plantUnlocked(this) : rankOf(this) < upgradeRank(id); }
+  upgradeLocked(id) { return this.rankLocked(id) || ((id === 'plant' || id === 'buffer') && this.levels[id] >= plantLimit(this) && this.levels[id] < UPGRADES[id].maxLevel); }
   nextUpgradeCost(id) { return this.levels[id] >= UPGRADES[id].maxLevel || this.upgradeLocked(id) ? null : upgradeCost(id, this.levels[id]); }
 
   buyUpgrade(id) {
@@ -394,6 +395,7 @@ export class Game {
 
     const mixerOn = this.stats.mixer > 0 && this.divertAgg, C = CONFIG.concrete;
     const divert = mixerOn ? { [KIND.kies]: { room: C.aggCap - this.agg.kies }, [KIND.sand]: { room: C.aggCap - this.agg.sand } } : null;
+    if (this.stockTotal >= this.stats.bufferCapacity - 1e-6) this.totals.bufFullSec = (this.totals.bufFullSec ?? 0) + dt; // Zeit mit vollem Puffer (schaltet die Anlage frei)
     const pl = processPlant(this.stock, dt, this.stats, this.maps[0].market, divert); // die Anlage verkauft zu den Preisen der ersten Karte
     if (mixerOn) { this.agg.kies += pl.moved[KIND.kies]; this.agg.sand += pl.moved[KIND.sand]; }
     if (this.stats.mixer > 0) { // Betonwerk: mischt aus Kies und Sand des Flusses (plus Zement)

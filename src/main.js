@@ -3,7 +3,7 @@ import { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit
 import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } from './sim/land.js';
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
 import { Game } from './sim/game.js';
-import { rankOf, hasRank, rankName, upgradeRank, RANK_INFO } from './sim/rank.js';
+import { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } from './sim/rank.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
 import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
@@ -119,8 +119,8 @@ const upRows = {};
 const UP_TABS = [
   { id: 'pump', label: '🌀 Pumpe', ids: ['power', 'radius', 'speed', 'winch', 'curtain'] },
   { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr', 'piler'], gate: 'up_gear' },
-  { id: 'plant', label: '🏭 Anlage', ids: ['plant', 'dewater', 'sorter', 'mixer'], gate: 'up_plant' },
-  { id: 'traffic', label: '🚢 Verkehr', ids: ['beacons', 'signals', 'tugs', 'vts', 'pilot'], gate: 'up_traffic' },
+  { id: 'plant', label: '🏭 Anlage', ids: ['buffer', 'plant', 'dewater', 'sorter', 'mixer'], gate: 'up_plant' },
+  { id: 'traffic', label: '🚢 Verkehr', ids: ['guide', 'beacons', 'signals', 'tugs', 'vts', 'pilot'], gate: 'up_traffic' },
 ];
 let upTab = 'pump';
 const upTabBtns = {}, upTabBodies = {};
@@ -167,10 +167,10 @@ function updateUpgrades() {
   for (const [id, def] of Object.entries(UPGRADES)) {
     const cost = game.nextUpgradeCost(id), r = upRows[id];
     r.small.textContent = `Stufe ${game.levels[id]}/${def.maxLevel} · ${def.desc}`;
-    const rankLock = rankOf(game) < upgradeRank(id);
-    r.btn.textContent = rankLock ? `🔒 Level ${upgradeRank(id)}` : game.upgradeLocked(id) ? '🔒 Hafen' : cost === null ? 'Max' : chf(cost);
+    const rankLock = game.rankLocked(id), lockLvl = PLANT_IDS.includes(id) ? 2 : upgradeRank(id);
+    r.btn.textContent = rankLock ? `🔒 Level ${lockLvl}` : game.upgradeLocked(id) ? '🔒 Hafen' : cost === null ? 'Max' : chf(cost);
     r.btn.disabled = cost === null || game.money < cost || game.status !== 'playing';
-    if (rankLock) r.small.textContent += ` · gesperrt: braucht Level ${upgradeRank(id)} (${rankName(upgradeRank(id))} fährt)`;
+    if (rankLock) r.small.textContent += PLANT_IDS.includes(id) ? ` · gesperrt: Puffer insgesamt ${BUF_FULL_NEED} s voll (bisher ${Math.round(game.totals.bufFullSec ?? 0)} s) oder Level 2` : ` · gesperrt: braucht Level ${upgradeRank(id)} (${rankName(upgradeRank(id))} fährt)`;
     else if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: Aufbereitungshalle im Hafen bauen/ausbauen (jede Karte mit Halle zählt)';
     const refund = game.refundFor(id);
     if (!r.armed()) r.sell.textContent = '↩';
@@ -667,7 +667,7 @@ const GATES = {
   sec_hazard: { when: (g) => hasRank(g, 'hazard'), text: 'Altlasten (Reiter Fluss)' },
   sec_deposits: { when: (g) => hasRank(g, 'deposits'), text: 'Rohstoffgebiete (Reiter Fluss)' },
   sec_shore: { when: (g) => hasRank(g, 'shore'), text: 'Uferstreifen: breitere Rinne (Reiter Fluss)' },
-  up_plant: { when: (g) => hasRank(g, 'plantTab'), text: 'Technik: Anlage ausbauen' },
+  up_plant: { when: (g) => plantUnlocked(g), text: 'Technik: Anlage ausbauen' },
   up_traffic: { when: (g) => hasRank(g, 'trafficTab'), text: 'Technik: Verkehr verbessern' },
   up_gear: { when: () => true, text: 'Technik: Geräte' },
 };
