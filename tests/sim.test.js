@@ -1718,3 +1718,16 @@ test('Hafen: Liegeplätze werden reserviert, Schiffe legen an und fahren nach de
   assert.ok(g.port.jobsDone >= 1 || g.port.ships >= 1);
   assert.equal(g.port.jobs.length, 0);
 });
+
+test('Zuflüsse: nur auf weiteren Karten, tragen laufend Sand/Kies in die Rinne', () => {
+  const g = new Game(11, 'endlos'); g.money = 1e9; g.addMap();
+  assert.equal(g.maps[0].river.tribs.length, 0, 'erste Karte ohne Zufluss');
+  const r = g.maps[1].river; assert.ok(r.tribs.length >= 1);
+  const t = r.tribs[0]; assert.ok(t.cells.length > 5);
+  const before = t.cells.map((i) => r.top[i]);
+  for (let k = 0; k < 400; k++) r.tribDeposit(1);
+  const grown = t.cells.filter((i, k) => r.top[i] > before[k] + 0.1);
+  assert.ok(grown.length >= 3, 'Sohle wächst an der Mündung');
+  assert.ok(t.cells.every((i) => r.top[i] <= Math.max(before[t.cells.indexOf(i)], r.cap[i] + 0.81)), 'aber nur begrenzt');
+  const rt = restoreGame(serializeGame(g)); assert.equal(rt.maps[1].river.tribs.length, r.tribs.length);
+});

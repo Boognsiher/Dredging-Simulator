@@ -98,6 +98,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
     }
   }
   LABELS = [];
+  drawTribs(ctx, game, ui);
   drawDeposits(ctx, game, ui);
   // Auswahl einer Schiffsklasse: wo fehlt Tiefe, wo läuft die günstigste Rinne
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
@@ -240,6 +241,21 @@ function drawPontoon(ctx, game, sim, ui) {
     const t = mapPx(ui.mapTarget.x, ui.mapTarget.y);
     ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
     ctx.moveTo(t.x - 14, t.y); ctx.lineTo(t.x + 14, t.y); ctx.moveTo(t.x, t.y - 14); ctx.lineTo(t.x, t.y + 14); ctx.stroke();
+  }
+}
+
+// Zuflüsse: Bach vom Rand bis zur Mündung, dahinter eine Fahne aus Sand/Kies in der Rinne (je stärker, desto mehr Material kommt an)
+function drawTribs(ctx, game, ui) {
+  const r = game.river, t0 = ui?.t ?? 0;
+  for (const t of r.tribs ?? []) {
+    for (let k = 0; k < t.cells.length; k++) { const i = t.cells[k], x = i % r.cols, y = (i / r.cols) | 0; ctx.fillStyle = `rgba(226,196,120,${0.1 + 0.26 * t.w[k]})`; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); }
+    const y0 = t.side < 0 ? 0 : r.rows * CELL, y1 = (t.side < 0 ? t.my : t.my + 1) * CELL, x0 = OX + (t.x + 0.5) * CELL;
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#2f77a8'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x0, y0);
+    for (let s = 1; s <= 8; s++) { const f = s / 8; ctx.lineTo(x0 + Math.sin(f * 7 + t.x) * 6 * (1 - f * 0.4), y0 + (y1 - y0) * f); } ctx.stroke();
+    ctx.strokeStyle = '#8fd0f5'; ctx.lineWidth = 3; ctx.setLineDash([6, 8]); ctx.lineDashOffset = -t0 * 14 * (t.side < 0 ? 1 : -1) * -1;
+    ctx.beginPath(); ctx.moveTo(x0, y0);
+    for (let s = 1; s <= 8; s++) { const f = s / 8; ctx.lineTo(x0 + Math.sin(f * 7 + t.x) * 6 * (1 - f * 0.4), y0 + (y1 - y0) * f); } ctx.stroke(); ctx.restore();
   }
 }
 

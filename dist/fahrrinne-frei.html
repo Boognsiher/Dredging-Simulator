@@ -590,6 +590,7 @@ body.mode-map #ptabs { top: 0; }
           <span><i style="background:#7fd4ff"></i>Quarzsand</span>
           <span><i style="background:#ff9a2e"></i>Erzseife</span>
           <span><i style="background:rgba(205,208,214,.85)"></i>Beton</span>
+          <span><i style="background:#2f77a8"></i>Zufluss (bringt Sand/Kies)</span>
           <span><i style="background:rgba(160,230,90,.6)"></i>Kreuzungsstelle</span>
           <span><i style="background:rgba(255,70,60,.7)"></i>zu flach (Klasse)</span>
         <span><i style="background:#ffb04d"></i>zweite Rinne</span>
@@ -3080,7 +3081,7 @@ function endlessRiver(seed, k) {
   const kinds = ['kiesbank', 'quarz', 'seife'], deposits = ['kiesbank'];
   for (let i = 0; i < 2 + (k >= 2 ? 1 : 0); i++) deposits.push(kinds[r.int(0, 2)]);
   return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
-    bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits };
+    bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
 }
 // Regionale Preise (Endlos): dauerhafter Aufschlag/Abschlag je Fracht und Karte, aus Seed und Kartennummer
 const BIAS_SPAN = { kies: 0.4, oel: 0.25, container: 0.3 }; // max. Abweichung des regionalen Preises
@@ -3456,7 +3457,7 @@ class Game {
       this.river.wl = this.wl;
       this.river.settle();
       this.sedClock += dt;
-      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.sedClock = 0; }
+      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.river.tribDeposit(this.sedClock); this.sedClock = 0; }
       this.fairClock -= dt;
       if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
       this.updateGlut(dt);
@@ -3871,6 +3872,7 @@ class River {
     this.bay = new Uint8Array(n); // Hafenbecken (zählt als Korridor zum Baggern, aber nicht zur Fahrrinne der Schiffe)
     this.dep = new Uint8Array(n); // Rohstoffvorkommen: 0 = keins, sonst Nummer in this.deposits
     this.depLeft = new Float32Array(n); // wie viele Meter des Vorkommens (von oben) in dieser Zelle noch Aufschlag bringen
+    this.tribs = []; // Zuflüsse: { x, side, my, cells: [Zellen], w: [Gewichte], kind, rate }: bringen laufend Sand/Kies in die Rinne
     this.deposits = []; // { id, type, name, kind, mult, cx, cy, rx, ry, owned, known, cost }
     this.armor = new Float32Array(n); // Dicke der Betonschicht (m), die die Oberfläche der Zelle verhärtet; 0 = unbehandelt
     this.ext = new Uint8Array(n); // Ausbaustreifen am Ufer: 1 = Land, 2 = Flachwasser. Mit dem Löffelbagger abtragbar (wird dann zum Korridor), sonst Schutzgebiet
@@ -3975,6 +3977,18 @@ class River {
     for (let k = 0; k < r.top.length; k++) r.pending.add(k);
     for (let p = 0; p < 12; p++) r.settle(Infinity); // Anfangsböschungen setzen, ohne dass es im Spiel rutscht
     r.slumpedTotal = 0;
+    // Zuflüsse (nur wenn die Karte welche hat): am Ufer mündende Bäche, die täglich Sand und Kies in die Rinne tragen; sie als Letztes erzeugen, damit bestehende Flüsse unverändert bleiben
+    for (let n = 0; n < (cfg.tribs ?? 0); n++) {
+      const x = rng.int(9, r.cols - 12), side = rng.chance(0.5) ? -1 : 1;
+      let my = -1; for (let k = 0; k < r.rows; k++) { const y = side < 0 ? k : r.rows - 1 - k; if (r.zone[y * r.cols + x]) { my = y; break; } }
+      if (my < 0) continue;
+      const cx = x + 2.2, cy = my - side * 1.6, rx = 5, ry = 3.4, cells = [], w = [];
+      for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(r.rows - 1, Math.ceil(cy + ry)); y++) for (let xx = Math.max(0, Math.floor(cx - rx)); xx <= Math.min(r.cols - 1, Math.ceil(cx + rx)); xx++) {
+        const i = y * r.cols + xx, d = Math.hypot((xx + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+        if (d < 1 && r.zone[i] && water[i]) { cells.push(i); w.push(+(1 - d).toFixed(2)); }
+      }
+      r.tribs.push({ x, side, my, cells, w, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
+    }
     return r;
   }
 
@@ -4031,6 +4045,20 @@ class River {
       if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
       this.top[i] = Math.min(this.cap[i], this.top[i] + k);
       this.pending.add(i);
+    }
+  }
+
+  // Zuflüsse tragen laufend Sand/Kies ein (auch über die normale Obergrenze hinaus), bis zu 0,8 m über der Ausgangssohle
+  tribDeposit(dt) {
+    for (const t of this.tribs ?? []) {
+      for (let k = 0; k < t.cells.length; k++) {
+        const i = t.cells[k]; if (this.cap[i] <= 0 || this.armor[i] > 0 || this.bay[i]) continue;
+        const lim = Math.min(this.wl - 0.6, this.cap[i] + 0.8);
+        if (this.top[i] >= lim) continue;
+        this.top[i] = Math.min(lim, this.top[i] + t.rate * t.w[k] * dt);
+        if (this.kind[i] !== KIND.altlast) this.kind[i] = t.kind;
+        this.pending.add(i);
+      }
     }
   }
 
@@ -6338,6 +6366,7 @@ function drawMap(ctx, game, sim, ui = {}) {
     }
   }
   LABELS = [];
+  drawTribs(ctx, game, ui);
   drawDeposits(ctx, game, ui);
   // Auswahl einer Schiffsklasse: wo fehlt Tiefe, wo läuft die günstigste Rinne
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
@@ -6480,6 +6509,21 @@ function drawPontoon(ctx, game, sim, ui) {
     const t = mapPx(ui.mapTarget.x, ui.mapTarget.y);
     ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
     ctx.moveTo(t.x - 14, t.y); ctx.lineTo(t.x + 14, t.y); ctx.moveTo(t.x, t.y - 14); ctx.lineTo(t.x, t.y + 14); ctx.stroke();
+  }
+}
+
+// Zuflüsse: Bach vom Rand bis zur Mündung, dahinter eine Fahne aus Sand/Kies in der Rinne (je stärker, desto mehr Material kommt an)
+function drawTribs(ctx, game, ui) {
+  const r = game.river, t0 = ui?.t ?? 0;
+  for (const t of r.tribs ?? []) {
+    for (let k = 0; k < t.cells.length; k++) { const i = t.cells[k], x = i % r.cols, y = (i / r.cols) | 0; ctx.fillStyle = `rgba(226,196,120,${0.1 + 0.26 * t.w[k]})`; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); }
+    const y0 = t.side < 0 ? 0 : r.rows * CELL, y1 = (t.side < 0 ? t.my : t.my + 1) * CELL, x0 = OX + (t.x + 0.5) * CELL;
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#2f77a8'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x0, y0);
+    for (let s = 1; s <= 8; s++) { const f = s / 8; ctx.lineTo(x0 + Math.sin(f * 7 + t.x) * 6 * (1 - f * 0.4), y0 + (y1 - y0) * f); } ctx.stroke();
+    ctx.strokeStyle = '#8fd0f5'; ctx.lineWidth = 3; ctx.setLineDash([6, 8]); ctx.lineDashOffset = -t0 * 14 * (t.side < 0 ? 1 : -1) * -1;
+    ctx.beginPath(); ctx.moveTo(x0, y0);
+    for (let s = 1; s <= 8; s++) { const f = s / 8; ctx.lineTo(x0 + Math.sin(f * 7 + t.x) * 6 * (1 - f * 0.4), y0 + (y1 - y0) * f); } ctx.stroke(); ctx.restore();
   }
 }
 

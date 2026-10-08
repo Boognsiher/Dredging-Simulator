@@ -25,7 +25,7 @@ export function endlessRiver(seed, k) {
   const kinds = ['kiesbank', 'quarz', 'seife'], deposits = ['kiesbank'];
   for (let i = 0; i < 2 + (k >= 2 ? 1 : 0); i++) deposits.push(kinds[r.int(0, 2)]);
   return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
-    bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits };
+    bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
 }
 // Regionale Preise (Endlos): dauerhafter Aufschlag/Abschlag je Fracht und Karte, aus Seed und Kartennummer
 export const BIAS_SPAN = { kies: 0.4, oel: 0.25, container: 0.3 }; // max. Abweichung des regionalen Preises
@@ -401,7 +401,7 @@ export class Game {
       this.river.wl = this.wl;
       this.river.settle();
       this.sedClock += dt;
-      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.sedClock = 0; }
+      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.river.tribDeposit(this.sedClock); this.sedClock = 0; }
       this.fairClock -= dt;
       if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
       this.updateGlut(dt);

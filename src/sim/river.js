@@ -26,6 +26,7 @@ export class River {
     this.bay = new Uint8Array(n); // Hafenbecken (zählt als Korridor zum Baggern, aber nicht zur Fahrrinne der Schiffe)
     this.dep = new Uint8Array(n); // Rohstoffvorkommen: 0 = keins, sonst Nummer in this.deposits
     this.depLeft = new Float32Array(n); // wie viele Meter des Vorkommens (von oben) in dieser Zelle noch Aufschlag bringen
+    this.tribs = []; // Zuflüsse: { x, side, my, cells: [Zellen], w: [Gewichte], kind, rate }: bringen laufend Sand/Kies in die Rinne
     this.deposits = []; // { id, type, name, kind, mult, cx, cy, rx, ry, owned, known, cost }
     this.armor = new Float32Array(n); // Dicke der Betonschicht (m), die die Oberfläche der Zelle verhärtet; 0 = unbehandelt
     this.ext = new Uint8Array(n); // Ausbaustreifen am Ufer: 1 = Land, 2 = Flachwasser. Mit dem Löffelbagger abtragbar (wird dann zum Korridor), sonst Schutzgebiet
@@ -130,6 +131,18 @@ export class River {
     for (let k = 0; k < r.top.length; k++) r.pending.add(k);
     for (let p = 0; p < 12; p++) r.settle(Infinity); // Anfangsböschungen setzen, ohne dass es im Spiel rutscht
     r.slumpedTotal = 0;
+    // Zuflüsse (nur wenn die Karte welche hat): am Ufer mündende Bäche, die täglich Sand und Kies in die Rinne tragen; sie als Letztes erzeugen, damit bestehende Flüsse unverändert bleiben
+    for (let n = 0; n < (cfg.tribs ?? 0); n++) {
+      const x = rng.int(9, r.cols - 12), side = rng.chance(0.5) ? -1 : 1;
+      let my = -1; for (let k = 0; k < r.rows; k++) { const y = side < 0 ? k : r.rows - 1 - k; if (r.zone[y * r.cols + x]) { my = y; break; } }
+      if (my < 0) continue;
+      const cx = x + 2.2, cy = my - side * 1.6, rx = 5, ry = 3.4, cells = [], w = [];
+      for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(r.rows - 1, Math.ceil(cy + ry)); y++) for (let xx = Math.max(0, Math.floor(cx - rx)); xx <= Math.min(r.cols - 1, Math.ceil(cx + rx)); xx++) {
+        const i = y * r.cols + xx, d = Math.hypot((xx + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+        if (d < 1 && r.zone[i] && water[i]) { cells.push(i); w.push(+(1 - d).toFixed(2)); }
+      }
+      r.tribs.push({ x, side, my, cells, w, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
+    }
     return r;
   }
 
@@ -186,6 +199,20 @@ export class River {
       if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
       this.top[i] = Math.min(this.cap[i], this.top[i] + k);
       this.pending.add(i);
+    }
+  }
+
+  // Zuflüsse tragen laufend Sand/Kies ein (auch über die normale Obergrenze hinaus), bis zu 0,8 m über der Ausgangssohle
+  tribDeposit(dt) {
+    for (const t of this.tribs ?? []) {
+      for (let k = 0; k < t.cells.length; k++) {
+        const i = t.cells[k]; if (this.cap[i] <= 0 || this.armor[i] > 0 || this.bay[i]) continue;
+        const lim = Math.min(this.wl - 0.6, this.cap[i] + 0.8);
+        if (this.top[i] >= lim) continue;
+        this.top[i] = Math.min(lim, this.top[i] + t.rate * t.w[k] * dt);
+        if (this.kind[i] !== KIND.altlast) this.kind[i] = t.kind;
+        this.pending.add(i);
+      }
     }
   }
 
