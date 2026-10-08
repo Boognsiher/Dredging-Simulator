@@ -133,6 +133,8 @@ export function openWidenColumns(g) {
   return out;
 }
 
+// Böschungsrand je Seite (Zellen), den die Flotte zusätzlich zur Rinnenbreite ausbaggert: ohne Wand muss die Rinne breit genug sein, damit die Böschung hält
+export const laneMargin = (g, need) => Math.min(6, Math.max(1, Math.ceil((need - 0.8) / CONFIG.layer.slope)));
 function pickLane(g, u) {
   const cls = targetClass(g);
   if (!cls) return { none: 'Keine Engstelle: alle Klassen fahren' };
@@ -581,7 +583,12 @@ function stepUnit(g, u, dt) {
               const lane = g.fair[s.cls], cls = shipById(s.cls), lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo;
               let r0 = Infinity, r1 = -Infinity;
               for (const n of lane.nodes) if (n.x >= s.c0 - 1 && n.x <= s.c0 + B) { r0 = Math.min(r0, n.y - lo); r1 = Math.max(r1, n.y + hi); }
-              if (r0 <= r1) sl.autoRange = [r0 - 1, r1 + 1]; // nur die Rinne (mit einer Zelle Böschung) ausheben
+              if (r0 <= r1) { // die Rinne samt Böschungsrand ausheben: je tiefer, desto breiter (Böschung hält nur CONFIG.layer.slope m je Zelle); Pfähle an der Seite ersetzen den Rand
+                const rv = g.river, cx0 = s.c0, mg = laneMargin(g, lane.need);
+                let pN = -1, pS = rv.rows; // nächste Pfahlreihe nördlich/südlich der Rinne in den Spalten des Kastens
+                for (let xx = Math.max(0, cx0 - 1); xx <= Math.min(rv.cols - 1, cx0 + B); xx++) for (let yy = 0; yy < rv.rows; yy++) if (rv.pile[yy * rv.cols + xx]) { if (yy < r0) pN = Math.max(pN, yy); else if (yy > r1) pS = Math.min(pS, yy); }
+                sl.autoRange = [pN >= 0 ? Math.max(r0 - 1, pN + 1) : r0 - mg, pS < rv.rows ? Math.min(r1 + 1, pS - 1) : r1 + mg];
+              }
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();

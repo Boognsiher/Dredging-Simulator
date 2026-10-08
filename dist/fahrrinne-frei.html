@@ -5324,6 +5324,8 @@ function openWidenColumns(g) {
   return out;
 }
 
+// Böschungsrand je Seite (Zellen), den die Flotte zusätzlich zur Rinnenbreite ausbaggert: ohne Wand muss die Rinne breit genug sein, damit die Böschung hält
+const laneMargin = (g, need) => Math.min(6, Math.max(1, Math.ceil((need - 0.8) / CONFIG.layer.slope)));
 function pickLane(g, u) {
   const cls = targetClass(g);
   if (!cls) return { none: 'Keine Engstelle: alle Klassen fahren' };
@@ -5772,7 +5774,12 @@ function stepUnit(g, u, dt) {
               const lane = g.fair[s.cls], cls = shipById(s.cls), lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo;
               let r0 = Infinity, r1 = -Infinity;
               for (const n of lane.nodes) if (n.x >= s.c0 - 1 && n.x <= s.c0 + B) { r0 = Math.min(r0, n.y - lo); r1 = Math.max(r1, n.y + hi); }
-              if (r0 <= r1) sl.autoRange = [r0 - 1, r1 + 1]; // nur die Rinne (mit einer Zelle Böschung) ausheben
+              if (r0 <= r1) { // die Rinne samt Böschungsrand ausheben: je tiefer, desto breiter (Böschung hält nur CONFIG.layer.slope m je Zelle); Pfähle an der Seite ersetzen den Rand
+                const rv = g.river, cx0 = s.c0, mg = laneMargin(g, lane.need);
+                let pN = -1, pS = rv.rows; // nächste Pfahlreihe nördlich/südlich der Rinne in den Spalten des Kastens
+                for (let xx = Math.max(0, cx0 - 1); xx <= Math.min(rv.cols - 1, cx0 + B); xx++) for (let yy = 0; yy < rv.rows; yy++) if (rv.pile[yy * rv.cols + xx]) { if (yy < r0) pN = Math.max(pN, yy); else if (yy > r1) pS = Math.min(pS, yy); }
+                sl.autoRange = [pN >= 0 ? Math.max(r0 - 1, pN + 1) : r0 - mg, pS < rv.rows ? Math.min(r1 + 1, pS - 1) : r1 + mg];
+              }
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();
@@ -5823,7 +5830,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => locOf(u) === 'main' && u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, clearPilePlan: clearPilePlan, lineCells: lineCells, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, clearPilePlan: clearPilePlan, lineCells: lineCells, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);

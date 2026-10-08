@@ -598,7 +598,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
-import { planPile, planRemoval, lineCells, setUnitLoc, setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+import { laneMargin, planPile, planRemoval, lineCells, setUnitLoc, setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
 
 function bankSlice(levels = { loeffel: 3 }) {
   const g = new Game(3, 'hochrhein'), r = g.river;
@@ -1856,4 +1856,18 @@ test('Pfahl-Rückbau: vorgemerkte Pfähle werden herausgerammt, Beton teilweise 
   assert.ok(g.concrete > 3, 'ein Teil des Betons kommt zurück: ' + g.concrete); assert.equal(g.totals.pilesRemoved, 1); assert.equal(g.fleet.pileRemove.length, 0);
   assert.ok(r.cap[pile] > r.top[pile], 'Zelle kann wieder verlanden');
   planRemoval(g, [pile], true); assert.equal(g.fleet.pileRemove.length, 0, 'Zelle ohne Pfahl ist nicht vormerkbar');
+});
+
+test('Tiefe Rinne ohne Wand geht, wenn sie breit genug ist (Böschung); die Wand erlaubt schmalere Rinnen', () => {
+  const S = CONFIG.layer.slope, wide = (seed, cid, need) => {
+    const g = new Game(seed, 'hochrhein'), r = g.river, wl = r.wl, cls = shipById(cid), half = Math.floor(cls.beam / 2);
+    for (const n of g.fair.kahn.nodes) for (let y = 0; y < r.rows; y++) { const d = Math.max(0, Math.abs(y - n.y) - half), depth = need - d * S * 0.95, i = y * r.cols + n.x; if (depth > 0.4 && r.zone[i]) { r.top[i] = Math.min(r.top[i], wl - depth); r.rock[i] = Math.min(r.rock[i], r.top[i] - 0.4); } }
+    for (let i = 0; i < r.top.length; i++) r.pending.add(i);
+    for (let k = 0; k < 400; k++) r.settle(Infinity);
+    return analyzeClass(r, wl, cls).passable;
+  };
+  assert.equal(wide(7, 'container', 4.35), true, 'Containerschiff: breites Trapezprofil hält ohne Wand');
+  assert.equal(wide(7, 'tank', 3.25), true);
+  assert.equal(wide(7, 'schub', 5.55), false, 'Schubverband: der Korridor ist zu schmal für die Böschung (ohne Verbreiterung oder Wand)');
+  assert.equal(laneMargin({}, 1.7), 1); assert.ok(laneMargin({}, 4.3) >= 3 && laneMargin({}, 5.5) > laneMargin({}, 4.3), 'Flotte baggert je tiefer, desto breiter');
 });
