@@ -447,3 +447,10 @@ body.mode-map #map-select { order: 4; flex: none; }
 .ptab[hidden], .psec[hidden] { display: none; }
 @media (max-width: 899px) { #ptabs { top: 52px; } }
 body.mode-map #ptabs { top: 0; }
+
+/* Handy hochkant, Karte: Aktionsknöpfe in einer Zeile (seitlich wischbar) statt mehrerer Zeilen, damit die Karte gross bleibt und nicht springt */
+@media (max-width: 860px) and (orientation: portrait) {
+  body:not(.mode-map):not(.mode-slice) #shift-actions { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; gap: 6px; }
+  body:not(.mode-map):not(.mode-slice) #shift-actions::-webkit-scrollbar { display: none; }
+  body:not(.mode-map):not(.mode-slice) #shift-actions button { flex: 0 0 auto; min-height: 44px; padding: 6px 12px; font-size: 14px; white-space: nowrap; }
+}

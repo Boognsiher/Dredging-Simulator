@@ -21,6 +21,15 @@ const PPM = 44; // Querschnitt: Pixel pro Meter Höhe
 const SURF = 78; // Querschnitt: Bildzeile der Wasseroberfläche (darüber Ponton und Himmel)
 const PW = 24, PH = 46; // Pumpe in Pixeln, hochkant
 
+// Beschriftungen auf der Karte weichen einander aus: jede neue Beschriftung sucht von ihrer Wunschstelle aus die nächste freie Stelle (erst nach unten, dann nach oben)
+let LABELS = [];
+function labelDy(x, y, w, h) {
+  const hit = (yy) => LABELS.some((b) => x < b.x + b.w && b.x < x + w && yy < b.y + b.h && b.y < yy + h);
+  let dy = 0;
+  for (let k = 0; k < 9; k++) { const o = k === 0 ? 0 : (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (h + 1); if (y + o >= 0 && !hit(y + o)) { dy = o; break; } }
+  LABELS.push({ x, y: y + dy, w, h });
+  return dy;
+}
 export function sizeCanvas(canvas) { canvas.logicalW = W; canvas.logicalH = H; canvas.width = W; canvas.height = H; }
 
 // Schriftgrösse: das Bild wird auf kleinen Bildschirmen stark verkleinert (view.s = CSS-Pixel je logischem Pixel).
@@ -88,6 +97,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
       if (r.debris[i]) { ctx.fillStyle = '#f2f2f2'; ctx.fillRect(px + 5, py + 5, 6, 6); ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(px + 5.5, py + 5.5, 5, 5); }
     }
   }
+  LABELS = [];
   drawDeposits(ctx, game, ui);
   // Auswahl einer Schiffsklasse: wo fehlt Tiefe, wo läuft die günstigste Rinne
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
@@ -138,7 +148,8 @@ function drawClassOverlay(ctx, game, cls) {
     ctx.beginPath(); sp.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); ctx.stroke();
     ctx.strokeStyle = '#ffb04d'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.restore();
     const mid = sp[Math.floor(sp.length / 2)]; ctx.font = font(11); const t = '2. Rinne', tw = ctx.measureText(t).width + 8;
-    ctx.fillStyle = '#000b'; ctx.fillRect(OX + mid.x * CELL - tw / 2, mid.y * CELL - fs(11) - 6, tw, fs(11) + 4); ctx.fillStyle = '#ffd9a8'; ctx.fillText(t, OX + mid.x * CELL - tw / 2 + 4, mid.y * CELL - 8);
+    const rdy = labelDy(OX + mid.x * CELL - tw / 2, mid.y * CELL - fs(11) - 6, tw, fs(11) + 4);
+    ctx.fillStyle = '#000b'; ctx.fillRect(OX + mid.x * CELL - tw / 2, mid.y * CELL - fs(11) - 6 + rdy, tw, fs(11) + 4); ctx.fillStyle = '#ffd9a8'; ctx.fillText(t, OX + mid.x * CELL - tw / 2 + 4, mid.y * CELL - 8 + rdy);
   }
   if (f.path) {
     const pts = f.path.points;
@@ -279,7 +290,8 @@ function drawLandSide(ctx, game, ui) {
       ctx.fillStyle = ok ? '#c29a68' : '#8a7560'; ctx.fillRect(x + 3, y + 3, w - 6, hh - 6);
       ctx.strokeStyle = '#3d2c1b'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, hh - 2);
       ctx.font = font(14); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText('🏭', x + w / 2, y + hh / 2 + fs(14) * 0.35);
-      ctx.font = font(11); ctx.fillStyle = ok ? '#c7f5c9' : '#ffb4a8'; ctx.fillText(ok ? `Lager ${h.level} ✓` : 'nicht angebunden', x + w / 2, y - 3); ctx.textAlign = 'start';
+      ctx.font = font(11); const ht = ok ? `Lager ${h.level} ✓` : 'nicht angebunden', hw = ctx.measureText(ht).width + 4, hdy2 = labelDy(x + w / 2 - hw / 2, y - 3 - fs(11), hw, fs(11) + 3);
+      ctx.fillStyle = ok ? '#c7f5c9' : '#ffb4a8'; ctx.fillText(ht, x + w / 2, y - 3 + hdy2); ctx.textAlign = 'start';
     }
   }
   if (!ui.landMode) return;
@@ -345,7 +357,8 @@ function drawHarbor(ctx, game) {
   const cx = x + w / 2, label = open ? (ready ? '⚓ Hafen' : `⚓ Hafen ${d.toFixed(1)}/${PORT.bay.target.toFixed(1)} m`) : '⚓ Hafen (frei)';
   ctx.font = font(12); ctx.textAlign = 'center';
   const tw = ctx.measureText(label).width + 10, ty = bay.side < 0 ? y - 4 : y + h + fs(12) + 4;
-  ctx.fillStyle = '#000b'; ctx.fillRect(cx - tw / 2, ty - fs(12) - 1, tw, fs(12) + 5); ctx.fillStyle = ready ? '#b9f5c9' : '#ffe08a'; ctx.fillText(label, cx, ty + 1);
+  const hdy = labelDy(cx - tw / 2, ty - fs(12) - 1, tw, fs(12) + 5);
+  ctx.fillStyle = '#000b'; ctx.fillRect(cx - tw / 2, ty - fs(12) - 1 + hdy, tw, fs(12) + 5); ctx.fillStyle = ready ? '#b9f5c9' : '#ffe08a'; ctx.fillText(label, cx, ty + 1 + hdy);
   ctx.textAlign = 'start';
 }
 
@@ -378,7 +391,8 @@ function drawZones(ctx, game, ui) {
     ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.moveTo(x0 + z.w * CELL, 0); ctx.lineTo(x0 + z.w * CELL, H); ctx.stroke(); ctx.setLineDash([]);
     const label = ready ? `Kreuzung ${c.icon} ✓` : `Kreuzung ${c.icon}: fehlt ${p.volume === Infinity ? '?' : Math.round(p.volume) + ' m³'}`;
     ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(label).width + 10;
-    ctx.fillStyle = '#000b'; ctx.fillRect(x0 + z.w * CELL / 2 - tw / 2, 3, tw, fs(12) + 6); ctx.fillStyle = ready ? '#d6f5a8' : '#ffe08a'; ctx.fillText(label, x0 + z.w * CELL / 2, 4 + fs(12)); ctx.textAlign = 'start';
+    const zdy = labelDy(x0 + z.w * CELL / 2 - tw / 2, 3, tw, fs(12) + 6);
+    ctx.fillStyle = '#000b'; ctx.fillRect(x0 + z.w * CELL / 2 - tw / 2, 3 + zdy, tw, fs(12) + 6); ctx.fillStyle = ready ? '#d6f5a8' : '#ffe08a'; ctx.fillText(label, x0 + z.w * CELL / 2, 4 + fs(12) + zdy); ctx.textAlign = 'start';
   }
 }
 
@@ -398,7 +412,8 @@ function drawFleet(ctx, game) {
     ctx.fillRect(-CELL * 1.1, -CELL * 0.7, CELL * 2.2, CELL * 1.4); ctx.strokeRect(-CELL * 1.1, -CELL * 0.7, CELL * 2.2, CELL * 1.4);
     ctx.fillStyle = '#1b2a33'; ctx.fillRect(-CELL * 0.35, -CELL * 0.35, CELL * 0.7, CELL * 0.7);
     ctx.restore();
-    ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillStyle = '#000b'; ctx.fillText(u.name, px + 1, py - CELL + 1); ctx.fillStyle = '#d9f7ff'; ctx.fillText(u.name, px, py - CELL); ctx.textAlign = 'start';
+    ctx.font = font(11); ctx.textAlign = 'center'; const nw = ctx.measureText(u.name).width + 4, ndy = labelDy(px - nw / 2, py - CELL - fs(11), nw, fs(11) + 3);
+    ctx.fillStyle = '#000b'; ctx.fillText(u.name, px + 1, py - CELL + 1 + ndy); ctx.fillStyle = '#d9f7ff'; ctx.fillText(u.name, px, py - CELL + ndy); ctx.textAlign = 'start';
   }
 }
 
