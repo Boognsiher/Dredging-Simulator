@@ -2,6 +2,7 @@ import { CONFIG, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
 import { hallCapacity, roadFactor } from './land.js';
 import { priceOf, ratioOf } from './market.js';
+import { ensureHarbor, harborDepth, harborAccepts, harborTarget } from './harbor.js';
 
 // Hafen an Land: Kai mit Verladestation plus Lager (Kies, Tanklager) und Sanierungsanlage (Altlasten). Reine Daten und Logik, speicherbar.
 // Der Hafen handelt mit Waren: Schiffe der passenden Fracht laden bei hohen Preisen aus deinem Lager (du verkaufst) und entladen bei tiefen
@@ -27,7 +28,7 @@ export const PORT = {
 };
 
 // Hafenbecken: Bucht am Ufer (Karte), flach angelegt. Sie muss ausgebaggert werden, damit Schiffe anlegen können.
-PORT.bay = { w: 4, h: 3, depth0: 1.0, target: 2.3 };
+PORT.bay = { w: 4, h: 3, depth0: 2.6, target: 2.3 }; // Einfahrt am Ufer der Hauptkarte (tief); gebaggert wird im Becken der Hafenkarte
 export function carveBay(river, wl) {
   const B = PORT.bay, bx = Math.round(river.cols * 0.62) - 1, rimArmor = CONFIG.concrete.thickness;
   const edge = (x) => { let a = -1, b = -1; for (let y = 0; y < river.rows; y++) if (river.zone[y * river.cols + x]) { if (a < 0) a = y; b = y; } return [a, b]; };
@@ -63,11 +64,14 @@ export function carveBay(river, wl) {
 }
 // Tiefe, die 80 % des Hafenbeckens mindestens haben (m unter Wasser)
 export function bayDepth(g) {
+  if (g.port.harbor) return harborDepth(g.port, g.wl); // Hafenkarte: Tiefe des eigenen Beckens
   const bay = g.port.bay; if (!bay?.cells?.length) return PORT.bay.target; // alte Spielstände: kein Becken, kein Hindernis
   const d = bay.cells.map((i) => g.wl - g.river.top[i]).sort((a, b) => a - b); // der Hafen liegt an der ersten Karte
   return d[Math.floor(d.length * 0.2)];
 }
-export const bayReady = (g) => bayDepth(g) >= PORT.bay.target - 0.05;
+export const kaiLevel = (g) => slotsOf(g.port, 'kai')[0]?.level ?? 0;
+export const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g))) : PORT.bay.target);
+export const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.05;
 
 export function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
@@ -102,7 +106,7 @@ export function openBlock(g) {
 }
 export function openPort(g) {
   if (openBlock(g)) return false;
-  g.money -= PORT.openCost; g.port.open = true; g.port.spent += PORT.openCost;
+  g.money -= PORT.openCost; g.port.open = true; g.port.spent += PORT.openCost; ensureHarbor(g.port, g.wl);
   for (let i = 0; i < PORT.slots; i++) g.port.sites[i] = makeSite(g);
   g.say('Hafengelände erworben: Baue zuerst einen Kai mit Verladestation.', 'upgrade');
   return true;
@@ -227,7 +231,8 @@ export const machineOf = (g) => (slotsOf(g.port, 'kran').length ? 'kran' : 'radl
 // Reservierung: nur ein Schiff, für das ein Liegeplatz frei ist, steuert den Hafen an (der Platz gehört ihm ab der Einfahrt in die Rinne)
 export function reserveBerth(g, ship) {
   const p = g.port, J = PORT.jobs; p.jobs ??= []; if (!hasKai(g) || !PORT.commodities[ship.cargo] || capacity(g, ship.cargo) <= 0) return null;
-  if (ship.cls && bayDepth(g) < minNeedDepth(shipById(ship.cls))) return null; // Hafenbecken zu flach für dieses Schiff
+  ensureHarbor(p, g.wl);
+  if (ship.cls && (p.harbor ? !harborAccepts(p, g.wl, kaiLevel(g), ship.cls) : bayDepth(g) < minNeedDepth(shipById(ship.cls)))) return null; // Becken zu flach oder Klasse vom Kai nicht angenommen
   if (p.jobs.length >= berthsOf(g)) return null; // alle Liegeplätze belegt oder reserviert: Schiff fährt vorbei, kein Stau
   const id = ship.cargo, price = priceOf(g.market, id), out = ratioOf(g.market, id) >= 1;
   const job = { id: ++p.jobSeq, cargo: id, tons: Math.max(10, Math.round(ship.tons * PORT.shipShare)), done: 0, out, price, left: J.deadline, fee: 0, ship: shipLabel(ship), shipId: ship.id ?? null, state: 'reserved' };

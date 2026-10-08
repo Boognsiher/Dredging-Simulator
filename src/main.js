@@ -5,10 +5,11 @@ import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, ship
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
-import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
+import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
+import { makeHarborView, HARBOR } from './sim/harbor.js';
 import { toolName } from './sim/dredge.js';
 import { priceOf, trend } from './sim/market.js';
 import { needDepth, minNeedDepth } from './sim/fairway.js';
@@ -22,7 +23,7 @@ import { fitSize, renderQuality } from './ui/layout.js';
 import { hintsFor } from './ui/hints.js';
 import { Fx } from './ui/fx.js';
 import { createAudio } from './ui/audio.js';
-import { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } from './ui/render.js';
+import { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } from './ui/render.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
@@ -59,6 +60,7 @@ let paused = false, endShown = false;
 const readInput = createInput(canvas);
 sizeCanvas(canvas);
 let mapTarget = null;
+let harborView = false, mainSim = null, harborSim = null; // Hafenkarte: eigener Ponton fährt im Becken, die Hauptkarte pausiert für ihn
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false, menuOpen = false, mapFull = false, panYm = 0;
 let landMode = false, landTool = 'road'; // Landseite des Hafens bauen (Karte)
@@ -259,6 +261,8 @@ function updateDeposits() {
 // ---------- Karten (Endlos): Engstellen verwalten ----------
 function changeMap(i) {
   if (!game.endless || i === game.mapIdx || i < 0 || i >= game.maps.length) return;
+  if (harborView) leaveHarbor(true);
+  harborSim = null;
   if (tow) tow = null;
   if (sim.mode === 'slice') sim.leave();
   game.site = null; game.switchMap(i);
@@ -465,11 +469,11 @@ function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden;
   $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
-  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
+  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert${!u.self && game.port.harbor ? `<br>Einsatz: <select data-uloc="${u.id}"><option value="main" ${(u.loc ?? 'main') === 'main' ? 'selected' : ''}>Hauptkarte</option><option value="harbor" ${u.loc === 'harbor' ? 'selected' : ''}>Hafen</option></select>` : ''}</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
   const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
@@ -495,6 +499,7 @@ function updateFleet() {
   $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
   $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
   $('btn-lend').onclick = () => { if (sim.mode === 'slice') sim.leave(); if (lendPonton(game, sim.x, sim.y)) { syncMode(); fleetSig = null; updateFleet(); toast('Dein Ponton arbeitet für die Flotte', 'good', true); } };
+  for (const sel of box.querySelectorAll('[data-uloc]')) sel.onchange = () => { setUnitLoc(game, +sel.dataset.uloc, sel.value); fleetSig = null; updateFleet(); toast(sel.value === 'harbor' ? 'Ponton arbeitet jetzt im Hafen' : 'Ponton arbeitet wieder auf der Hauptkarte', 'info', true); };
   for (const b of box.querySelectorAll('[data-recall]')) b.onclick = () => { const pos = recallPonton(game); if (pos) { sim.x = pos.x; sim.y = pos.y; } fleetSig = null; updateFleet(); toast('Ponton zurückgerufen', 'info', true); };
   $('btn-area2').onclick = toggleAreaMode; $('btn-route2').onclick = toggleRouteMode;
   for (const b of box.querySelectorAll('[data-area-w]')) b.onclick = () => { const [id, d] = b.dataset.areaW.split(':'); const a = F.areas.find((q) => q.id === +id); setAreaWidth(game, +id, a.w + +d); fleetSig = null; updateFleet(); };
@@ -769,6 +774,26 @@ function anchor() {
 function leave() { if (tow) { tow = null; syncMode(); return; } if (sim.leave()) syncMode(); }
 
 // Aufläufer freischleppen: Ponton nahe ans Schiff, dann Minispiel
+// Hafenkarte: der eigene Ponton fährt im Hafenbecken (eigenes Flussbett), die Hauptkarte läuft im Hintergrund weiter
+function enterHarbor() {
+  if (harborView || tow) return;
+  if (!game.port.harbor) { toast('Der Hafen muss erst eröffnet sein (Hafen, H)', 'bad', true); return; }
+  if (lentUnit(game)) { toast('Dein Ponton arbeitet für die Flotte: erst zurücknehmen', 'bad', true); return; }
+  if (sim.mode === 'slice') sim.leave();
+  mainSim = sim;
+  if (!harborSim || harborSim.river !== game.port.harbor.river) { harborSim = game.createSession(game.port.harbor.river); harborSim.x = 1.5; harborSim.y = (HARBOR.entrance.y0 + HARBOR.entrance.y1 + 1) / 2; }
+  sim = harborSim; sim.setStats(game.stats); harborView = true; ui.harborView = true; document.body.classList.add('harbor-view');
+  mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; landMode = false; ui.landMode = false;
+  syncMode(); updateTowButton(); fitCanvas(); toast('Hafenkarte: Becken ausbaggern, Pontons im Panel «Flotte» zuteilen', 'info', true);
+}
+function leaveHarbor(silent = false) {
+  if (!harborView) return;
+  if (sim.mode === 'slice') sim.leave();
+  sim = mainSim; mainSim = null; harborView = false; ui.harborView = false; document.body.classList.remove('harbor-view'); mapTarget = null;
+  if (sim) sim.setStats(game.stats);
+  syncMode(); updateTowButton(); fitCanvas(); if (!silent) toast('Zurück auf der Hauptkarte', 'info', true);
+}
+function toggleHarborView() { if (harborView) leaveHarbor(); else enterHarbor(); }
 // Zum aufgelaufenen Schiff springen: Karte wechseln, Ponton neben das Schiff setzen
 function gotoShip({ map, ship: id }) {
   if (map !== game.mapIdx) { if (!game.endless) return; changeMap(map); }
@@ -804,6 +829,7 @@ function toggleLend() {
   if (lendPonton(game, sim.x, sim.y)) { fleetSig = null; updateFleet(); syncMode(); updateTowButton(); toast('Dein Ponton arbeitet für die Flotte (nochmals tippen: zurücknehmen)', 'good', true); }
 }
 function updateTowButton() {
+  const hb = $('btn-harborview'); hb.hidden = !game.port.open || !game.port.harbor || !!tow || (!harborView && sim.mode !== 'map'); hb.textContent = harborView ? '↩ Hauptkarte (Y)' : '⚓ Hafenkarte (Y)'; hb.classList.toggle('primary', harborView);
   const lb = $('btn-fleetlend'), lent = !!lentUnit(game);
   lb.hidden = !!tow || (!lent && game.stats.autoLevel < 1);
   lb.textContent = lent ? '↩ Aus Flotte nehmen (J)' : '🧑‍✈️ Zur Flotte (J)'; lb.classList.toggle('primary', lent);
@@ -944,6 +970,7 @@ function showLevels(note = '') {
 }
 
 function restart(loaded = null) {
+  harborView = false; ui.harborView = false; mainSim = null; harborSim = null; document.body.classList.remove('harbor-view');
   curTab = 'home'; newTabs = new Set(); unlockSilent = true; $('ptabs').dataset.sig = '';
   game = loaded instanceof Game ? loaded : loaded && typeof loaded === 'object' ? new Game(loaded.seed, loaded.levelId) : new Game(undefined, typeof loaded === 'string' ? loaded : game.levelId);
   sim = game.createSession(); sim.autoRange = game.autoRange ?? null; paused = false; endShown = false;
@@ -1009,7 +1036,7 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
-$('btn-fleetlend').onclick = toggleLend; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
+$('btn-harborview').onclick = toggleHarborView; $('btn-fleetlend').onclick = toggleLend; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
 for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
 $('land-done').onclick = toggleLandMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
@@ -1101,6 +1128,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyG')) toggleAreaMode();
       if (!tow && readInput.tap('KeyN')) toggleRouteMode();
       if (!tow && readInput.tap('KeyJ')) toggleLend();
+      if (!tow && readInput.tap('KeyY')) toggleHarborView();
       if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
@@ -1115,7 +1143,7 @@ function frame(now) {
       if (readInput.tap('KeyF')) setDepthValue(sim.targetDepth - 0.1);
       if (readInput.tap('KeyG')) setDepthValue(sim.targetDepth + 0.1);
     }
-    game.site = sim.mode === 'slice' ? { x: sim.x, y: sim.y } : null;
+    game.site = sim.mode === 'slice' && !harborView ? { x: sim.x, y: sim.y } : null;
     sim.bufferRoom = game.bufferRoom;
     sim.concreteAvail = game.concrete;
     if (tow) {
@@ -1196,8 +1224,8 @@ function frame(now) {
   if (tow) drawTowView(ctx, game, tow, ui);
   else if (sim.mode === 'slice') {
     const o = fx.offset();
-    ctx.save(); ctx.translate(o.x, o.y); drawSlice(ctx, game, sim, ui); fx.draw(ctx); ctx.restore();
-  } else drawMap(ctx, game, sim, ui);
+    ctx.save(); ctx.translate(o.x, o.y); drawSlice(ctx, harborView ? makeHarborView(game) : game, sim, ui); fx.draw(ctx); ctx.restore();
+  } else if (harborView) { const hv = makeHarborView(game); drawMap(ctx, hv, sim, ui); drawHarborScene(ctx, hv, ui); } else drawMap(ctx, game, sim, ui);
   panCanvas(1 / 60);
   requestAnimationFrame(frame);
 }

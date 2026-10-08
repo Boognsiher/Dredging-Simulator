@@ -469,6 +469,9 @@ body.mode-map #ptabs { top: 0; }
   body:not(.mode-map):not(.mode-slice) #shift-actions button { flex: 0 0 auto; min-height: 44px; padding: 6px 12px; font-size: 14px; white-space: nowrap; }
 }
 
+/* Hafenkarte: Aktionen der Hauptkarte ausblenden */
+body.harbor-view :is(#btn-area, #btn-route, #btn-zone, #btn-land, #btn-fleetlend, #btn-tow, #btn-goto) { display: none !important; }
+
 </style>
 </head>
 <body>
@@ -506,6 +509,7 @@ body.mode-map #ptabs { top: 0; }
         <button id="btn-auto">🤖 Auto (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
         <button id="btn-area" hidden>▭ Gebiet (G)</button>
+        <button id="btn-harborview" hidden>⚓ Hafenkarte (Y)</button>
         <button id="btn-fleetlend" hidden>🧑‍✈️ Zur Flotte (J)</button>
         <button id="btn-route" hidden>〰 Route (N)</button>
         <button id="btn-land" hidden>🛣 Land (L)</button>
@@ -615,27 +619,29 @@ const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } =
 const { PORT, buyPrice, sellPrice } = __m(4);
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(5);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
-const { Game } = __m(7);
-const { acceptContract } = __m(15);
-const { waitingByClass, shipPos } = __m(14);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(16);
-const { bayCapacity, maxZones, zoneClasses } = __m(14);
-const { materialPrice } = __m(17);
-const { TowSim, groundedNear } = __m(18);
-const { toolName } = __m(10);
+const { Game } = __m(9);
+const { acceptContract } = __m(16);
+const { waitingByClass, shipPos } = __m(15);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(17);
+const { bayCapacity, maxZones, zoneClasses } = __m(15);
+const { materialPrice } = __m(18);
+const { TowSim, groundedNear } = __m(19);
+const { makeHarborView, HARBOR } = __m(7);
+const { toolName } = __m(11);
 const { priceOf, trend } = __m(6);
 const { needDepth, minNeedDepth } = __m(3);
-const { Advisor } = __m(19);
-const { serializeGame, restoreGame, savedSummary } = __m(20);
-const { createInput } = __m(21);
-const { setupTouch } = __m(23);
-const { steerToward } = __m(22);
-const { setupPort } = __m(24);
-const { fitSize, renderQuality } = __m(25);
-const { hintsFor } = __m(26);
-const { Fx } = __m(27);
-const { createAudio } = __m(28);
-const { view, CELL, OX, sizeCanvas, drawMap, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(29);
+const { Advisor } = __m(20);
+const { serializeGame, restoreGame, savedSummary } = __m(21);
+const { createInput } = __m(22);
+const { setupTouch } = __m(24);
+const { steerToward } = __m(23);
+const { setupPort } = __m(25);
+const { fitSize, renderQuality } = __m(26);
+const { hintsFor } = __m(27);
+const { Fx } = __m(28);
+const { createAudio } = __m(29);
+const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(30);
+
 
 
 
@@ -697,6 +703,7 @@ let paused = false, endShown = false;
 const readInput = createInput(canvas);
 sizeCanvas(canvas);
 let mapTarget = null;
+let harborView = false, mainSim = null, harborSim = null; // Hafenkarte: eigener Ponton fährt im Becken, die Hauptkarte pausiert für ihn
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false, menuOpen = false, mapFull = false, panYm = 0;
 let landMode = false, landTool = 'road'; // Landseite des Hafens bauen (Karte)
@@ -897,6 +904,8 @@ function updateDeposits() {
 // ---------- Karten (Endlos): Engstellen verwalten ----------
 function changeMap(i) {
   if (!game.endless || i === game.mapIdx || i < 0 || i >= game.maps.length) return;
+  if (harborView) leaveHarbor(true);
+  harborSim = null;
   if (tow) tow = null;
   if (sim.mode === 'slice') sim.leave();
   game.site = null; game.switchMap(i);
@@ -1103,11 +1112,11 @@ function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden;
   $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
-  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
+  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert${!u.self && game.port.harbor ? `<br>Einsatz: <select data-uloc="${u.id}"><option value="main" ${(u.loc ?? 'main') === 'main' ? 'selected' : ''}>Hauptkarte</option><option value="harbor" ${u.loc === 'harbor' ? 'selected' : ''}>Hafen</option></select>` : ''}</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
   const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
@@ -1133,6 +1142,7 @@ function updateFleet() {
   $('fleet-goal').onchange = (e) => { setGoal(game, e.target.value || null); fleetSig = null; updateFleet(); };
   $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
   $('btn-lend').onclick = () => { if (sim.mode === 'slice') sim.leave(); if (lendPonton(game, sim.x, sim.y)) { syncMode(); fleetSig = null; updateFleet(); toast('Dein Ponton arbeitet für die Flotte', 'good', true); } };
+  for (const sel of box.querySelectorAll('[data-uloc]')) sel.onchange = () => { setUnitLoc(game, +sel.dataset.uloc, sel.value); fleetSig = null; updateFleet(); toast(sel.value === 'harbor' ? 'Ponton arbeitet jetzt im Hafen' : 'Ponton arbeitet wieder auf der Hauptkarte', 'info', true); };
   for (const b of box.querySelectorAll('[data-recall]')) b.onclick = () => { const pos = recallPonton(game); if (pos) { sim.x = pos.x; sim.y = pos.y; } fleetSig = null; updateFleet(); toast('Ponton zurückgerufen', 'info', true); };
   $('btn-area2').onclick = toggleAreaMode; $('btn-route2').onclick = toggleRouteMode;
   for (const b of box.querySelectorAll('[data-area-w]')) b.onclick = () => { const [id, d] = b.dataset.areaW.split(':'); const a = F.areas.find((q) => q.id === +id); setAreaWidth(game, +id, a.w + +d); fleetSig = null; updateFleet(); };
@@ -1407,6 +1417,26 @@ function anchor() {
 function leave() { if (tow) { tow = null; syncMode(); return; } if (sim.leave()) syncMode(); }
 
 // Aufläufer freischleppen: Ponton nahe ans Schiff, dann Minispiel
+// Hafenkarte: der eigene Ponton fährt im Hafenbecken (eigenes Flussbett), die Hauptkarte läuft im Hintergrund weiter
+function enterHarbor() {
+  if (harborView || tow) return;
+  if (!game.port.harbor) { toast('Der Hafen muss erst eröffnet sein (Hafen, H)', 'bad', true); return; }
+  if (lentUnit(game)) { toast('Dein Ponton arbeitet für die Flotte: erst zurücknehmen', 'bad', true); return; }
+  if (sim.mode === 'slice') sim.leave();
+  mainSim = sim;
+  if (!harborSim || harborSim.river !== game.port.harbor.river) { harborSim = game.createSession(game.port.harbor.river); harborSim.x = 1.5; harborSim.y = (HARBOR.entrance.y0 + HARBOR.entrance.y1 + 1) / 2; }
+  sim = harborSim; sim.setStats(game.stats); harborView = true; ui.harborView = true; document.body.classList.add('harbor-view');
+  mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; landMode = false; ui.landMode = false;
+  syncMode(); updateTowButton(); fitCanvas(); toast('Hafenkarte: Becken ausbaggern, Pontons im Panel «Flotte» zuteilen', 'info', true);
+}
+function leaveHarbor(silent = false) {
+  if (!harborView) return;
+  if (sim.mode === 'slice') sim.leave();
+  sim = mainSim; mainSim = null; harborView = false; ui.harborView = false; document.body.classList.remove('harbor-view'); mapTarget = null;
+  if (sim) sim.setStats(game.stats);
+  syncMode(); updateTowButton(); fitCanvas(); if (!silent) toast('Zurück auf der Hauptkarte', 'info', true);
+}
+function toggleHarborView() { if (harborView) leaveHarbor(); else enterHarbor(); }
 // Zum aufgelaufenen Schiff springen: Karte wechseln, Ponton neben das Schiff setzen
 function gotoShip({ map, ship: id }) {
   if (map !== game.mapIdx) { if (!game.endless) return; changeMap(map); }
@@ -1442,6 +1472,7 @@ function toggleLend() {
   if (lendPonton(game, sim.x, sim.y)) { fleetSig = null; updateFleet(); syncMode(); updateTowButton(); toast('Dein Ponton arbeitet für die Flotte (nochmals tippen: zurücknehmen)', 'good', true); }
 }
 function updateTowButton() {
+  const hb = $('btn-harborview'); hb.hidden = !game.port.open || !game.port.harbor || !!tow || (!harborView && sim.mode !== 'map'); hb.textContent = harborView ? '↩ Hauptkarte (Y)' : '⚓ Hafenkarte (Y)'; hb.classList.toggle('primary', harborView);
   const lb = $('btn-fleetlend'), lent = !!lentUnit(game);
   lb.hidden = !!tow || (!lent && game.stats.autoLevel < 1);
   lb.textContent = lent ? '↩ Aus Flotte nehmen (J)' : '🧑‍✈️ Zur Flotte (J)'; lb.classList.toggle('primary', lent);
@@ -1582,6 +1613,7 @@ function showLevels(note = '') {
 }
 
 function restart(loaded = null) {
+  harborView = false; ui.harborView = false; mainSim = null; harborSim = null; document.body.classList.remove('harbor-view');
   curTab = 'home'; newTabs = new Set(); unlockSilent = true; $('ptabs').dataset.sig = '';
   game = loaded instanceof Game ? loaded : loaded && typeof loaded === 'object' ? new Game(loaded.seed, loaded.levelId) : new Game(undefined, typeof loaded === 'string' ? loaded : game.levelId);
   sim = game.createSession(); sim.autoRange = game.autoRange ?? null; paused = false; endShown = false;
@@ -1647,7 +1679,7 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
-$('btn-fleetlend').onclick = toggleLend; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
+$('btn-harborview').onclick = toggleHarborView; $('btn-fleetlend').onclick = toggleLend; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
 for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
 $('land-done').onclick = toggleLandMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
@@ -1739,6 +1771,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyG')) toggleAreaMode();
       if (!tow && readInput.tap('KeyN')) toggleRouteMode();
       if (!tow && readInput.tap('KeyJ')) toggleLend();
+      if (!tow && readInput.tap('KeyY')) toggleHarborView();
       if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
@@ -1753,7 +1786,7 @@ function frame(now) {
       if (readInput.tap('KeyF')) setDepthValue(sim.targetDepth - 0.1);
       if (readInput.tap('KeyG')) setDepthValue(sim.targetDepth + 0.1);
     }
-    game.site = sim.mode === 'slice' ? { x: sim.x, y: sim.y } : null;
+    game.site = sim.mode === 'slice' && !harborView ? { x: sim.x, y: sim.y } : null;
     sim.bufferRoom = game.bufferRoom;
     sim.concreteAvail = game.concrete;
     if (tow) {
@@ -1834,8 +1867,8 @@ function frame(now) {
   if (tow) drawTowView(ctx, game, tow, ui);
   else if (sim.mode === 'slice') {
     const o = fx.offset();
-    ctx.save(); ctx.translate(o.x, o.y); drawSlice(ctx, game, sim, ui); fx.draw(ctx); ctx.restore();
-  } else drawMap(ctx, game, sim, ui);
+    ctx.save(); ctx.translate(o.x, o.y); drawSlice(ctx, harborView ? makeHarborView(game) : game, sim, ui); fx.draw(ctx); ctx.restore();
+  } else if (harborView) { const hv = makeHarborView(game); drawMap(ctx, hv, sim, ui); drawHarborScene(ctx, hv, ui); } else drawMap(ctx, game, sim, ui);
   panCanvas(1 / 60);
   requestAnimationFrame(frame);
 }
@@ -2537,6 +2570,8 @@ const { CONFIG, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
 const { hallCapacity, roadFactor } = __m(5);
 const { priceOf, ratioOf } = __m(6);
+const { ensureHarbor, harborDepth, harborAccepts, harborTarget } = __m(7);
+
 
 
 
@@ -2566,7 +2601,7 @@ const PORT = {
 };
 
 // Hafenbecken: Bucht am Ufer (Karte), flach angelegt. Sie muss ausgebaggert werden, damit Schiffe anlegen können.
-PORT.bay = { w: 4, h: 3, depth0: 1.0, target: 2.3 };
+PORT.bay = { w: 4, h: 3, depth0: 2.6, target: 2.3 }; // Einfahrt am Ufer der Hauptkarte (tief); gebaggert wird im Becken der Hafenkarte
 function carveBay(river, wl) {
   const B = PORT.bay, bx = Math.round(river.cols * 0.62) - 1, rimArmor = CONFIG.concrete.thickness;
   const edge = (x) => { let a = -1, b = -1; for (let y = 0; y < river.rows; y++) if (river.zone[y * river.cols + x]) { if (a < 0) a = y; b = y; } return [a, b]; };
@@ -2602,11 +2637,14 @@ function carveBay(river, wl) {
 }
 // Tiefe, die 80 % des Hafenbeckens mindestens haben (m unter Wasser)
 function bayDepth(g) {
+  if (g.port.harbor) return harborDepth(g.port, g.wl); // Hafenkarte: Tiefe des eigenen Beckens
   const bay = g.port.bay; if (!bay?.cells?.length) return PORT.bay.target; // alte Spielstände: kein Becken, kein Hindernis
   const d = bay.cells.map((i) => g.wl - g.river.top[i]).sort((a, b) => a - b); // der Hafen liegt an der ersten Karte
   return d[Math.floor(d.length * 0.2)];
 }
-const bayReady = (g) => bayDepth(g) >= PORT.bay.target - 0.05;
+const kaiLevel = (g) => slotsOf(g.port, 'kai')[0]?.level ?? 0;
+const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g))) : PORT.bay.target);
+const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.05;
 
 function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
@@ -2641,7 +2679,7 @@ function openBlock(g) {
 }
 function openPort(g) {
   if (openBlock(g)) return false;
-  g.money -= PORT.openCost; g.port.open = true; g.port.spent += PORT.openCost;
+  g.money -= PORT.openCost; g.port.open = true; g.port.spent += PORT.openCost; ensureHarbor(g.port, g.wl);
   for (let i = 0; i < PORT.slots; i++) g.port.sites[i] = makeSite(g);
   g.say('Hafengelände erworben: Baue zuerst einen Kai mit Verladestation.', 'upgrade');
   return true;
@@ -2766,7 +2804,8 @@ const machineOf = (g) => (slotsOf(g.port, 'kran').length ? 'kran' : 'radlader');
 // Reservierung: nur ein Schiff, für das ein Liegeplatz frei ist, steuert den Hafen an (der Platz gehört ihm ab der Einfahrt in die Rinne)
 function reserveBerth(g, ship) {
   const p = g.port, J = PORT.jobs; p.jobs ??= []; if (!hasKai(g) || !PORT.commodities[ship.cargo] || capacity(g, ship.cargo) <= 0) return null;
-  if (ship.cls && bayDepth(g) < minNeedDepth(shipById(ship.cls))) return null; // Hafenbecken zu flach für dieses Schiff
+  ensureHarbor(p, g.wl);
+  if (ship.cls && (p.harbor ? !harborAccepts(p, g.wl, kaiLevel(g), ship.cls) : bayDepth(g) < minNeedDepth(shipById(ship.cls)))) return null; // Becken zu flach oder Klasse vom Kai nicht angenommen
   if (p.jobs.length >= berthsOf(g)) return null; // alle Liegeplätze belegt oder reserviert: Schiff fährt vorbei, kein Stau
   const id = ship.cargo, price = priceOf(g.market, id), out = ratioOf(g.market, id) >= 1;
   const job = { id: ++p.jobSeq, cargo: id, tons: Math.max(10, Math.round(ship.tons * PORT.shipShare)), done: 0, out, price, left: J.deadline, fee: 0, ship: shipLabel(ship), shipId: ship.id ?? null, state: 'reserved' };
@@ -2845,7 +2884,7 @@ function portDay(g) {
   }
 }
 
-return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 
@@ -3039,808 +3078,80 @@ function trend(m, id) {
 return { createMarket: createMarket, priceOf: priceOf, ratioOf: ratioOf, stepMarket: stepMarket, shockMarket: shockMarket, trend: trend };
 },
 function(){
-const { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } = __m(2);
-const { toolAvailable } = __m(8);
-const { River } = __m(9);
-const { carveFairway, analyzeFairway, zonePlan } = __m(3);
-const { DredgeSim } = __m(10);
-const { EVENTS } = __m(11);
-const { computeStats, upgradeCost } = __m(12);
-const { createRng } = __m(13);
-const { createMarket, stepMarket } = __m(6);
-const { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } = __m(4);
-const { createShipping, updateShipping } = __m(1);
-const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(14);
-const { processPlant, stockTotal, materialPrice } = __m(17);
-const { updateContracts } = __m(15);
-const { createFleet, updateFleet } = __m(16);
+const { CONFIG, KIND, SHIPS, shipById } = __m(2);
+const { River } = __m(8);
+const { minNeedDepth } = __m(3);
 
 
 
 
+// Hafenkarte: eigenes Raster zum Hafen einer Karte. Von links führt die Zufahrt (tief) in das Hafenbecken (anfangs flach, muss ausgebaggert werden);
+// ringsum ist Land (nicht abbaubar) mit Kaimauer. Die Pontons der Karte lassen sich zwischen Hauptkarte und Hafen aufteilen (unit.loc).
+// Reine Daten und Logik: das Flussbett liegt im Hafen (port.harbor.river) und wird mit gespeichert.
+const HARBOR = {
+  basin: { x0: 14, x1: 33, y0: 11, y1: 24 }, // Zellen des Hafenbeckens
+  entrance: { x0: 0, x1: 13, y0: 16, y1: 19 }, // Zufahrt vom Fluss
+  startDepth: 1.0, siltTo: 1.3, // das Becken verlandet wieder bis zu dieser Tiefe, wenn nicht gebaggert wird
+  entranceDepth: 2.8,
+  kaiClasses: [1, 2, 4], // so viele Schiffsklassen (der Reihe nach: Lastkahn, Motorschiff, Tankschiff, Containerschiff) nimmt der Kai je Stufe an
+  quayY: 10.5, berthX: [16, 20, 24, 28, 32], // Liegeplätze an der Nordkaimauer
+  plots: [[3, 3], [12, 3], [21, 3], [30, 3], [8, 27], [27, 27]], // Bauplätze (Zelle links oben) für die 6 Hafenplätze, Grösse 8×5
+  plotW: 8, plotH: 5,
+};
 
-
-
-
-
-
-
-
-
-
-
-
-// Zufallsfluss für den Endlos-Modus: Parameter aus (Seed, Kartennummer); spätere Karten sind schwerer
-const MAP_NAMES = ['Rheinfelden', 'Laufenburg', 'Kembs', 'Aare-Mündung', 'Thur-Enge', 'Bingen', 'Wesel', 'Eisernes Tor', 'Straubing', 'Passau', 'Basel', 'Koblenz'];
-const mapSeed = (seed, k) => ((seed >>> 0) * 2654435761 + k * 40503 + 12345) >>> 0;
-function endlessRiver(seed, k) {
-  const r = createRng(mapSeed(seed, k)), hard = Math.min(1, k / 5);
-  const bars = [8, 22, 36].map((x) => ({ x: Math.round(x + r.range(-2, 2)), w: +r.range(3, 4).toFixed(1), raise: +r.range(0.45, 0.6).toFixed(2) }));
-  const ridgeN = k === 0 ? 1 : 1 + (k >= 2 ? 1 : 0) + (k >= 4 ? 1 : 0), ridges = [];
-  for (let i = 0; i < ridgeN; i++) ridges.push({ x: Math.round(((i + 1) * 44) / (ridgeN + 1) + r.range(-3, 3)), w: +r.range(3, 5).toFixed(1), depth: +Math.max(3.1, 4.3 - 0.22 * k + r.range(-0.2, 0.2)).toFixed(2) });
-  const kinds = ['kiesbank', 'quarz', 'seife'], deposits = ['kiesbank'];
-  for (let i = 0; i < 2 + (k >= 2 ? 1 : 0); i++) deposits.push(kinds[r.int(0, 2)]);
-  return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
-    bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
+function createHarborRiver(wl) {
+  const r = new River(CONFIG.river.cols, CONFIG.river.rows), n = r.cols * r.rows, B = HARBOR.basin, E = HARBOR.entrance;
+  r.wl = wl;
+  r.top.fill(wl + 1.4); r.rock.fill(wl - 8); r.cap.fill(0); r.flow.fill(0); r.kind.fill(KIND.sand); r.zone.fill(0); r.ext.fill(0); r.hard.fill(0); r.debris.fill(0); r.armor.fill(0);
+  const water = (x0, x1, y0, y1, depth, cap, flow) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * r.cols + x; r.top[i] = wl - depth; r.cap[i] = wl - cap; r.zone[i] = 1; r.flow[i] = flow; r.kind[i] = KIND.sand; }
+  };
+  water(E.x0, E.x1, E.y0, E.y1, HARBOR.entranceDepth, HARBOR.entranceDepth - CONFIG.sediment.maxAbove, 0.45);
+  water(B.x0, B.x1, B.y0, B.y1, HARBOR.startDepth, HARBOR.siltTo, 0.15);
+  const rim = CONFIG.concrete.thickness; // Kaimauer: Landzellen am Wasser sind betoniert und rutschen nicht nach
+  for (let y = 0; y < r.rows; y++) for (let x = 0; x < r.cols; x++) {
+    const i = y * r.cols + x; if (r.zone[i]) continue;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < r.cols && ny < r.rows && r.zone[ny * r.cols + nx]) { r.armor[i] = rim; break; } }
+  }
+  const cells = []; for (let y = B.y0; y <= B.y1; y++) for (let x = B.x0; x <= B.x1; x++) cells.push(y * r.cols + x);
+  return { river: r, cells };
 }
-// Regionale Preise (Endlos): dauerhafter Aufschlag/Abschlag je Fracht und Karte, aus Seed und Kartennummer
-const BIAS_SPAN = { kies: 0.4, oel: 0.25, container: 0.3 }; // max. Abweichung des regionalen Preises
-function regionBias(seed, k) {
-  const br = createRng(mapSeed(seed, k) ^ 0x9e3779b9), span = BIAS_SPAN, bias = {};
-  for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-span[id], span[id]).toFixed(2);
-  return bias;
+// Hafenkarte anlegen (ältere Spielstände mit geöffnetem Hafen bekommen sie nachträglich)
+function ensureHarbor(p, wl) { if (p.open && !p.harbor) p.harbor = createHarborRiver(wl); return p.harbor ?? null; }
+
+// Tiefe, die 80 % des Beckens mindestens haben (m)
+function harborDepth(p, wl) {
+  const h = p.harbor; if (!h) return null;
+  const d = h.cells.map((i) => wl - h.river.top[i]).sort((a, b) => a - b);
+  return d[Math.floor(d.length * 0.2)];
 }
-const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0 });
+// Nimmt der Hafen diese Klasse an? Der Kai bestimmt, wie viele Klassen (Stufe 1: nur die einfachste), das Becken muss tief genug sein
+function harborAccepts(p, wl, kaiLevel, clsId) {
+  const k = SHIPS.findIndex((s) => s.id === clsId); if (k < 0 || k >= HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)]) return false;
+  const d = harborDepth(p, wl); return d !== null && d >= minNeedDepth(shipById(clsId)) - 0.02;
+}
+// Solltiefe für die Pontons im Becken: tief genug für die tiefste Klasse, die der Kai annimmt
+function harborTarget(kaiLevel) {
+  const k = HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)];
+  return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => minNeedDepth(s))) + 0.15);
+}
+// Liegeplatz i (Mitte des Schiffs, an der Nordkaimauer)
+const berthPos = (i) => ({ x: HARBOR.berthX[Math.min(i, HARBOR.berthX.length - 1)], y: HARBOR.basin.y0 + 1.1, angle: 0 });
 
-// Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
-// Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel (goalTons) schaltet das nächste Level frei.
-class Game {
-  constructor(seed = Date.now() & 0xffffff, levelId = 'hochrhein') {
-    this.seed = seed;
-    this.levelId = levelById(levelId).id;
-    this.rng = createRng(seed);
-    const L = levelById(this.levelId);
-    this.maps = [{ id: 0, name: MAP_NAMES[(seed >>> 0) % MAP_NAMES.length], seed, difficulty: 0 }]; // Karten (Engstellen); die Felder river, traffic, fleet, zones ... gehören zur aktuellen Karte (mapIdx)
-    this.mapIdx = 0;
-    this.river = River.generate(this.rng, L.endless ? endlessRiver(seed, 0) : L.river);
-    this.wl = this.river.wl;
-    this.water = { target: CONFIG.water.base, until: 0 };
-    this.closed = false; // Hochwasser: Schifffahrt gesperrt
-    this.strikeUntil = 0;
-    this.time = 0;
-    this.day = 1;
-    this.money = L.startMoney ?? CONFIG.startMoney;
-    this.levels = Object.fromEntries(Object.keys(UPGRADES).map((k) => [k, 0]));
-    this.stock = [0, 0, 0, 0, 0]; // Puffer vor der Anlage in m³ je Material
-    this.targetDepth = CONFIG.echolot.defaultDepth;
-    this.pumpSpeed = CONFIG.pumpSpeed.default;
-    this.autoRange = null; // Automatik-Bereich des Spielers (Zeilen quer zum Fluss)
-    this.tool = 'pump'; // zuletzt gewähltes Gerät des eigenen Pontons
-    this.concrete = 0; // Betonvorrat in m³ (gekauft oder im Betonwerk gemischt)
-    this.agg = { kies: 0, sand: 0 }; // Lager für das Betonwerk (m³)
-    this.divertAgg = true; // Kies und Sand ins Betonwerk statt verkaufen
-    this.market = createMarket(L.endless ? regionBias(seed, 0) : {});
-    this.traffic = createTraffic();
-    this.fleet = createFleet();
-    this.shipping = createShipping(); // eigene Reederei (global)
-    this.port = createPort(); // Hafen an Land (Kai, Lager, Handel)
-    this.zones = []; // Kreuzungsstellen: { id, x (Spalte der Mitte), w }
-    this.zoneSeq = 0;
-    this.unlocked = {}; // Schiffsklassen, die schon einmal fahren konnten
-    this.contracts = [];
-    this.contractSeq = 0;
-    this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
-    this.rejectedBy = {};
-    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, premium: 0, sunk: 0, sunkFines: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
-    this.today = freshDay();
-    this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
-    this.goalSeen = false;
-    this.tabsSeen = {}; // freigeschaltete Menü-Bereiche (Stufensystem der Oberfläche), bleiben freigeschaltet
-    this.fairSig = {}; // zuletzt bekannter Zustand je Klasse (für Meldungen "jetzt befahrbar")
-    this.status = 'playing'; // 'playing' | 'ended'
-    this.end = null; // { reason: 'goal' | 'deadline' | 'bankrupt', finalMoney, goalReached }
-    this.log = [];
-    this.notes = []; // Meldungen für die Oberfläche (Toast): { text, kind } (nicht gespeichert)
-    this.flash = []; // schwebende Beträge auf der Karte (nicht gespeichert)
-    this.site = null; // Position des verankerten Pontons (setzt die Oberfläche)
-    this.fairClock = 0;
-    this.sedClock = 0;
-    this.port.bay = carveBay(this.river, this.wl); // Hafenbecken (Bucht) am Ufer, flach: muss für den Hafenbetrieb vertieft werden
-    this.analyze();
-    carveFairway(this.river, this.wl, SHIPS.find((s) => s.id === L.classes[0])); // die kleinste Klasse kann von Anfang an fahren
-    this.analyze(true);
-  }
-
-  get level() { return levelById(this.levelId); }
-  get endless() { return !!this.level.endless; }
-  get map() { return this.maps[this.mapIdx]; }
-
-  // Stau auf der Karte: Bei Niedrigwasser, gesperrter Rinne oder Hochwasser-Sperre können die Schiffe nicht fahren, die Ware staut sich
-  // und der Preis vor Ort sinkt (bis -30 %): günstig einkaufen und im Hafenlager einlagern, bis die Schiffe wieder fahren
-  glutTarget() {
-    const K = CONFIG.water;
-    if (this.closed) return 0.3;
-    const low = Math.min(1, Math.max(0, (K.base - 0.1 - this.wl) / 0.5)), act = SHIPS.filter((s) => this.unlocked[s.id]);
-    const blocked = act.length ? act.filter((s) => !this.fair?.[s.id]?.passable).length / act.length : 0;
-    return Math.max(0.25 * low, 0.2 * blocked);
-  }
-  updateGlut(dt) { const m = this.market; m.glut = (m.glut ?? 0) + (this.glutTarget() - (m.glut ?? 0)) * Math.min(1, dt * 0.1); }
-
-  // Weitere Karte (Engstelle) erschliessen: nur im Endlos-Modus; jede kostet mehr und ist schwerer
-  mapCost() { return this.maps.length >= (ENDLESS.maxMaps) ? null : ENDLESS.mapCosts[this.maps.length]; }
-  mapBlock() {
-    if (!this.endless) return 'Nur im Endlos-Modus';
-    if (this.status !== 'playing') return 'Spiel beendet';
-    const c = this.mapCost();
-    if (c === null) return 'Das Flussnetz ist vollständig erschlossen';
-    return this.money < c ? `Braucht ${c.toLocaleString('de-CH')} CHF` : null;
-  }
-  addMap() {
-    if (this.mapBlock()) return false;
-    const k = this.maps.length, cost = this.mapCost(), seed = mapSeed(this.seed, k), cur = this.mapIdx;
-    this.money -= cost;
-    let name = MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
-    const river = River.generate(createRng(seed), endlessRiver(this.seed, k)); river.wl = this.wl;
-    const bias = regionBias(this.seed, k); // regionale Preise: Handel zwischen den Karten lohnt sich
-    this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
-    this.mapIdx = k;
-    this.port.bay = carveBay(this.river, this.wl);
-    this.analyze();
-    carveFairway(this.river, this.wl, SHIPS.find((s) => s.id === this.level.classes[0]));
-    this.analyze(true);
-    this.mapIdx = cur;
-    this.say(`Neue Karte erschlossen: ${name} (−${cost.toLocaleString('de-CH')} CHF). Schwierigkeit ${k + 1}.`, 'upgrade');
-    return k;
-  }
-  switchMap(i) { if (i < 0 || i >= this.maps.length || i === this.mapIdx) return false; this.mapIdx = i; return true; }
-  get stats() { return (this._stats ??= computeStats(this.levels)); }
-  get stockTotal() { return stockTotal(this.stock); }
-  get bufferRoom() { return Math.max(0, this.stats.bufferCapacity - this.stockTotal); }
-  get deadlineDays() { return this.level.deadlineDays ?? CONFIG.deadlineDays; }
-  get totalSeconds() { return this.deadlineDays * CONFIG.daySeconds; }
-  get timeLeft() { return Math.max(0, this.totalSeconds - this.time); }
-  get goalReached() { return this.totals.tons >= this.level.goalTons; }
-
-  notify(text, kind = 'info', extra = null) { this.notes.push({ text, kind, ...extra }); }
-  say(text, kind = 'info') { this.log.unshift({ day: this.day, text, kind }); this.log.length = Math.min(this.log.length, 60); }
-
-  setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
-
-  // gesperrt: Anlage über Stufe 6 braucht die Aufbereitungshalle im Hafen
-  upgradeLocked(id) { return id === 'plant' && this.levels.plant >= plantLimit(this) && this.levels.plant < UPGRADES.plant.maxLevel; }
-  nextUpgradeCost(id) { return this.levels[id] >= UPGRADES[id].maxLevel || this.upgradeLocked(id) ? null : upgradeCost(id, this.levels[id]); }
-
-  buyUpgrade(id) {
-    const cost = this.nextUpgradeCost(id);
-    if (cost === null || this.money < cost || this.status !== 'playing') return false;
-    this.money -= cost; this.levels[id]++; this._stats = null;
-    this.say(`${UPGRADES[id].name} auf Stufe ${this.levels[id]} (−${cost} CHF)`, 'upgrade');
-    return true;
-  }
-
-  refundFor(id) { return this.levels[id] <= 0 ? null : Math.round((upgradeCost(id, this.levels[id] - 1) * CONFIG.refundShare) / 10) * 10; }
-
-  sellUpgrade(id) {
-    const refund = this.refundFor(id);
-    if (refund === null || this.status !== 'playing') return false;
-    this.levels[id]--; this._stats = null; this.money += refund;
-    this.say(`${UPGRADES[id].name} auf Stufe ${this.levels[id]} zurückgebaut (+${refund} CHF)`, 'upgrade');
-    return true;
-  }
-
-  createSession() {
-    const sim = new DredgeSim(this.river, this.stats, this.rng);
-    sim.targetDepth = this.targetDepth;
-    sim.pumpSpeed = this.pumpSpeed;
-    sim.bufferRoom = this.bufferRoom;
-    sim.turbidityMult = this.level.turbidityMult ?? 1;
-    if (toolAvailable(this.stats, this.tool)) sim.tool = this.tool;
-    sim.concreteAvail = this.concrete;
-    return sim;
-  }
-
-  // Fahrrinnen neu auswerten; meldet, wenn eine Klasse befahrbar wird oder die Rinne wieder zu flach wird
-  analyze(silent = false) {
-    this.fair = analyzeFairway(this.river, Math.min(this.wl, CONFIG.water.base)); // Hochwasser öffnet keine Klassen: massgebend ist der Normalpegel (Niedrigwasser sperrt)
-    for (const cls of SHIPS) {
-      if (!this.level.classes.includes(cls.id)) continue;
-      const f = this.fair[cls.id], was = this.fairSig[cls.id];
-      if (f.passable && !this.unlocked[cls.id]) {
-        this.unlocked[cls.id] = true;
-        if (!silent && was !== undefined) { const at = this.maps.length > 1 ? ` (${this.map.name})` : ''; this.say(`Neue Schiffsklasse freigeschaltet: ${cls.name}${at}! Reedereien schicken ab jetzt solche Schiffe.`, 'good'); this.notify(`${cls.icon} ${cls.name} freigeschaltet${at}: ab jetzt kommen solche Schiffe`, 'good'); }
-      } else if (was !== undefined && !silent && f.passable !== was) {
-        if (f.passable) { this.say(`Fahrrinne wieder frei für ${cls.name}.`, 'good'); }
-        else if (!this.closed) this.say(`Rinne für ${cls.name} ist zu flach geworden (Pegel oder Verlandung).`, 'bad');
-      }
-      this.fairSig[cls.id] = f.passable;
-    }
-  }
-
-  // Klasse, für die neue Kreuzungsstellen geplant werden (gewählt, sonst die grösste Klasse, die schon fährt)
-  get zoneClassId() {
-    const ids = this.level.classes;
-    if (this.zoneClass && ids.includes(this.zoneClass)) return this.zoneClass;
-    const act = activeClasses(this);
-    return (act[act.length - 1] ?? SHIPS.find((s) => s.id === ids[0])).id;
-  }
-
-  // Plan einer Kreuzungsstelle für eine Klasse: fehlendes Volumen (m³) und Fenster; bereit = zwei Rinnen sind schon da
-  zonePlanFor(x, clsId = this.zoneClassId) {
-    const cls = SHIPS.find((s) => s.id === clsId), z = { x, w: CONFIG.zones.width };
-    return { ...zonePlan(this.river, Math.min(this.wl, CONFIG.water.base), cls, x, z.w), ready: zoneSupports(this, z, clsId), cls: clsId };
-  }
-
-  // Kreuzungsstelle planen (Mitte in Spalte x). Geplant werden darf überall, wo auch mit Uferstreifen genug Breite entstehen kann;
-  // benutzt wird sie erst, wenn die zwei Rinnen ausgebaggert sind. Anzahl begrenzt (Rotlichter erhöhen sie).
-  zoneBlock(x, clsId = this.zoneClassId) {
-    const Z = CONFIG.zones;
-    if (this.status !== 'playing') return 'Spiel beendet';
-    if (x < 2 || x > this.river.cols - 3) return 'Zu nah am Rand';
-    if (this.zones.some((z) => Math.abs(z.x - x) < Z.width + 1)) return 'Zu nah an einer anderen Kreuzungsstelle';
-    if (this.zones.length >= maxZones(this)) return 'Mehr Kreuzungsstellen brauchen Rotlichter (Wasserstrasse ausbauen)';
-    if (this.zonePlanFor(x, clsId).volume === Infinity) return 'Hier ist die Rinne auch mit dem Uferstreifen zu schmal für zwei Schiffe';
-    if (this.money < Z.cost) return `Braucht ${Z.cost.toLocaleString('de-CH')} CHF`;
-    return null;
-  }
-  placeZone(x, clsId = this.zoneClassId) {
-    if (this.zoneBlock(x, clsId)) return false;
-    this.money -= CONFIG.zones.cost;
-    this.zones.push({ id: ++this.zoneSeq, x, w: CONFIG.zones.width, cls: clsId });
-    const p = this.zonePlanFor(x, clsId);
-    this.say(`Kreuzungsstelle bei Spalte ${x + 1} geplant (−${CONFIG.zones.cost} CHF): ${p.ready ? 'sofort nutzbar' : `noch ${Math.round(p.volume)} m³ auszutragen`}`, 'upgrade');
-    return true;
-  }
-  setZoneClass(id, clsId) { const z = this.zones.find((q) => q.id === id); if (z && SHIPS.some((s) => s.id === clsId)) z.cls = clsId; return !!z; }
-  removeZone(id) {
-    const i = this.zones.findIndex((z) => z.id === id);
-    if (i < 0) return false;
-    this.zones.splice(i, 1);
-    return true;
-  }
-
-  // Rohstoffvorkommen erkunden (das nächste unbekannte) und Konzession erwerben
-  exploreBlock() {
-    if (this.status !== 'playing') return 'Spiel beendet';
-    if (!this.river.deposits.some((d) => !d.known)) return 'Alle Vorkommen sind bekannt';
-    if (this.money < CONFIG.deposits.exploreCost) return `Braucht ${CONFIG.deposits.exploreCost.toLocaleString('de-CH')} CHF`;
-    return null;
-  }
-  explore() {
-    if (this.exploreBlock()) return null;
-    const d = this.river.deposits.find((q) => !q.known);
-    this.money -= CONFIG.deposits.exploreCost; d.known = true; this.totals.explored = (this.totals.explored ?? 0) + 1;
-    this.say(`Erkundet: ${d.name} bei Spalte ${Math.round(d.cx) + 1} (Aufschlag ×${d.mult}). Mit Konzession lohnt sich der Abbau.`, 'good');
-    this.notify(`Vorkommen gefunden: ${d.name}`, 'good');
-    return d;
-  }
-  // Täglich: leere Vorkommen verschwinden, mit der Zeit erscheinen neue zum Kauf (bekannt, Konzession kostet), solange weniger als drei aktiv sind
-  depositsDay() {
-    const D = CONFIG.deposits;
-    for (const m of this.maps) {
-      const r = m.river, name = this.maps.length > 1 ? `${m.name}: ` : '';
-      for (const d of r.deposits) if (!d.depleted && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
-      const active = r.deposits.filter((d) => !d.depleted).length;
-      if (active < D.maxActive && this.rng() < D.spawnChance) {
-        const T = DEPOSITS[Math.floor(this.rng() * DEPOSITS.length)], d = r.spawnDeposit(this.rng, T);
-        if (d) { this.say(`${name}Neues Vorkommen entdeckt: ${d.name} bei Spalte ${Math.round(d.cx) + 1}. Konzession ${d.cost.toLocaleString('de-CH')} CHF.`, 'good'); this.notify(`${name}Neues Vorkommen: ${d.name}`, 'good'); }
-      }
-    }
-  }
-  concessionBlock(id) {
-    const d = this.river.deposits[id - 1];
-    if (!d || !d.known || d.depleted) return d?.depleted ? 'Vorkommen ist abgebaut' : 'Erst erkunden';
-    if (d.owned) return 'Schon erworben';
-    if (this.money < d.cost) return `Braucht ${d.cost.toLocaleString('de-CH')} CHF`;
-    return this.status === 'playing' ? null : 'Spiel beendet';
-  }
-  buyConcession(id) {
-    if (this.concessionBlock(id)) return false;
-    const d = this.river.deposits[id - 1];
-    this.money -= d.cost; d.owned = true;
-    this.say(`Konzession für ${d.name} erworben (−${d.cost} CHF): Aufschlag ×${d.mult} auf den Abbau.`, 'upgrade');
-    return true;
-  }
-
-  // Naturschutzstreifen (Flachwasser am Ufer) abschnittsweise freikaufen: wird zum Baggerkorridor, die Rinne kann breiter werden
-  shoreSections() {
-    const r = this.river, P = CONFIG.zones.shoreParts, out = [];
-    for (let side = 0; side < 2; side++) for (let part = 0; part < P; part++) out.push({ side, part, cells: [] });
-    for (let x = 0; x < r.cols; x++) {
-      const part = Math.min(P - 1, Math.floor((x / r.cols) * P));
-      for (let y = 0; y < r.rows; y++) {
-        const i = r.idx(x, y);
-        if (r.isWater(i) && !r.zone[i] && r.ext[i] === 2) out[(y + 0.5 < r.centerY(x) ? 0 : P) + part].cells.push(i);
-      }
-    }
-    for (const sec of out) sec.cost = sec.cells.length * CONFIG.zones.shoreCell;
-    return out;
-  }
-  shoreBlock(side, part) {
-    const sec = this.shoreSections().find((q) => q.side === side && q.part === part);
-    if (!sec || !sec.cells.length) return 'Schon freigegeben';
-    if (this.status !== 'playing') return 'Spiel beendet';
-    return this.money < sec.cost ? `Braucht ${Math.round(sec.cost).toLocaleString('de-CH')} CHF` : null;
-  }
-  buyShore(side, part) {
-    if (this.shoreBlock(side, part)) return false;
-    const sec = this.shoreSections().find((q) => q.side === side && q.part === part), r = this.river;
-    for (const i of sec.cells) { r.zone[i] = 1; r.ext[i] = 0; }
-    this.money -= sec.cost; this.totals.shoreSpend = (this.totals.shoreSpend ?? 0) + sec.cost;
-    this.say(`Naturschutzstreifen freigegeben (−${Math.round(sec.cost)} CHF): ${sec.cells.length} Zellen sind jetzt Baggerkorridor.`, 'upgrade');
-    this.analyze(true);
-    return true;
-  }
-
-  // Beton zukaufen (m³): kostet CONFIG.concrete.price pro m³, Lager hat eine Obergrenze
-  concreteBlock(m3) {
-    const C = CONFIG.concrete;
-    if (this.status !== 'playing') return 'Spiel beendet';
-    if (this.concrete + m3 > C.stockCap + 1e-9) return 'Betonlager voll';
-    if (this.money < m3 * C.price) return `Braucht ${Math.round(m3 * C.price).toLocaleString('de-CH')} CHF`;
-    return null;
-  }
-  buyConcrete(m3) {
-    if (this.concreteBlock(m3)) return false;
-    const cost = m3 * CONFIG.concrete.price;
-    this.money -= cost; this.concrete += m3; this.totals.concreteBought += m3; this.totals.concreteSpend += cost;
-    this.say(`${m3} m³ Beton gekauft (−${Math.round(cost).toLocaleString('de-CH')} CHF)`, 'upgrade');
-    return true;
-  }
-
-  // Aufgelaufenes Schiff vom Ponton freigeschleppt (Minispiel): sofort flott, ein Teil der Bergungskosten kommt zurück
-  rescueShip(id) {
-    const ship = this.traffic.ships.find((s) => s.id === id);
-    if (!ship || ship.state !== 'grounded') return false;
-    ship.state = 'sail'; ship.ground = 0; ship.safeT = CONFIG.traffic.tugFreeMax; // fährt mindestens tugFreeSeconds weiter und über die Untiefe hinweg, bevor es wieder auflaufen kann
-    const refund = Math.round(((ship.salvage ?? 0) * CONFIG.tow.refund) / 10) * 10;
-    this.money += refund; this.totals.rescued++; this.totals.rescueRefund += refund; this.totals.salvage -= refund;
-    this.say(`Schiff freigeschleppt! Bergungskosten −${refund} CHF gespart.`, 'good');
-    this.notify(`Schiff frei! +${refund.toLocaleString('de-CH')} CHF zurück`, 'good');
-    this.flash.push({ x: 2, y: 2, text: `+${refund}`, color: '#7bd88f' });
-    return true;
-  }
-
-  // Verbucht, was der Ponton in einem Schritt getan hat (siehe DredgeSim.update)
-  collect(d) {
-    if (this.status !== 'playing') return;
-    for (let k = 0; k < 5; k++) { this.stock[k] += d.by[k]; this.totals.byKind[k] += d.by[k]; }
-    if (d.concrete) { this.concrete = Math.max(0, this.concrete - d.concrete); this.totals.concreteUsed += d.concrete; }
-    const pay = d.zone * CONFIG.pay.perM3, protect = d.out * CONFIG.pay.protectFine, land = (d.land ?? 0) * CONFIG.pay.landFee;
-    let bomb = 0;
-    if (d.bombs) { bomb = 4500 * d.bombs; this.totals.bombs += d.bombs; this.say(`Blindgänger! Der Kampfmittelräumdienst rückt aus (−${bomb} CHF).`, 'bad'); this.notify('Fliegerbombe! Kampfmittelräumdienst −4500 CHF', 'bad'); }
-    this.money += pay - protect - land - d.fines - d.repairs - bomb;
-    // Rohstoffvorkommen mit Konzession: der Preisaufschlag wird sofort bar bezahlt
-    let premium = 0;
-    for (const [id, vol] of Object.entries(d.dep ?? {})) {
-      const dep = this.river.deposits[id - 1];
-      if (!dep) continue;
-      if (dep.owned) premium += vol * materialPrice(dep.kind, this.stats, this.market) * (dep.mult - 1);
-      else if (vol > 0.5) this.depositNoConcession = dep.id;
-    }
-    if (premium) { this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
-    const t = this.totals, y = this.today;
-    t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
-    y.pay += pay; y.costs += protect + land + d.fines + d.repairs + bomb;
-  }
-
-  update(dt) {
-    if (this.status !== 'playing') return;
-    this.time += dt;
-    const K = CONFIG.water, W = this.water;
-    if (W.until && this.time >= W.until) { W.target = K.base; W.until = 0; }
-    this.wl += (W.target - this.wl) * Math.min(1, dt * K.followRate);
-    for (const m of this.maps) m.river.wl = this.wl;
-    const wasClosed = this.closed;
-    this.closed = this.wl > K.base + K.floodClose;
-    if (this.closed !== wasClosed) { this.say(this.closed ? 'Schifffahrt gesperrt (Hochwasser).' : 'Schifffahrt wieder frei.', this.closed ? 'bad' : 'good'); if (!this.closed) this.notify('Schifffahrt wieder frei', 'good'); }
-
-    const mixerOn = this.stats.mixer > 0 && this.divertAgg, C = CONFIG.concrete;
-    const divert = mixerOn ? { [KIND.kies]: { room: C.aggCap - this.agg.kies }, [KIND.sand]: { room: C.aggCap - this.agg.sand } } : null;
-    const pl = processPlant(this.stock, dt, this.stats, this.maps[0].market, divert); // die Anlage verkauft zu den Preisen der ersten Karte
-    if (mixerOn) { this.agg.kies += pl.moved[KIND.kies]; this.agg.sand += pl.moved[KIND.sand]; }
-    if (this.stats.mixer > 0) { // Betonwerk: mischt aus Kies und Sand des Flusses (plus Zement)
-      const m = Math.min(this.stats.mixRate * dt, C.stockCap - this.concrete, this.agg.kies / C.mix.kies, this.agg.sand / C.mix.sand);
-      if (m > 1e-9) {
-        this.agg.kies -= m * C.mix.kies; this.agg.sand -= m * C.mix.sand; this.concrete += m;
-        const cost = m * C.cement; this.money -= cost; this.totals.cementCost += cost; this.totals.concreteMixed += m; this.today.costs += cost;
-      }
-    }
-    if (pl.vol > 0) {
-      this.money += pl.net; this.totals.plantNet += pl.net; this.today.plant += pl.net;
-      const rf = refundFrac(this); if (rf > 0 && pl.by[KIND.altlast] < 0) { const back = -pl.by[KIND.altlast] * rf; this.money += back; this.totals.plantNet += back; this.today.plant += back; this.port.refunded = (this.port.refunded ?? 0) + back; } // Sanierungsanlage
-      for (let k = 0; k < 5; k++) { if (pl.by[k] >= 0) this.totals.sold += pl.by[k]; else this.totals.disposal -= pl.by[k]; }
-    }
-
-    const cur = this.mapIdx; // alle Karten laufen weiter: Flotte, Verkehr und Flussbett der anderen Karten arbeiten im Hintergrund
-    for (let k = 0; k < this.maps.length; k++) {
-      this.mapIdx = k;
-      this.river.wl = this.wl;
-      this.river.settle();
-      this.sedClock += dt;
-      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.river.tribDeposit(this.sedClock); this.sedClock = 0; }
-      this.fairClock -= dt;
-      if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
-      this.updateGlut(dt);
-      updatePort(this, dt);
-      updateFleet(this, dt);
-      updateTraffic(this, dt);
-    }
-    updateShipping(this, dt);
-    this.mapIdx = cur;
-
-    const day = Math.floor(this.time / CONFIG.daySeconds) + 1;
-    while (this.day < day && this.status === 'playing') { this.day++; this.dayEnd(); }
-    if (this.status === 'playing') {
-      if (this.money < CONFIG.bankruptcyLimit) this.finish('bankrupt');
-      else if (this.time >= this.totalSeconds) this.finish('deadline');
-    }
-  }
-
-  dayEnd() {
-    const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
-    const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
-    const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
-    this.money -= cost + wages; t.opCost += cost; t.wages += wages;
-    const y = this.today;
-    y.costs += cost + wages;
-    this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
-    this.today = freshDay();
-    { const c0 = this.mapIdx; for (let k = 0; k < this.maps.length; k++) { this.mapIdx = k; stepMarket(this.market, this.rng); portDay(this); } this.mapIdx = c0; }
-    const cur = this.mapIdx;
-    for (const e of this.eventsOn ? EVENTS : []) {
-      if (this.rng() < e.chance && (!e.when || e.when(this))) {
-        if (this.maps.length > 1) this.mapIdx = Math.floor(this.rng() * this.maps.length); // Ereignisse treffen eine zufällige Karte
-        const r = e.apply(this);
-        if (r) { const t = this.maps.length > 1 ? `${this.maps[this.mapIdx].name}: ${r.text}` : r.text; this.say(t, r.kind); this.notify(t, r.kind); }
-        this.mapIdx = cur;
-      }
-    }
-    this.depositsDay();
-    updateContracts(this);
-    if (this.goalReached && !this.goalSeen) {
-      this.goalSeen = true;
-      this.say(`Verkehrsziel erreicht (${this.level.goalTons.toLocaleString('de-CH')} t)! Du kannst abschliessen oder weiterspielen.`, 'good');
-      this.notify('Verkehrsziel erreicht! Im Panel kannst du abschliessen.', 'good');
-    }
-  }
-
-  // Spiel beenden: 'goal' = freiwillig nach erreichtem Ziel, 'deadline' = Frist abgelaufen, 'bankrupt' = Konzession entzogen
-  finish(reason) {
-    if (this.status !== 'playing') return false;
-    if (reason === 'goal' && !this.goalReached) return false;
-    this.status = 'ended';
-    this.end = { reason, finalMoney: Math.round(this.money), goalReached: this.goalReached };
-    return true;
-  }
-
-  get won() { return this.status === 'ended' && this.end.reason !== 'bankrupt' && this.end.goalReached && this.end.finalMoney > 0; }
+// Ansicht der Hafenkarte: dasselbe Spiel, aber mit dem Flussbett des Hafens, den Pontons im Hafen und ohne Verkehr und Kreuzungen der Hauptkarte.
+// Wird nur zum Zeichnen benutzt (die Simulation läuft unabhängig davon).
+function makeHarborView(g) {
+  const h = g.port.harbor, v = Object.create(g);
+  Object.defineProperties(v, {
+    river: { value: h.river }, fair: { value: {} }, zones: { value: [] }, traffic: { value: { ships: [] } }, site: { value: null },
+    fleet: { value: { units: g.fleet.units.filter((u) => (u.loc ?? 'main') === 'harbor'), areas: [] } },
+    port: { value: Object.create(g.port, { bay: { value: null }, land: { value: { roads: [], halls: [], seq: 0 } } }) },
+    isHarborView: { value: true },
+  });
+  return v;
 }
 
-// Felder der aktuellen Karte: Game.river, .traffic, .fleet, .zones ... lesen und schreiben in maps[mapIdx]
-for (const key of ['market', 'port', 'river', 'traffic', 'fleet', 'zones', 'zoneSeq', 'unlocked', 'fairSig', 'fair', 'fairClock', 'sedClock', 'rejectedBy', 'site']) {
-  Object.defineProperty(Game.prototype, key, { get() { return this.maps[this.mapIdx][key]; }, set(v) { this.maps[this.mapIdx][key] = v; }, enumerable: false, configurable: true });
-}
-
-return { mapSeed: mapSeed, endlessRiver: endlessRiver, BIAS_SPAN: BIAS_SPAN, regionBias: regionBias, Game: Game };
-},
-function(){
-const { CONFIG, DEBRIS, KIND } = __m(2);
-
-
-// Querschnitt: Seitenansicht quer zum Fluss. Die Pumpe fährt über die Flussbreite (x = Zellkoordinate quer zum Fluss, absolut),
-// Höhe h in m über dem Bezugshorizont. Der Kasten umfasst CONFIG.box.cols Spalten in Flussrichtung; die Pumpenleistung
-// verteilt sich auf alle. Die Anzeige zeigt die Hüllkurve (höchster Punkt = engste Stelle für Schiffe).
-// work = Arbeitsrichtung: nur nach rechts wird gesaugt; der Rückweg saugt nicht.
-const SLICE = { cols: 16, viewH: 7.6, below: 6.1, work: { x: 1, y: 1 }, returnBoost: 1.6, minWaterDepth: 0.5 };
-
-const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0, dep: {} };
-
-// Geräte: Saugkopf, Löffelbagger (Upgrade loeffel), Betoniergerät (Upgrade betonrohr)
-const TOOLS = ['pump', 'loeffel', 'beton'];
-const toolAvailable = (stats, tool) => tool === 'pump' || (tool === 'loeffel' && stats.loeffel > 0) || (tool === 'beton' && stats.betonrohr > 0);
-const toolName = (tool) => ({ pump: 'Saugkopf', loeffel: 'Löffelbagger', beton: 'Betoniergerät' })[tool] ?? tool;
-
-const AUTO_ERRORS = [
-  { id: 'stuck', text: 'Automatik hängt sich auf und starrt aufs Wasser' },
-  { id: 'wrongway', text: 'Automatik saugt rückwärts und ist sehr stolz darauf' },
-  { id: 'high', text: 'Automatik hebt den Kopf und saugt Wasser (sehr sauber, aber nutzlos)' },
-];
-
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-
-class SliceSim {
-  constructor(river, stats, mapX, mapY, rng = Math.random, targetDepth = CONFIG.echolot.defaultDepth, speedSetting = CONFIG.pumpSpeed.default, tool = 'pump') {
-    this.river = river;
-    this.tool = toolAvailable(stats, tool) ? tool : 'pump'; // Gerät: Saugkopf, Löffelbagger oder Betoniergerät
-    this.concreteAvail = 0; // Betonvorrat (m³), setzt die Sitzung
-    this.stats = stats;
-    this.rng = rng;
-    const B = CONFIG.box.cols;
-    this.c0 = clamp(Math.round(mapX) - Math.floor(B / 2), 0, river.cols - B);
-    this.cols = Array.from({ length: B }, (_, k) => this.c0 + k); // Spalten des Kastens
-    this.centerCol = this.cols[Math.floor(B / 2)];
-    this.x0 = clamp(Math.round(mapY) - SLICE.cols / 2, 0, river.rows - SLICE.cols); // linke Zelle des Fensters (quer zum Fluss)
-    const b = this.bounds();
-    this.x = clamp(mapY - 0.5, b.min, b.max); // Pumpe startet an der Pontonposition
-    this.h = Math.min(this.maxH(), this.surfaceAt(this.x) + 1.5);
-    this.suctioning = false;
-    this.moving = false;
-    this.speedSetting = speedSetting;
-    this.targetDepth = targetDepth; // Solltiefe (m unter Wasser) für die Automatik
-    this.sounding = null;
-    this.sound();
-    this.blocked = false; // Puffer voll: kein Saugen
-    this.overNote = 0;
-    this.clog = 0;
-    this.freeing = null;
-    this.auto = { on: false, dir: 'sweep', error: null, errLeft: 0, startX: this.x, didWork: false };
-    this.autoPour = false; // Betonier-Automatik (Flotte, Betoniergerät)
-    this.autoLand = false; // Land-Automatik: auch Zellen im Ausbaustreifen zählen als offen (Flotte, Löffelbagger)
-    this.soundNoise = null; // überschreibt die Messungenauigkeit (Flottenpontons haben ein Peilgerät an Bord)
-    this.avoidAltlast = false; this.avoidNature = false; // Sperren für die Automatik (Flotte): Altlast und Schutzzone nicht abtragen
-    this.autoRange = null; // [erste, letzte Zeile quer zum Fluss], auf die sich die Automatik beschränkt (Flotte: nur die Rinne), sonst null = alles im Korridor
-    this.notes = [];
-  }
-
-  get h() { return this._h; }
-  set h(v) { this._h = v; this.setH = v; }
-
-  get wl() { return this.river.wl; }
-  get reaches() { return this.tool !== 'pump'; } // Löffel und Betoniergerät reichen über Wasser und über das ganze Fenster
-  maxH() { return this.reaches ? this.wl + CONFIG.bucket.reachAbove : this.wl - CONFIG.pump.maxHeightBelowWater; }
-
-  // Kennwerte des gewählten Geräts. Der Löffel verstopft nicht, trübt wenig, schafft harte Schicht und Fels besser und reicht über Wasser.
-  toolParams() {
-    const s = this.stats, B = CONFIG.bucket;
-    if (this.tool === 'beton') return { power: s.pourPower, radius: CONFIG.concrete.radius, firmness: 0, hardFactor: 0, allowLand: true, turb: 0.1, clogs: false, pour: true, armorEff: 0 };
-    if (this.tool === 'loeffel') return { armorEff: CONFIG.concrete.bucketBreak, power: s.bucketPower, radius: s.bucketRadius, firmness: s.bucketRock, hardFactor: B.hardFactor, allowLand: true, turb: B.turbidity, clogs: false };
-    return { armorEff: CONFIG.concrete.pumpBreak, power: s.power, radius: s.radius, firmness: s.rockFirmness, hardFactor: CONFIG.hard.factor, allowLand: false, turb: 1, clogs: true };
-  }
-
-  // Gerät wechseln (nur mit ausgebautem Löffel; nicht während Verstopfung)
-  setTool(tool) {
-    if (tool === this.tool || this.clog > 0) return false;
-    if (!toolAvailable(this.stats, tool)) return false;
-    this.tool = tool; this.suctioning = false; this.auto.on = false;
-    const b = this.bounds();
-    this.x = clamp(this.x, b.min, b.max - CONFIG.pump.offsetX);
-    this.h = Math.min(this.maxH(), this.surfaceAt(this.x) + 1.5);
-    this.say('info', { loeffel: 'Löffelbagger eingeschwenkt: verstopft nie, reicht über Wasser, bricht Beton auf.', beton: 'Betoniergerät eingeschwenkt: verhärtet Boden und Ufer (Leertaste).', pump: 'Saugkopf eingeschwenkt.' }[tool]);
-    return true;
-  }
-  // Erlaubter Bereich quer zum Fluss: nur dort, wo genug Wasser ist (Ufer und Flachstellen gehen nicht)
-  bounds() {
-    if (this.reaches) return { min: this.x0 + 0.01, max: this.x0 + SLICE.cols - 0.01 }; // der Ausleger reicht über das ganze Fenster, auch ans Ufer
-    let min = Infinity, max = -Infinity;
-    for (let c = 0; c < SLICE.cols; c++) {
-      if (this.wl - this.envTop(this.x0 + c) >= SLICE.minWaterDepth) { min = Math.min(min, this.x0 + c + 0.01); max = Math.max(max, this.x0 + c + 0.99); }
-    }
-    if (min > max) return { min: this.x0 + 0.01, max: this.x0 + SLICE.cols - 0.01 };
-    return { min, max };
-  }
-
-  _debrisNames() { return DEBRIS; }
-
-  _startFreeing(idx) {
-    const U = CONFIG.unclog, info = CONFIG.debrisInfo[idx] ?? {};
-    const f = { pos: 0, dir: 1, speed: info.speed ?? U.speed, zone: info.zone ?? U.zone, hits: 0, need: info.hits ?? U.hits, item: DEBRIS[idx] ?? null };
-    this.freeing = f;
-    f.zoneC = this._zone(f);
-  }
-  _zone(f = this.freeing) { const half = (f?.zone ?? CONFIG.unclog.zone) / 2; return half + this.rng() * (1 - 2 * half); }
-  freeAttempt() {
-    const f = this.freeing, U = CONFIG.unclog;
-    if (!f || this.clog <= 0) return null;
-    if (Math.abs(f.pos - f.zoneC) <= f.zone / 2) {
-      f.hits++;
-      if (f.hits >= f.need) { this.clog = 0; this.freeing = null; this.say('good', 'Pfropfen gelöst! Die Pumpe spuckt den Fremdstoff aus.'); return 'cleared'; }
-      f.speed *= U.speedUp; f.zoneC = this._zone();
-      return 'hit';
-    }
-    this.clog += U.missPenalty;
-    return 'miss';
-  }
-
-  say(kind, text, extra = {}) { this.notes.push({ kind, text, ...extra }); }
-
-  // Höchster Punkt der Sohle in der Zelle y über alle Spalten des Kastens (Hüllkurve)
-  envTop(y) {
-    const r = this.river, yy = clamp(Math.floor(y), 0, r.rows - 1);
-    let m = -Infinity;
-    for (const c of this.cols) m = Math.max(m, r.top[r.idx(c, yy)]);
-    return m;
-  }
-  envLow(y) {
-    const r = this.river, yy = clamp(Math.floor(y), 0, r.rows - 1);
-    let m = Infinity;
-    for (const c of this.cols) m = Math.min(m, r.top[r.idx(c, yy)]);
-    return m;
-  }
-  surfaceAt(x) { return this.envTop(x); }
-
-  mouth() { return { x: this.x + CONFIG.pump.offsetX, h: this.h - CONFIG.pump.offsetY }; }
-  mouthCol() { return clamp(Math.floor(this.mouth().x) - this.x0, 0, SLICE.cols - 1); }
-  autoFromCol() { return clamp(Math.floor(this.auto.startX + CONFIG.pump.offsetX - this.x0), 0, SLICE.cols - 1); }
-  targetTop() { return this.wl - this.targetDepth; }
-
-  // Echolot: lotet das Profil aus (mit Messfehler je nach Stufe); ohne Echolot ist die Peilung grob
-  sound() {
-    const amp = this.soundNoise ?? CONFIG.echolot.noise[this.stats.echolot] ?? 0;
-    this.sounding = new Float32Array(SLICE.cols);
-    for (let c = 0; c < SLICE.cols; c++) this.sounding[c] = this.envTop(this.x0 + c) + (this.rng() - 0.5) * 2 * amp;
-  }
-
-  // Ist die Spalte c des Fensters nach Peilung auf Solltiefe (oder gehört nicht zum Korridor)?
-  _inZone(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)]); }
-  _inLand(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)] || (r.ext[r.idx(k, this.x0 + c)] && !(this.avoidNature && r.ext[r.idx(k, this.x0 + c)] === 2))); } // mit avoidNature bleibt das Flachwasser (Schutzzone) tabu // Korridor oder Ausbaustreifen (Land-Automatik)
-  // Betonier-Automatik: offen ist eine Querzeile, solange in einer Zelle des Kastens (Korridor oder Ausbaustreifen) die Betonschicht noch fehlt
-  _needsPour(c) {
-    const r = this.river, T = CONFIG.concrete.thickness;
-    return this.cols.some((k) => { const i = r.idx(k, this.x0 + c); return (r.zone[i] || r.ext[i]) && r.armor[i] < T * 0.9 && r.top[i] - r.rock[i] > T * 0.5; });
-  }
-  _hasAltlast(c) { const r = this.river; return this.cols.some((k) => { const i = r.idx(k, this.x0 + c); return r.kind[i] === KIND.altlast && r.top[i] - r.rock[i] > 0.05; }); }
-  _colOpen(c) { if (this.avoidAltlast && this._hasAltlast(c)) return false; if (this.autoRange && (this.x0 + c < this.autoRange[0] || this.x0 + c > this.autoRange[1])) return false; if (this.autoPour) return this._needsPour(c); return (this.autoLand ? this._inLand(c) : this._inZone(c)) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
-  colDone(c) { return !this._colOpen(c); }
-  allDone() { for (let c = this.auto.on ? this.autoFromCol() : 0; c < SLICE.cols; c++) if (this._colOpen(c)) return false; return true; }
-  _openLeft() { for (let c = 0; c < this.autoFromCol(); c++) if (this._colOpen(c)) return c; return -1; }
-
-  // Wirklicher Stand (ohne Messfehler) für die Anzeige: so viele Zellen quer liegen noch über der Solltiefe
-  restCount() {
-    let n = 0;
-    for (let c = 0; c < SLICE.cols; c++) if (this._inZone(c) && this.envTop(this.x0 + c) > this.targetTop() + CONFIG.echolot.doneEps) n++;
-    return n;
-  }
-
-  toggleAuto() {
-    if (this.stats.autoLevel <= 0) return false;
-    this.auto.on = !this.auto.on;
-    this.auto.error = null;
-    this.auto.startX = this.x;
-    this.auto.didWork = false;
-    this.auto.dir = 'sweep';
-    if (this.auto.on && this.autoRange) { // mit eingestelltem Bereich: erst zum Anfang fahren, dann von dort bis zum Ende
-      const b = this.bounds();
-      this.auto.startX = Math.max(b.min, this.autoRange[0] + 0.01);
-      if (this.x > this.auto.startX + 0.05) this.auto.dir = 'return';
-    }
-    if (this.auto.on) { this.sound(); this.say('info', `Peilung: Automatik fährt auf ${this.targetDepth.toFixed(1)} m Tiefe.`); }
-    else this.say('info', 'Automatik aus.');
-    return true;
-  }
-
-  // Automatik-Bereich aus zwei Linien (absolute Zeilen); über das ganze Fenster = unbegrenzt
-  setAutoBounds(a, b) {
-    const lo = this.x0, hi = this.x0 + SLICE.cols - 1;
-    a = clamp(Math.round(a), lo, hi); b = clamp(Math.round(b), lo, hi);
-    if (b < a) [a, b] = [b, a];
-    this.autoRange = (a <= lo && b >= hi) ? null : [a, b];
-    return this.autoRange;
-  }
-
-  fixAuto() {
-    if (!this.auto.error) return false;
-    this.auto.error = null;
-    this.say('good', 'Aus- und wieder einschalten hilft auch hier.');
-    return true;
-  }
-
-  _autoControl(dt) {
-    const a = this.auto, lvl = this.stats.autoLevel;
-    if (a.error) {
-      a.errLeft -= dt;
-      if (a.errLeft <= 0) { a.error = null; this.say('info', 'Automatik hat sich von selbst gefangen.'); }
-    } else if (this.rng() < CONFIG.auto.errorRate[lvl] * dt) {
-      const e = AUTO_ERRORS[Math.floor(this.rng() * AUTO_ERRORS.length)];
-      a.error = e.id; a.errLeft = CONFIG.auto.errorSeconds;
-      this.say('bad', `${e.text}! (R = Reset)`);
-    }
-    if (a.error === 'stuck') return { dx: 0, dy: 0, suction: false };
-    if (a.error === 'wrongway') return { dx: -1, dy: 0, suction: true };
-    if (a.error === 'high') return { dx: 0, dy: -1, suction: true };
-    const b = this.bounds(), R = this.autoRange; // mit Arbeitsbereich fährt die Automatik nur über diesen Streifen
-    const lo = R ? Math.max(b.min, R[0] + 0.01) : b.min, hiX = R ? Math.min(b.max, R[1] + 1) : b.max;
-    if (a.dir === 'sweep' && this.x >= hiX - CONFIG.pump.offsetX - 0.05) a.dir = 'return';
-    else if (a.dir === 'return' && this.x <= Math.max(a.startX, lo) + 0.05) { a.dir = 'sweep'; this.sound(); }
-    const need = this._colOpen(this.mouthCol());
-    return a.dir === 'sweep' ? { dx: 1, dy: 0, suction: need } : { dx: -1, dy: 0, suction: false };
-  }
-
-  // input: { dx, dy (dy>0 = nach unten), suction }
-  update(dt, input) {
-    const s = this.stats, a = this.auto, lvl = s.autoLevel, P = CONFIG.pump, R = this.river;
-    this.overNote = Math.max(0, this.overNote - dt);
-    let ctl = input;
-    if (a.on) {
-      const manual = Math.abs(input.dx || 0) > 0.2 || Math.abs(input.dy || 0) > 0.2;
-      if (manual) { a.on = false; a.error = null; this.say('info', 'Du übernimmst das Steuer.'); }
-      else if (this.allDone()) {
-        const left = a.didWork ? -1 : this._openLeft();
-        if (left >= 0) {
-          a.startX = Math.max(this.x0 + 0.01, this.x0 + left - P.offsetX + 0.01); a.dir = 'return';
-          this.say('info', 'Ab hier ist alles fertig. Automatik fährt zur nächsten offenen Stelle.');
-          ctl = this._autoControl(dt);
-        } else {
-          a.on = false;
-          this.say('good', 'Profil auf Solltiefe. Automatik meldet Feierabend.');
-        }
-      } else ctl = this._autoControl(dt);
-    }
-    if (a.on && this.clog > 0) ctl = { dx: 0, dy: 0, suction: false }; // verstopft: die Automatik bleibt stehen und wartet
-    const clogged = this.clog > 0;
-    if (clogged) this.clog = Math.max(0, this.clog - dt);
-    if (this.freeing) {
-      const f = this.freeing;
-      if (this.clog <= 0) this.freeing = null;
-      else { f.pos += f.dir * f.speed * dt; if (f.pos >= 1) { f.pos = 1; f.dir = -1; } else if (f.pos <= 0) { f.pos = 0; f.dir = 1; } }
-    }
-
-    let dx = ctl.dx || 0, dy = ctl.dy || 0;
-    if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0;
-    dx = clamp(dx, -1, 1); dy = clamp(dy, -1, 1);
-    this.moving = Math.abs(dx) + Math.abs(dy) > 0.01;
-
-    const along = dx * SLICE.work.x + dy * SLICE.work.y;
-    const pumpOk = !a.on || input.pumpOn !== false;
-    const working = !!ctl.suction && pumpOk && !clogged && !this.blocked && along > -0.05;
-    const af = a.on ? CONFIG.auto.speedFactor[lvl] : 1;
-    const speed = s.headSpeed * this.speedSetting * af * (working ? s.suctionSpeedFactor : along < -0.05 ? SLICE.returnBoost : 1);
-
-    const b = this.bounds();
-    this.x = clamp(this.x + dx * speed * dt, b.min, b.max - P.offsetX);
-    const floor = this.surfaceAt(this.x);
-    const top = this.maxH();
-    if (dy) { this._h = clamp(this._h - dy * speed * dt, Math.min(floor, top), top); this.setH = this._h; }
-    if (a.on && !a.error) {
-      const v = s.headSpeed * this.speedSetting * af * 0.8, target = floor + (lvl === 1 ? 0.4 : 0);
-      this._h += clamp(target - this._h, -v * dt, v * dt);
-      this.setH = this._h;
-    }
-    if (this._h < floor) this._h = floor;
-    else if (this._h > this.setH && !dy) this._h = Math.max(this.setH, floor, this._h - s.headSpeed * this.speedSetting * 0.8 * dt);
-    this._h = Math.min(this._h, Math.max(top, floor));
-
-    if (a.on && working) a.didWork = true;
-    this.suctioning = working;
-    if (!this.suctioning) return ZERO;
-
-    // Fremdstoff an der Einsaugstelle? Wer den Kopf anhebt, fährt drüber weg. Der Löffel hebt Fremdstoffe einfach aus (ausser Bomben).
-    const T = this.toolParams();
-    if (T.pour) { // Beton ausbringen (kein Saugen, keine Fremdstoffe)
-      const m0 = this.mouth(), avail = this.concreteAvail ?? 0;
-      if (avail <= 1e-9) { if (this.overNote <= 0) { this.say('bad', 'Kein Beton mehr: im Panel kaufen oder im Betonwerk mischen.'); this.overNote = 8; } this.suctioning = false; return ZERO; }
-      const pr = R.pourSwath(this.cols, this.centerCol, m0.x, m0.h, T.radius, Math.min(avail, T.power * dt));
-      if (pr.used <= 0) this.suctioning = false;
-      return { ...ZERO, concrete: pr.used };
-    }
-    const m = this.mouth(), my = clamp(Math.floor(m.x), 0, R.rows - 1);
-    let di;
-    for (const c of this.cols) { const i = R.idx(c, my); if (R.debris[i]) { di = i; break; } }
-    const d = di === undefined ? 0 : R.debris[di];
-    if (d && m.h <= this.surfaceAt(m.x) + 1.5) {
-      const bomb = d === DEBRIS.length;
-      R.debris[di] = 0;
-      if (T.clogs || bomb) {
-        this.clog = a.on ? CONFIG.auto.clogSeconds[lvl] : (CONFIG.debrisInfo[d - 1]?.clog ?? CONFIG.debris.clogSeconds);
-        this._startFreeing(d - 1); // das Freispülen kommt immer, auch bei Automatik (sonst wartet die Pumpe die Zeit ab)
-        this.suctioning = false;
-        this.say('clog', `${T.clogs ? 'Pumpe verstopft' : 'Löffel blockiert'}: ${DEBRIS[d - 1]}!`, { item: DEBRIS[d - 1], bomb });
-        return ZERO;
-      }
-      this.say('info', `Löffel hebt aus: ${DEBRIS[d - 1]}`);
-    }
-    const res = R.suckSwath(this.cols, this.centerCol, m.x, m.h, T.radius, T.power * dt, T.firmness, { allowLand: T.allowLand, hardFactor: T.hardFactor, armorEff: T.armorEff });
-
-    if (res.out > 1e-6 && this.overNote <= 0) {
-      this.say('bad', this.tool === 'loeffel' ? 'Schutzgebiet! Hier darf nicht abgetragen werden (Busse pro m³).' : 'Naturschutzzone! Die Fischereiaufsicht schaut zu (Busse pro m³).');
-      this.overNote = 8;
-    }
-    return res;
-  }
-}
-
-
-
-return { SLICE: SLICE, TOOLS: TOOLS, toolAvailable: toolAvailable, toolName: toolName, SliceSim: SliceSim, KIND: KIND };
+return { HARBOR: HARBOR, createHarborRiver: createHarborRiver, ensureHarbor: ensureHarbor, harborDepth: harborDepth, harborAccepts: harborAccepts, harborTarget: harborTarget, berthPos: berthPos, makeHarborView: makeHarborView };
 },
 function(){
 const { CONFIG, KIND, DEBRIS, DEPOSITS } = __m(2);
@@ -4266,8 +3577,813 @@ const CONFIG_BASE_FIRMNESS = 0.04;
 return { River: River };
 },
 function(){
+const { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } = __m(2);
+const { toolAvailable } = __m(10);
+const { River } = __m(8);
+const { carveFairway, analyzeFairway, zonePlan } = __m(3);
+const { DredgeSim } = __m(11);
+const { EVENTS } = __m(12);
+const { computeStats, upgradeCost } = __m(13);
+const { createRng } = __m(14);
+const { createMarket, stepMarket } = __m(6);
+const { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } = __m(4);
+const { createShipping, updateShipping } = __m(1);
+const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(15);
+const { processPlant, stockTotal, materialPrice } = __m(18);
+const { updateContracts } = __m(16);
+const { createFleet, updateFleet } = __m(17);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Zufallsfluss für den Endlos-Modus: Parameter aus (Seed, Kartennummer); spätere Karten sind schwerer
+const MAP_NAMES = ['Rheinfelden', 'Laufenburg', 'Kembs', 'Aare-Mündung', 'Thur-Enge', 'Bingen', 'Wesel', 'Eisernes Tor', 'Straubing', 'Passau', 'Basel', 'Koblenz'];
+const mapSeed = (seed, k) => ((seed >>> 0) * 2654435761 + k * 40503 + 12345) >>> 0;
+function endlessRiver(seed, k) {
+  const r = createRng(mapSeed(seed, k)), hard = Math.min(1, k / 5);
+  const bars = [8, 22, 36].map((x) => ({ x: Math.round(x + r.range(-2, 2)), w: +r.range(3, 4).toFixed(1), raise: +r.range(0.45, 0.6).toFixed(2) }));
+  const ridgeN = k === 0 ? 1 : 1 + (k >= 2 ? 1 : 0) + (k >= 4 ? 1 : 0), ridges = [];
+  for (let i = 0; i < ridgeN; i++) ridges.push({ x: Math.round(((i + 1) * 44) / (ridgeN + 1) + r.range(-3, 3)), w: +r.range(3, 5).toFixed(1), depth: +Math.max(3.1, 4.3 - 0.22 * k + r.range(-0.2, 0.2)).toFixed(2) });
+  const kinds = ['kiesbank', 'quarz', 'seife'], deposits = ['kiesbank'];
+  for (let i = 0; i < 2 + (k >= 2 ? 1 : 0); i++) deposits.push(kinds[r.int(0, 2)]);
+  return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
+    bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
+}
+// Regionale Preise (Endlos): dauerhafter Aufschlag/Abschlag je Fracht und Karte, aus Seed und Kartennummer
+const BIAS_SPAN = { kies: 0.4, oel: 0.25, container: 0.3 }; // max. Abweichung des regionalen Preises
+function regionBias(seed, k) {
+  const br = createRng(mapSeed(seed, k) ^ 0x9e3779b9), span = BIAS_SPAN, bias = {};
+  for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-span[id], span[id]).toFixed(2);
+  return bias;
+}
+const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0 });
+
+// Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
+// Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel (goalTons) schaltet das nächste Level frei.
+class Game {
+  constructor(seed = Date.now() & 0xffffff, levelId = 'hochrhein') {
+    this.seed = seed;
+    this.levelId = levelById(levelId).id;
+    this.rng = createRng(seed);
+    const L = levelById(this.levelId);
+    this.maps = [{ id: 0, name: MAP_NAMES[(seed >>> 0) % MAP_NAMES.length], seed, difficulty: 0 }]; // Karten (Engstellen); die Felder river, traffic, fleet, zones ... gehören zur aktuellen Karte (mapIdx)
+    this.mapIdx = 0;
+    this.river = River.generate(this.rng, L.endless ? endlessRiver(seed, 0) : L.river);
+    this.wl = this.river.wl;
+    this.water = { target: CONFIG.water.base, until: 0 };
+    this.closed = false; // Hochwasser: Schifffahrt gesperrt
+    this.strikeUntil = 0;
+    this.time = 0;
+    this.day = 1;
+    this.money = L.startMoney ?? CONFIG.startMoney;
+    this.levels = Object.fromEntries(Object.keys(UPGRADES).map((k) => [k, 0]));
+    this.stock = [0, 0, 0, 0, 0]; // Puffer vor der Anlage in m³ je Material
+    this.targetDepth = CONFIG.echolot.defaultDepth;
+    this.pumpSpeed = CONFIG.pumpSpeed.default;
+    this.autoRange = null; // Automatik-Bereich des Spielers (Zeilen quer zum Fluss)
+    this.tool = 'pump'; // zuletzt gewähltes Gerät des eigenen Pontons
+    this.concrete = 0; // Betonvorrat in m³ (gekauft oder im Betonwerk gemischt)
+    this.agg = { kies: 0, sand: 0 }; // Lager für das Betonwerk (m³)
+    this.divertAgg = true; // Kies und Sand ins Betonwerk statt verkaufen
+    this.market = createMarket(L.endless ? regionBias(seed, 0) : {});
+    this.traffic = createTraffic();
+    this.fleet = createFleet();
+    this.shipping = createShipping(); // eigene Reederei (global)
+    this.port = createPort(); // Hafen an Land (Kai, Lager, Handel)
+    this.zones = []; // Kreuzungsstellen: { id, x (Spalte der Mitte), w }
+    this.zoneSeq = 0;
+    this.unlocked = {}; // Schiffsklassen, die schon einmal fahren konnten
+    this.contracts = [];
+    this.contractSeq = 0;
+    this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
+    this.rejectedBy = {};
+    this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, premium: 0, sunk: 0, sunkFines: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
+    this.today = freshDay();
+    this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
+    this.goalSeen = false;
+    this.tabsSeen = {}; // freigeschaltete Menü-Bereiche (Stufensystem der Oberfläche), bleiben freigeschaltet
+    this.fairSig = {}; // zuletzt bekannter Zustand je Klasse (für Meldungen "jetzt befahrbar")
+    this.status = 'playing'; // 'playing' | 'ended'
+    this.end = null; // { reason: 'goal' | 'deadline' | 'bankrupt', finalMoney, goalReached }
+    this.log = [];
+    this.notes = []; // Meldungen für die Oberfläche (Toast): { text, kind } (nicht gespeichert)
+    this.flash = []; // schwebende Beträge auf der Karte (nicht gespeichert)
+    this.site = null; // Position des verankerten Pontons (setzt die Oberfläche)
+    this.fairClock = 0;
+    this.sedClock = 0;
+    this.port.bay = carveBay(this.river, this.wl); // Hafenbecken (Bucht) am Ufer, flach: muss für den Hafenbetrieb vertieft werden
+    this.analyze();
+    carveFairway(this.river, this.wl, SHIPS.find((s) => s.id === L.classes[0])); // die kleinste Klasse kann von Anfang an fahren
+    this.analyze(true);
+  }
+
+  get level() { return levelById(this.levelId); }
+  get endless() { return !!this.level.endless; }
+  get map() { return this.maps[this.mapIdx]; }
+
+  // Stau auf der Karte: Bei Niedrigwasser, gesperrter Rinne oder Hochwasser-Sperre können die Schiffe nicht fahren, die Ware staut sich
+  // und der Preis vor Ort sinkt (bis -30 %): günstig einkaufen und im Hafenlager einlagern, bis die Schiffe wieder fahren
+  glutTarget() {
+    const K = CONFIG.water;
+    if (this.closed) return 0.3;
+    const low = Math.min(1, Math.max(0, (K.base - 0.1 - this.wl) / 0.5)), act = SHIPS.filter((s) => this.unlocked[s.id]);
+    const blocked = act.length ? act.filter((s) => !this.fair?.[s.id]?.passable).length / act.length : 0;
+    return Math.max(0.25 * low, 0.2 * blocked);
+  }
+  updateGlut(dt) { const m = this.market; m.glut = (m.glut ?? 0) + (this.glutTarget() - (m.glut ?? 0)) * Math.min(1, dt * 0.1); }
+
+  // Weitere Karte (Engstelle) erschliessen: nur im Endlos-Modus; jede kostet mehr und ist schwerer
+  mapCost() { return this.maps.length >= (ENDLESS.maxMaps) ? null : ENDLESS.mapCosts[this.maps.length]; }
+  mapBlock() {
+    if (!this.endless) return 'Nur im Endlos-Modus';
+    if (this.status !== 'playing') return 'Spiel beendet';
+    const c = this.mapCost();
+    if (c === null) return 'Das Flussnetz ist vollständig erschlossen';
+    return this.money < c ? `Braucht ${c.toLocaleString('de-CH')} CHF` : null;
+  }
+  addMap() {
+    if (this.mapBlock()) return false;
+    const k = this.maps.length, cost = this.mapCost(), seed = mapSeed(this.seed, k), cur = this.mapIdx;
+    this.money -= cost;
+    let name = MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
+    const river = River.generate(createRng(seed), endlessRiver(this.seed, k)); river.wl = this.wl;
+    const bias = regionBias(this.seed, k); // regionale Preise: Handel zwischen den Karten lohnt sich
+    this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
+    this.mapIdx = k;
+    this.port.bay = carveBay(this.river, this.wl);
+    this.analyze();
+    carveFairway(this.river, this.wl, SHIPS.find((s) => s.id === this.level.classes[0]));
+    this.analyze(true);
+    this.mapIdx = cur;
+    this.say(`Neue Karte erschlossen: ${name} (−${cost.toLocaleString('de-CH')} CHF). Schwierigkeit ${k + 1}.`, 'upgrade');
+    return k;
+  }
+  switchMap(i) { if (i < 0 || i >= this.maps.length || i === this.mapIdx) return false; this.mapIdx = i; return true; }
+  get stats() { return (this._stats ??= computeStats(this.levels)); }
+  get stockTotal() { return stockTotal(this.stock); }
+  get bufferRoom() { return Math.max(0, this.stats.bufferCapacity - this.stockTotal); }
+  get deadlineDays() { return this.level.deadlineDays ?? CONFIG.deadlineDays; }
+  get totalSeconds() { return this.deadlineDays * CONFIG.daySeconds; }
+  get timeLeft() { return Math.max(0, this.totalSeconds - this.time); }
+  get goalReached() { return this.totals.tons >= this.level.goalTons; }
+
+  notify(text, kind = 'info', extra = null) { this.notes.push({ text, kind, ...extra }); }
+  say(text, kind = 'info') { this.log.unshift({ day: this.day, text, kind }); this.log.length = Math.min(this.log.length, 60); }
+
+  setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
+
+  // gesperrt: Anlage über Stufe 6 braucht die Aufbereitungshalle im Hafen
+  upgradeLocked(id) { return id === 'plant' && this.levels.plant >= plantLimit(this) && this.levels.plant < UPGRADES.plant.maxLevel; }
+  nextUpgradeCost(id) { return this.levels[id] >= UPGRADES[id].maxLevel || this.upgradeLocked(id) ? null : upgradeCost(id, this.levels[id]); }
+
+  buyUpgrade(id) {
+    const cost = this.nextUpgradeCost(id);
+    if (cost === null || this.money < cost || this.status !== 'playing') return false;
+    this.money -= cost; this.levels[id]++; this._stats = null;
+    this.say(`${UPGRADES[id].name} auf Stufe ${this.levels[id]} (−${cost} CHF)`, 'upgrade');
+    return true;
+  }
+
+  refundFor(id) { return this.levels[id] <= 0 ? null : Math.round((upgradeCost(id, this.levels[id] - 1) * CONFIG.refundShare) / 10) * 10; }
+
+  sellUpgrade(id) {
+    const refund = this.refundFor(id);
+    if (refund === null || this.status !== 'playing') return false;
+    this.levels[id]--; this._stats = null; this.money += refund;
+    this.say(`${UPGRADES[id].name} auf Stufe ${this.levels[id]} zurückgebaut (+${refund} CHF)`, 'upgrade');
+    return true;
+  }
+
+  createSession(river = this.river) {
+    const sim = new DredgeSim(river, this.stats, this.rng);
+    sim.targetDepth = this.targetDepth;
+    sim.pumpSpeed = this.pumpSpeed;
+    sim.bufferRoom = this.bufferRoom;
+    sim.turbidityMult = this.level.turbidityMult ?? 1;
+    if (toolAvailable(this.stats, this.tool)) sim.tool = this.tool;
+    sim.concreteAvail = this.concrete;
+    return sim;
+  }
+
+  // Fahrrinnen neu auswerten; meldet, wenn eine Klasse befahrbar wird oder die Rinne wieder zu flach wird
+  analyze(silent = false) {
+    this.fair = analyzeFairway(this.river, Math.min(this.wl, CONFIG.water.base)); // Hochwasser öffnet keine Klassen: massgebend ist der Normalpegel (Niedrigwasser sperrt)
+    for (const cls of SHIPS) {
+      if (!this.level.classes.includes(cls.id)) continue;
+      const f = this.fair[cls.id], was = this.fairSig[cls.id];
+      if (f.passable && !this.unlocked[cls.id]) {
+        this.unlocked[cls.id] = true;
+        if (!silent && was !== undefined) { const at = this.maps.length > 1 ? ` (${this.map.name})` : ''; this.say(`Neue Schiffsklasse freigeschaltet: ${cls.name}${at}! Reedereien schicken ab jetzt solche Schiffe.`, 'good'); this.notify(`${cls.icon} ${cls.name} freigeschaltet${at}: ab jetzt kommen solche Schiffe`, 'good'); }
+      } else if (was !== undefined && !silent && f.passable !== was) {
+        if (f.passable) { this.say(`Fahrrinne wieder frei für ${cls.name}.`, 'good'); }
+        else if (!this.closed) this.say(`Rinne für ${cls.name} ist zu flach geworden (Pegel oder Verlandung).`, 'bad');
+      }
+      this.fairSig[cls.id] = f.passable;
+    }
+  }
+
+  // Klasse, für die neue Kreuzungsstellen geplant werden (gewählt, sonst die grösste Klasse, die schon fährt)
+  get zoneClassId() {
+    const ids = this.level.classes;
+    if (this.zoneClass && ids.includes(this.zoneClass)) return this.zoneClass;
+    const act = activeClasses(this);
+    return (act[act.length - 1] ?? SHIPS.find((s) => s.id === ids[0])).id;
+  }
+
+  // Plan einer Kreuzungsstelle für eine Klasse: fehlendes Volumen (m³) und Fenster; bereit = zwei Rinnen sind schon da
+  zonePlanFor(x, clsId = this.zoneClassId) {
+    const cls = SHIPS.find((s) => s.id === clsId), z = { x, w: CONFIG.zones.width };
+    return { ...zonePlan(this.river, Math.min(this.wl, CONFIG.water.base), cls, x, z.w), ready: zoneSupports(this, z, clsId), cls: clsId };
+  }
+
+  // Kreuzungsstelle planen (Mitte in Spalte x). Geplant werden darf überall, wo auch mit Uferstreifen genug Breite entstehen kann;
+  // benutzt wird sie erst, wenn die zwei Rinnen ausgebaggert sind. Anzahl begrenzt (Rotlichter erhöhen sie).
+  zoneBlock(x, clsId = this.zoneClassId) {
+    const Z = CONFIG.zones;
+    if (this.status !== 'playing') return 'Spiel beendet';
+    if (x < 2 || x > this.river.cols - 3) return 'Zu nah am Rand';
+    if (this.zones.some((z) => Math.abs(z.x - x) < Z.width + 1)) return 'Zu nah an einer anderen Kreuzungsstelle';
+    if (this.zones.length >= maxZones(this)) return 'Mehr Kreuzungsstellen brauchen Rotlichter (Wasserstrasse ausbauen)';
+    if (this.zonePlanFor(x, clsId).volume === Infinity) return 'Hier ist die Rinne auch mit dem Uferstreifen zu schmal für zwei Schiffe';
+    if (this.money < Z.cost) return `Braucht ${Z.cost.toLocaleString('de-CH')} CHF`;
+    return null;
+  }
+  placeZone(x, clsId = this.zoneClassId) {
+    if (this.zoneBlock(x, clsId)) return false;
+    this.money -= CONFIG.zones.cost;
+    this.zones.push({ id: ++this.zoneSeq, x, w: CONFIG.zones.width, cls: clsId });
+    const p = this.zonePlanFor(x, clsId);
+    this.say(`Kreuzungsstelle bei Spalte ${x + 1} geplant (−${CONFIG.zones.cost} CHF): ${p.ready ? 'sofort nutzbar' : `noch ${Math.round(p.volume)} m³ auszutragen`}`, 'upgrade');
+    return true;
+  }
+  setZoneClass(id, clsId) { const z = this.zones.find((q) => q.id === id); if (z && SHIPS.some((s) => s.id === clsId)) z.cls = clsId; return !!z; }
+  removeZone(id) {
+    const i = this.zones.findIndex((z) => z.id === id);
+    if (i < 0) return false;
+    this.zones.splice(i, 1);
+    return true;
+  }
+
+  // Rohstoffvorkommen erkunden (das nächste unbekannte) und Konzession erwerben
+  exploreBlock() {
+    if (this.status !== 'playing') return 'Spiel beendet';
+    if (!this.river.deposits.some((d) => !d.known)) return 'Alle Vorkommen sind bekannt';
+    if (this.money < CONFIG.deposits.exploreCost) return `Braucht ${CONFIG.deposits.exploreCost.toLocaleString('de-CH')} CHF`;
+    return null;
+  }
+  explore() {
+    if (this.exploreBlock()) return null;
+    const d = this.river.deposits.find((q) => !q.known);
+    this.money -= CONFIG.deposits.exploreCost; d.known = true; this.totals.explored = (this.totals.explored ?? 0) + 1;
+    this.say(`Erkundet: ${d.name} bei Spalte ${Math.round(d.cx) + 1} (Aufschlag ×${d.mult}). Mit Konzession lohnt sich der Abbau.`, 'good');
+    this.notify(`Vorkommen gefunden: ${d.name}`, 'good');
+    return d;
+  }
+  // Täglich: leere Vorkommen verschwinden, mit der Zeit erscheinen neue zum Kauf (bekannt, Konzession kostet), solange weniger als drei aktiv sind
+  depositsDay() {
+    const D = CONFIG.deposits;
+    for (const m of this.maps) {
+      const r = m.river, name = this.maps.length > 1 ? `${m.name}: ` : '';
+      for (const d of r.deposits) if (!d.depleted && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
+      const active = r.deposits.filter((d) => !d.depleted).length;
+      if (active < D.maxActive && this.rng() < D.spawnChance) {
+        const T = DEPOSITS[Math.floor(this.rng() * DEPOSITS.length)], d = r.spawnDeposit(this.rng, T);
+        if (d) { this.say(`${name}Neues Vorkommen entdeckt: ${d.name} bei Spalte ${Math.round(d.cx) + 1}. Konzession ${d.cost.toLocaleString('de-CH')} CHF.`, 'good'); this.notify(`${name}Neues Vorkommen: ${d.name}`, 'good'); }
+      }
+    }
+  }
+  concessionBlock(id) {
+    const d = this.river.deposits[id - 1];
+    if (!d || !d.known || d.depleted) return d?.depleted ? 'Vorkommen ist abgebaut' : 'Erst erkunden';
+    if (d.owned) return 'Schon erworben';
+    if (this.money < d.cost) return `Braucht ${d.cost.toLocaleString('de-CH')} CHF`;
+    return this.status === 'playing' ? null : 'Spiel beendet';
+  }
+  buyConcession(id) {
+    if (this.concessionBlock(id)) return false;
+    const d = this.river.deposits[id - 1];
+    this.money -= d.cost; d.owned = true;
+    this.say(`Konzession für ${d.name} erworben (−${d.cost} CHF): Aufschlag ×${d.mult} auf den Abbau.`, 'upgrade');
+    return true;
+  }
+
+  // Naturschutzstreifen (Flachwasser am Ufer) abschnittsweise freikaufen: wird zum Baggerkorridor, die Rinne kann breiter werden
+  shoreSections() {
+    const r = this.river, P = CONFIG.zones.shoreParts, out = [];
+    for (let side = 0; side < 2; side++) for (let part = 0; part < P; part++) out.push({ side, part, cells: [] });
+    for (let x = 0; x < r.cols; x++) {
+      const part = Math.min(P - 1, Math.floor((x / r.cols) * P));
+      for (let y = 0; y < r.rows; y++) {
+        const i = r.idx(x, y);
+        if (r.isWater(i) && !r.zone[i] && r.ext[i] === 2) out[(y + 0.5 < r.centerY(x) ? 0 : P) + part].cells.push(i);
+      }
+    }
+    for (const sec of out) sec.cost = sec.cells.length * CONFIG.zones.shoreCell;
+    return out;
+  }
+  shoreBlock(side, part) {
+    const sec = this.shoreSections().find((q) => q.side === side && q.part === part);
+    if (!sec || !sec.cells.length) return 'Schon freigegeben';
+    if (this.status !== 'playing') return 'Spiel beendet';
+    return this.money < sec.cost ? `Braucht ${Math.round(sec.cost).toLocaleString('de-CH')} CHF` : null;
+  }
+  buyShore(side, part) {
+    if (this.shoreBlock(side, part)) return false;
+    const sec = this.shoreSections().find((q) => q.side === side && q.part === part), r = this.river;
+    for (const i of sec.cells) { r.zone[i] = 1; r.ext[i] = 0; }
+    this.money -= sec.cost; this.totals.shoreSpend = (this.totals.shoreSpend ?? 0) + sec.cost;
+    this.say(`Naturschutzstreifen freigegeben (−${Math.round(sec.cost)} CHF): ${sec.cells.length} Zellen sind jetzt Baggerkorridor.`, 'upgrade');
+    this.analyze(true);
+    return true;
+  }
+
+  // Beton zukaufen (m³): kostet CONFIG.concrete.price pro m³, Lager hat eine Obergrenze
+  concreteBlock(m3) {
+    const C = CONFIG.concrete;
+    if (this.status !== 'playing') return 'Spiel beendet';
+    if (this.concrete + m3 > C.stockCap + 1e-9) return 'Betonlager voll';
+    if (this.money < m3 * C.price) return `Braucht ${Math.round(m3 * C.price).toLocaleString('de-CH')} CHF`;
+    return null;
+  }
+  buyConcrete(m3) {
+    if (this.concreteBlock(m3)) return false;
+    const cost = m3 * CONFIG.concrete.price;
+    this.money -= cost; this.concrete += m3; this.totals.concreteBought += m3; this.totals.concreteSpend += cost;
+    this.say(`${m3} m³ Beton gekauft (−${Math.round(cost).toLocaleString('de-CH')} CHF)`, 'upgrade');
+    return true;
+  }
+
+  // Aufgelaufenes Schiff vom Ponton freigeschleppt (Minispiel): sofort flott, ein Teil der Bergungskosten kommt zurück
+  rescueShip(id) {
+    const ship = this.traffic.ships.find((s) => s.id === id);
+    if (!ship || ship.state !== 'grounded') return false;
+    ship.state = 'sail'; ship.ground = 0; ship.safeT = CONFIG.traffic.tugFreeMax; // fährt mindestens tugFreeSeconds weiter und über die Untiefe hinweg, bevor es wieder auflaufen kann
+    const refund = Math.round(((ship.salvage ?? 0) * CONFIG.tow.refund) / 10) * 10;
+    this.money += refund; this.totals.rescued++; this.totals.rescueRefund += refund; this.totals.salvage -= refund;
+    this.say(`Schiff freigeschleppt! Bergungskosten −${refund} CHF gespart.`, 'good');
+    this.notify(`Schiff frei! +${refund.toLocaleString('de-CH')} CHF zurück`, 'good');
+    this.flash.push({ x: 2, y: 2, text: `+${refund}`, color: '#7bd88f' });
+    return true;
+  }
+
+  // Verbucht, was der Ponton in einem Schritt getan hat (siehe DredgeSim.update)
+  collect(d) {
+    if (this.status !== 'playing') return;
+    for (let k = 0; k < 5; k++) { this.stock[k] += d.by[k]; this.totals.byKind[k] += d.by[k]; }
+    if (d.concrete) { this.concrete = Math.max(0, this.concrete - d.concrete); this.totals.concreteUsed += d.concrete; }
+    const pay = d.zone * CONFIG.pay.perM3, protect = d.out * CONFIG.pay.protectFine, land = (d.land ?? 0) * CONFIG.pay.landFee;
+    let bomb = 0;
+    if (d.bombs) { bomb = 4500 * d.bombs; this.totals.bombs += d.bombs; this.say(`Blindgänger! Der Kampfmittelräumdienst rückt aus (−${bomb} CHF).`, 'bad'); this.notify('Fliegerbombe! Kampfmittelräumdienst −4500 CHF', 'bad'); }
+    this.money += pay - protect - land - d.fines - d.repairs - bomb;
+    // Rohstoffvorkommen mit Konzession: der Preisaufschlag wird sofort bar bezahlt
+    let premium = 0;
+    for (const [id, vol] of Object.entries(d.dep ?? {})) {
+      const dep = this.river.deposits[id - 1];
+      if (!dep) continue;
+      if (dep.owned) premium += vol * materialPrice(dep.kind, this.stats, this.market) * (dep.mult - 1);
+      else if (vol > 0.5) this.depositNoConcession = dep.id;
+    }
+    if (premium) { this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
+    const t = this.totals, y = this.today;
+    t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
+    y.pay += pay; y.costs += protect + land + d.fines + d.repairs + bomb;
+  }
+
+  update(dt) {
+    if (this.status !== 'playing') return;
+    this.time += dt;
+    const K = CONFIG.water, W = this.water;
+    if (W.until && this.time >= W.until) { W.target = K.base; W.until = 0; }
+    this.wl += (W.target - this.wl) * Math.min(1, dt * K.followRate);
+    for (const m of this.maps) { m.river.wl = this.wl; if (m.port?.harbor) m.port.harbor.river.wl = this.wl; }
+    const wasClosed = this.closed;
+    this.closed = this.wl > K.base + K.floodClose;
+    if (this.closed !== wasClosed) { this.say(this.closed ? 'Schifffahrt gesperrt (Hochwasser).' : 'Schifffahrt wieder frei.', this.closed ? 'bad' : 'good'); if (!this.closed) this.notify('Schifffahrt wieder frei', 'good'); }
+
+    const mixerOn = this.stats.mixer > 0 && this.divertAgg, C = CONFIG.concrete;
+    const divert = mixerOn ? { [KIND.kies]: { room: C.aggCap - this.agg.kies }, [KIND.sand]: { room: C.aggCap - this.agg.sand } } : null;
+    const pl = processPlant(this.stock, dt, this.stats, this.maps[0].market, divert); // die Anlage verkauft zu den Preisen der ersten Karte
+    if (mixerOn) { this.agg.kies += pl.moved[KIND.kies]; this.agg.sand += pl.moved[KIND.sand]; }
+    if (this.stats.mixer > 0) { // Betonwerk: mischt aus Kies und Sand des Flusses (plus Zement)
+      const m = Math.min(this.stats.mixRate * dt, C.stockCap - this.concrete, this.agg.kies / C.mix.kies, this.agg.sand / C.mix.sand);
+      if (m > 1e-9) {
+        this.agg.kies -= m * C.mix.kies; this.agg.sand -= m * C.mix.sand; this.concrete += m;
+        const cost = m * C.cement; this.money -= cost; this.totals.cementCost += cost; this.totals.concreteMixed += m; this.today.costs += cost;
+      }
+    }
+    if (pl.vol > 0) {
+      this.money += pl.net; this.totals.plantNet += pl.net; this.today.plant += pl.net;
+      const rf = refundFrac(this); if (rf > 0 && pl.by[KIND.altlast] < 0) { const back = -pl.by[KIND.altlast] * rf; this.money += back; this.totals.plantNet += back; this.today.plant += back; this.port.refunded = (this.port.refunded ?? 0) + back; } // Sanierungsanlage
+      for (let k = 0; k < 5; k++) { if (pl.by[k] >= 0) this.totals.sold += pl.by[k]; else this.totals.disposal -= pl.by[k]; }
+    }
+
+    const cur = this.mapIdx; // alle Karten laufen weiter: Flotte, Verkehr und Flussbett der anderen Karten arbeiten im Hintergrund
+    for (let k = 0; k < this.maps.length; k++) {
+      this.mapIdx = k;
+      this.river.wl = this.wl;
+      this.river.settle();
+      const hb = this.port.harbor?.river; if (hb) hb.settle(); // Hafenbecken: rutscht und verlandet wie der Fluss, langsamer
+      this.sedClock += dt;
+      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.river.tribDeposit(this.sedClock); if (hb) hb.deposit(this.sedClock, 0.15); this.sedClock = 0; }
+      this.fairClock -= dt;
+      if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
+      this.updateGlut(dt);
+      updatePort(this, dt);
+      updateFleet(this, dt);
+      updateTraffic(this, dt);
+    }
+    updateShipping(this, dt);
+    this.mapIdx = cur;
+
+    const day = Math.floor(this.time / CONFIG.daySeconds) + 1;
+    while (this.day < day && this.status === 'playing') { this.day++; this.dayEnd(); }
+    if (this.status === 'playing') {
+      if (this.money < CONFIG.bankruptcyLimit) this.finish('bankrupt');
+      else if (this.time >= this.totalSeconds) this.finish('deadline');
+    }
+  }
+
+  dayEnd() {
+    const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
+    const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
+    const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
+    this.money -= cost + wages; t.opCost += cost; t.wages += wages;
+    const y = this.today;
+    y.costs += cost + wages;
+    this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
+    this.today = freshDay();
+    { const c0 = this.mapIdx; for (let k = 0; k < this.maps.length; k++) { this.mapIdx = k; stepMarket(this.market, this.rng); portDay(this); } this.mapIdx = c0; }
+    const cur = this.mapIdx;
+    for (const e of this.eventsOn ? EVENTS : []) {
+      if (this.rng() < e.chance && (!e.when || e.when(this))) {
+        if (this.maps.length > 1) this.mapIdx = Math.floor(this.rng() * this.maps.length); // Ereignisse treffen eine zufällige Karte
+        const r = e.apply(this);
+        if (r) { const t = this.maps.length > 1 ? `${this.maps[this.mapIdx].name}: ${r.text}` : r.text; this.say(t, r.kind); this.notify(t, r.kind); }
+        this.mapIdx = cur;
+      }
+    }
+    this.depositsDay();
+    updateContracts(this);
+    if (this.goalReached && !this.goalSeen) {
+      this.goalSeen = true;
+      this.say(`Verkehrsziel erreicht (${this.level.goalTons.toLocaleString('de-CH')} t)! Du kannst abschliessen oder weiterspielen.`, 'good');
+      this.notify('Verkehrsziel erreicht! Im Panel kannst du abschliessen.', 'good');
+    }
+  }
+
+  // Spiel beenden: 'goal' = freiwillig nach erreichtem Ziel, 'deadline' = Frist abgelaufen, 'bankrupt' = Konzession entzogen
+  finish(reason) {
+    if (this.status !== 'playing') return false;
+    if (reason === 'goal' && !this.goalReached) return false;
+    this.status = 'ended';
+    this.end = { reason, finalMoney: Math.round(this.money), goalReached: this.goalReached };
+    return true;
+  }
+
+  get won() { return this.status === 'ended' && this.end.reason !== 'bankrupt' && this.end.goalReached && this.end.finalMoney > 0; }
+}
+
+// Felder der aktuellen Karte: Game.river, .traffic, .fleet, .zones ... lesen und schreiben in maps[mapIdx]
+for (const key of ['market', 'port', 'river', 'traffic', 'fleet', 'zones', 'zoneSeq', 'unlocked', 'fairSig', 'fair', 'fairClock', 'sedClock', 'rejectedBy', 'site']) {
+  Object.defineProperty(Game.prototype, key, { get() { return this.maps[this.mapIdx][key]; }, set(v) { this.maps[this.mapIdx][key] = v; }, enumerable: false, configurable: true });
+}
+
+return { mapSeed: mapSeed, endlessRiver: endlessRiver, BIAS_SPAN: BIAS_SPAN, regionBias: regionBias, Game: Game };
+},
+function(){
+const { CONFIG, DEBRIS, KIND } = __m(2);
+
+
+// Querschnitt: Seitenansicht quer zum Fluss. Die Pumpe fährt über die Flussbreite (x = Zellkoordinate quer zum Fluss, absolut),
+// Höhe h in m über dem Bezugshorizont. Der Kasten umfasst CONFIG.box.cols Spalten in Flussrichtung; die Pumpenleistung
+// verteilt sich auf alle. Die Anzeige zeigt die Hüllkurve (höchster Punkt = engste Stelle für Schiffe).
+// work = Arbeitsrichtung: nur nach rechts wird gesaugt; der Rückweg saugt nicht.
+const SLICE = { cols: 16, viewH: 7.6, below: 6.1, work: { x: 1, y: 1 }, returnBoost: 1.6, minWaterDepth: 0.5 };
+
+const ZERO = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, concrete: 0, dep: {} };
+
+// Geräte: Saugkopf, Löffelbagger (Upgrade loeffel), Betoniergerät (Upgrade betonrohr)
+const TOOLS = ['pump', 'loeffel', 'beton'];
+const toolAvailable = (stats, tool) => tool === 'pump' || (tool === 'loeffel' && stats.loeffel > 0) || (tool === 'beton' && stats.betonrohr > 0);
+const toolName = (tool) => ({ pump: 'Saugkopf', loeffel: 'Löffelbagger', beton: 'Betoniergerät' })[tool] ?? tool;
+
+const AUTO_ERRORS = [
+  { id: 'stuck', text: 'Automatik hängt sich auf und starrt aufs Wasser' },
+  { id: 'wrongway', text: 'Automatik saugt rückwärts und ist sehr stolz darauf' },
+  { id: 'high', text: 'Automatik hebt den Kopf und saugt Wasser (sehr sauber, aber nutzlos)' },
+];
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+class SliceSim {
+  constructor(river, stats, mapX, mapY, rng = Math.random, targetDepth = CONFIG.echolot.defaultDepth, speedSetting = CONFIG.pumpSpeed.default, tool = 'pump') {
+    this.river = river;
+    this.tool = toolAvailable(stats, tool) ? tool : 'pump'; // Gerät: Saugkopf, Löffelbagger oder Betoniergerät
+    this.concreteAvail = 0; // Betonvorrat (m³), setzt die Sitzung
+    this.stats = stats;
+    this.rng = rng;
+    const B = CONFIG.box.cols;
+    this.c0 = clamp(Math.round(mapX) - Math.floor(B / 2), 0, river.cols - B);
+    this.cols = Array.from({ length: B }, (_, k) => this.c0 + k); // Spalten des Kastens
+    this.centerCol = this.cols[Math.floor(B / 2)];
+    this.x0 = clamp(Math.round(mapY) - SLICE.cols / 2, 0, river.rows - SLICE.cols); // linke Zelle des Fensters (quer zum Fluss)
+    const b = this.bounds();
+    this.x = clamp(mapY - 0.5, b.min, b.max); // Pumpe startet an der Pontonposition
+    this.h = Math.min(this.maxH(), this.surfaceAt(this.x) + 1.5);
+    this.suctioning = false;
+    this.moving = false;
+    this.speedSetting = speedSetting;
+    this.targetDepth = targetDepth; // Solltiefe (m unter Wasser) für die Automatik
+    this.sounding = null;
+    this.sound();
+    this.blocked = false; // Puffer voll: kein Saugen
+    this.overNote = 0;
+    this.clog = 0;
+    this.freeing = null;
+    this.auto = { on: false, dir: 'sweep', error: null, errLeft: 0, startX: this.x, didWork: false };
+    this.autoPour = false; // Betonier-Automatik (Flotte, Betoniergerät)
+    this.autoLand = false; // Land-Automatik: auch Zellen im Ausbaustreifen zählen als offen (Flotte, Löffelbagger)
+    this.soundNoise = null; // überschreibt die Messungenauigkeit (Flottenpontons haben ein Peilgerät an Bord)
+    this.avoidAltlast = false; this.avoidNature = false; // Sperren für die Automatik (Flotte): Altlast und Schutzzone nicht abtragen
+    this.autoRange = null; // [erste, letzte Zeile quer zum Fluss], auf die sich die Automatik beschränkt (Flotte: nur die Rinne), sonst null = alles im Korridor
+    this.notes = [];
+  }
+
+  get h() { return this._h; }
+  set h(v) { this._h = v; this.setH = v; }
+
+  get wl() { return this.river.wl; }
+  get reaches() { return this.tool !== 'pump'; } // Löffel und Betoniergerät reichen über Wasser und über das ganze Fenster
+  maxH() { return this.reaches ? this.wl + CONFIG.bucket.reachAbove : this.wl - CONFIG.pump.maxHeightBelowWater; }
+
+  // Kennwerte des gewählten Geräts. Der Löffel verstopft nicht, trübt wenig, schafft harte Schicht und Fels besser und reicht über Wasser.
+  toolParams() {
+    const s = this.stats, B = CONFIG.bucket;
+    if (this.tool === 'beton') return { power: s.pourPower, radius: CONFIG.concrete.radius, firmness: 0, hardFactor: 0, allowLand: true, turb: 0.1, clogs: false, pour: true, armorEff: 0 };
+    if (this.tool === 'loeffel') return { armorEff: CONFIG.concrete.bucketBreak, power: s.bucketPower, radius: s.bucketRadius, firmness: s.bucketRock, hardFactor: B.hardFactor, allowLand: true, turb: B.turbidity, clogs: false };
+    return { armorEff: CONFIG.concrete.pumpBreak, power: s.power, radius: s.radius, firmness: s.rockFirmness, hardFactor: CONFIG.hard.factor, allowLand: false, turb: 1, clogs: true };
+  }
+
+  // Gerät wechseln (nur mit ausgebautem Löffel; nicht während Verstopfung)
+  setTool(tool) {
+    if (tool === this.tool || this.clog > 0) return false;
+    if (!toolAvailable(this.stats, tool)) return false;
+    this.tool = tool; this.suctioning = false; this.auto.on = false;
+    const b = this.bounds();
+    this.x = clamp(this.x, b.min, b.max - CONFIG.pump.offsetX);
+    this.h = Math.min(this.maxH(), this.surfaceAt(this.x) + 1.5);
+    this.say('info', { loeffel: 'Löffelbagger eingeschwenkt: verstopft nie, reicht über Wasser, bricht Beton auf.', beton: 'Betoniergerät eingeschwenkt: verhärtet Boden und Ufer (Leertaste).', pump: 'Saugkopf eingeschwenkt.' }[tool]);
+    return true;
+  }
+  // Erlaubter Bereich quer zum Fluss: nur dort, wo genug Wasser ist (Ufer und Flachstellen gehen nicht)
+  bounds() {
+    if (this.reaches) return { min: this.x0 + 0.01, max: this.x0 + SLICE.cols - 0.01 }; // der Ausleger reicht über das ganze Fenster, auch ans Ufer
+    let min = Infinity, max = -Infinity;
+    for (let c = 0; c < SLICE.cols; c++) {
+      if (this.wl - this.envTop(this.x0 + c) >= SLICE.minWaterDepth) { min = Math.min(min, this.x0 + c + 0.01); max = Math.max(max, this.x0 + c + 0.99); }
+    }
+    if (min > max) return { min: this.x0 + 0.01, max: this.x0 + SLICE.cols - 0.01 };
+    return { min, max };
+  }
+
+  _debrisNames() { return DEBRIS; }
+
+  _startFreeing(idx) {
+    const U = CONFIG.unclog, info = CONFIG.debrisInfo[idx] ?? {};
+    const f = { pos: 0, dir: 1, speed: info.speed ?? U.speed, zone: info.zone ?? U.zone, hits: 0, need: info.hits ?? U.hits, item: DEBRIS[idx] ?? null };
+    this.freeing = f;
+    f.zoneC = this._zone(f);
+  }
+  _zone(f = this.freeing) { const half = (f?.zone ?? CONFIG.unclog.zone) / 2; return half + this.rng() * (1 - 2 * half); }
+  freeAttempt() {
+    const f = this.freeing, U = CONFIG.unclog;
+    if (!f || this.clog <= 0) return null;
+    if (Math.abs(f.pos - f.zoneC) <= f.zone / 2) {
+      f.hits++;
+      if (f.hits >= f.need) { this.clog = 0; this.freeing = null; this.say('good', 'Pfropfen gelöst! Die Pumpe spuckt den Fremdstoff aus.'); return 'cleared'; }
+      f.speed *= U.speedUp; f.zoneC = this._zone();
+      return 'hit';
+    }
+    this.clog += U.missPenalty;
+    return 'miss';
+  }
+
+  say(kind, text, extra = {}) { this.notes.push({ kind, text, ...extra }); }
+
+  // Höchster Punkt der Sohle in der Zelle y über alle Spalten des Kastens (Hüllkurve)
+  envTop(y) {
+    const r = this.river, yy = clamp(Math.floor(y), 0, r.rows - 1);
+    let m = -Infinity;
+    for (const c of this.cols) m = Math.max(m, r.top[r.idx(c, yy)]);
+    return m;
+  }
+  envLow(y) {
+    const r = this.river, yy = clamp(Math.floor(y), 0, r.rows - 1);
+    let m = Infinity;
+    for (const c of this.cols) m = Math.min(m, r.top[r.idx(c, yy)]);
+    return m;
+  }
+  surfaceAt(x) { return this.envTop(x); }
+
+  mouth() { return { x: this.x + CONFIG.pump.offsetX, h: this.h - CONFIG.pump.offsetY }; }
+  mouthCol() { return clamp(Math.floor(this.mouth().x) - this.x0, 0, SLICE.cols - 1); }
+  autoFromCol() { return clamp(Math.floor(this.auto.startX + CONFIG.pump.offsetX - this.x0), 0, SLICE.cols - 1); }
+  targetTop() { return this.wl - this.targetDepth; }
+
+  // Echolot: lotet das Profil aus (mit Messfehler je nach Stufe); ohne Echolot ist die Peilung grob
+  sound() {
+    const amp = this.soundNoise ?? CONFIG.echolot.noise[this.stats.echolot] ?? 0;
+    this.sounding = new Float32Array(SLICE.cols);
+    for (let c = 0; c < SLICE.cols; c++) this.sounding[c] = this.envTop(this.x0 + c) + (this.rng() - 0.5) * 2 * amp;
+  }
+
+  // Ist die Spalte c des Fensters nach Peilung auf Solltiefe (oder gehört nicht zum Korridor)?
+  _inZone(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)]); }
+  _inLand(c) { const r = this.river; return this.cols.some((k) => r.zone[r.idx(k, this.x0 + c)] || (r.ext[r.idx(k, this.x0 + c)] && !(this.avoidNature && r.ext[r.idx(k, this.x0 + c)] === 2))); } // mit avoidNature bleibt das Flachwasser (Schutzzone) tabu // Korridor oder Ausbaustreifen (Land-Automatik)
+  // Betonier-Automatik: offen ist eine Querzeile, solange in einer Zelle des Kastens (Korridor oder Ausbaustreifen) die Betonschicht noch fehlt
+  _needsPour(c) {
+    const r = this.river, T = CONFIG.concrete.thickness;
+    return this.cols.some((k) => { const i = r.idx(k, this.x0 + c); return (r.zone[i] || r.ext[i]) && r.armor[i] < T * 0.9 && r.top[i] - r.rock[i] > T * 0.5; });
+  }
+  _hasAltlast(c) { const r = this.river; return this.cols.some((k) => { const i = r.idx(k, this.x0 + c); return r.kind[i] === KIND.altlast && r.top[i] - r.rock[i] > 0.05; }); }
+  _colOpen(c) { if (this.avoidAltlast && this._hasAltlast(c)) return false; if (this.autoRange && (this.x0 + c < this.autoRange[0] || this.x0 + c > this.autoRange[1])) return false; if (this.autoPour) return this._needsPour(c); return (this.autoLand ? this._inLand(c) : this._inZone(c)) && this.sounding[c] > this.targetTop() + CONFIG.echolot.doneEps; }
+  colDone(c) { return !this._colOpen(c); }
+  allDone() { for (let c = this.auto.on ? this.autoFromCol() : 0; c < SLICE.cols; c++) if (this._colOpen(c)) return false; return true; }
+  _openLeft() { for (let c = 0; c < this.autoFromCol(); c++) if (this._colOpen(c)) return c; return -1; }
+
+  // Wirklicher Stand (ohne Messfehler) für die Anzeige: so viele Zellen quer liegen noch über der Solltiefe
+  restCount() {
+    let n = 0;
+    for (let c = 0; c < SLICE.cols; c++) if (this._inZone(c) && this.envTop(this.x0 + c) > this.targetTop() + CONFIG.echolot.doneEps) n++;
+    return n;
+  }
+
+  toggleAuto() {
+    if (this.stats.autoLevel <= 0) return false;
+    this.auto.on = !this.auto.on;
+    this.auto.error = null;
+    this.auto.startX = this.x;
+    this.auto.didWork = false;
+    this.auto.dir = 'sweep';
+    if (this.auto.on && this.autoRange) { // mit eingestelltem Bereich: erst zum Anfang fahren, dann von dort bis zum Ende
+      const b = this.bounds();
+      this.auto.startX = Math.max(b.min, this.autoRange[0] + 0.01);
+      if (this.x > this.auto.startX + 0.05) this.auto.dir = 'return';
+    }
+    if (this.auto.on) { this.sound(); this.say('info', `Peilung: Automatik fährt auf ${this.targetDepth.toFixed(1)} m Tiefe.`); }
+    else this.say('info', 'Automatik aus.');
+    return true;
+  }
+
+  // Automatik-Bereich aus zwei Linien (absolute Zeilen); über das ganze Fenster = unbegrenzt
+  setAutoBounds(a, b) {
+    const lo = this.x0, hi = this.x0 + SLICE.cols - 1;
+    a = clamp(Math.round(a), lo, hi); b = clamp(Math.round(b), lo, hi);
+    if (b < a) [a, b] = [b, a];
+    this.autoRange = (a <= lo && b >= hi) ? null : [a, b];
+    return this.autoRange;
+  }
+
+  fixAuto() {
+    if (!this.auto.error) return false;
+    this.auto.error = null;
+    this.say('good', 'Aus- und wieder einschalten hilft auch hier.');
+    return true;
+  }
+
+  _autoControl(dt) {
+    const a = this.auto, lvl = this.stats.autoLevel;
+    if (a.error) {
+      a.errLeft -= dt;
+      if (a.errLeft <= 0) { a.error = null; this.say('info', 'Automatik hat sich von selbst gefangen.'); }
+    } else if (this.rng() < CONFIG.auto.errorRate[lvl] * dt) {
+      const e = AUTO_ERRORS[Math.floor(this.rng() * AUTO_ERRORS.length)];
+      a.error = e.id; a.errLeft = CONFIG.auto.errorSeconds;
+      this.say('bad', `${e.text}! (R = Reset)`);
+    }
+    if (a.error === 'stuck') return { dx: 0, dy: 0, suction: false };
+    if (a.error === 'wrongway') return { dx: -1, dy: 0, suction: true };
+    if (a.error === 'high') return { dx: 0, dy: -1, suction: true };
+    const b = this.bounds(), R = this.autoRange; // mit Arbeitsbereich fährt die Automatik nur über diesen Streifen
+    const lo = R ? Math.max(b.min, R[0] + 0.01) : b.min, hiX = R ? Math.min(b.max, R[1] + 1) : b.max;
+    if (a.dir === 'sweep' && this.x >= hiX - CONFIG.pump.offsetX - 0.05) a.dir = 'return';
+    else if (a.dir === 'return' && this.x <= Math.max(a.startX, lo) + 0.05) { a.dir = 'sweep'; this.sound(); }
+    const need = this._colOpen(this.mouthCol());
+    return a.dir === 'sweep' ? { dx: 1, dy: 0, suction: need } : { dx: -1, dy: 0, suction: false };
+  }
+
+  // input: { dx, dy (dy>0 = nach unten), suction }
+  update(dt, input) {
+    const s = this.stats, a = this.auto, lvl = s.autoLevel, P = CONFIG.pump, R = this.river;
+    this.overNote = Math.max(0, this.overNote - dt);
+    let ctl = input;
+    if (a.on) {
+      const manual = Math.abs(input.dx || 0) > 0.2 || Math.abs(input.dy || 0) > 0.2;
+      if (manual) { a.on = false; a.error = null; this.say('info', 'Du übernimmst das Steuer.'); }
+      else if (this.allDone()) {
+        const left = a.didWork ? -1 : this._openLeft();
+        if (left >= 0) {
+          a.startX = Math.max(this.x0 + 0.01, this.x0 + left - P.offsetX + 0.01); a.dir = 'return';
+          this.say('info', 'Ab hier ist alles fertig. Automatik fährt zur nächsten offenen Stelle.');
+          ctl = this._autoControl(dt);
+        } else {
+          a.on = false;
+          this.say('good', 'Profil auf Solltiefe. Automatik meldet Feierabend.');
+        }
+      } else ctl = this._autoControl(dt);
+    }
+    if (a.on && this.clog > 0) ctl = { dx: 0, dy: 0, suction: false }; // verstopft: die Automatik bleibt stehen und wartet
+    const clogged = this.clog > 0;
+    if (clogged) this.clog = Math.max(0, this.clog - dt);
+    if (this.freeing) {
+      const f = this.freeing;
+      if (this.clog <= 0) this.freeing = null;
+      else { f.pos += f.dir * f.speed * dt; if (f.pos >= 1) { f.pos = 1; f.dir = -1; } else if (f.pos <= 0) { f.pos = 0; f.dir = 1; } }
+    }
+
+    let dx = ctl.dx || 0, dy = ctl.dy || 0;
+    if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0;
+    dx = clamp(dx, -1, 1); dy = clamp(dy, -1, 1);
+    this.moving = Math.abs(dx) + Math.abs(dy) > 0.01;
+
+    const along = dx * SLICE.work.x + dy * SLICE.work.y;
+    const pumpOk = !a.on || input.pumpOn !== false;
+    const working = !!ctl.suction && pumpOk && !clogged && !this.blocked && along > -0.05;
+    const af = a.on ? CONFIG.auto.speedFactor[lvl] : 1;
+    const speed = s.headSpeed * this.speedSetting * af * (working ? s.suctionSpeedFactor : along < -0.05 ? SLICE.returnBoost : 1);
+
+    const b = this.bounds();
+    this.x = clamp(this.x + dx * speed * dt, b.min, b.max - P.offsetX);
+    const floor = this.surfaceAt(this.x);
+    const top = this.maxH();
+    if (dy) { this._h = clamp(this._h - dy * speed * dt, Math.min(floor, top), top); this.setH = this._h; }
+    if (a.on && !a.error) {
+      const v = s.headSpeed * this.speedSetting * af * 0.8, target = floor + (lvl === 1 ? 0.4 : 0);
+      this._h += clamp(target - this._h, -v * dt, v * dt);
+      this.setH = this._h;
+    }
+    if (this._h < floor) this._h = floor;
+    else if (this._h > this.setH && !dy) this._h = Math.max(this.setH, floor, this._h - s.headSpeed * this.speedSetting * 0.8 * dt);
+    this._h = Math.min(this._h, Math.max(top, floor));
+
+    if (a.on && working) a.didWork = true;
+    this.suctioning = working;
+    if (!this.suctioning) return ZERO;
+
+    // Fremdstoff an der Einsaugstelle? Wer den Kopf anhebt, fährt drüber weg. Der Löffel hebt Fremdstoffe einfach aus (ausser Bomben).
+    const T = this.toolParams();
+    if (T.pour) { // Beton ausbringen (kein Saugen, keine Fremdstoffe)
+      const m0 = this.mouth(), avail = this.concreteAvail ?? 0;
+      if (avail <= 1e-9) { if (this.overNote <= 0) { this.say('bad', 'Kein Beton mehr: im Panel kaufen oder im Betonwerk mischen.'); this.overNote = 8; } this.suctioning = false; return ZERO; }
+      const pr = R.pourSwath(this.cols, this.centerCol, m0.x, m0.h, T.radius, Math.min(avail, T.power * dt));
+      if (pr.used <= 0) this.suctioning = false;
+      return { ...ZERO, concrete: pr.used };
+    }
+    const m = this.mouth(), my = clamp(Math.floor(m.x), 0, R.rows - 1);
+    let di;
+    for (const c of this.cols) { const i = R.idx(c, my); if (R.debris[i]) { di = i; break; } }
+    const d = di === undefined ? 0 : R.debris[di];
+    if (d && m.h <= this.surfaceAt(m.x) + 1.5) {
+      const bomb = d === DEBRIS.length;
+      R.debris[di] = 0;
+      if (T.clogs || bomb) {
+        this.clog = a.on ? CONFIG.auto.clogSeconds[lvl] : (CONFIG.debrisInfo[d - 1]?.clog ?? CONFIG.debris.clogSeconds);
+        this._startFreeing(d - 1); // das Freispülen kommt immer, auch bei Automatik (sonst wartet die Pumpe die Zeit ab)
+        this.suctioning = false;
+        this.say('clog', `${T.clogs ? 'Pumpe verstopft' : 'Löffel blockiert'}: ${DEBRIS[d - 1]}!`, { item: DEBRIS[d - 1], bomb });
+        return ZERO;
+      }
+      this.say('info', `Löffel hebt aus: ${DEBRIS[d - 1]}`);
+    }
+    const res = R.suckSwath(this.cols, this.centerCol, m.x, m.h, T.radius, T.power * dt, T.firmness, { allowLand: T.allowLand, hardFactor: T.hardFactor, armorEff: T.armorEff });
+
+    if (res.out > 1e-6 && this.overNote <= 0) {
+      this.say('bad', this.tool === 'loeffel' ? 'Schutzgebiet! Hier darf nicht abgetragen werden (Busse pro m³).' : 'Naturschutzzone! Die Fischereiaufsicht schaut zu (Busse pro m³).');
+      this.overNote = 8;
+    }
+    return res;
+  }
+}
+
+
+
+return { SLICE: SLICE, TOOLS: TOOLS, toolAvailable: toolAvailable, toolName: toolName, SliceSim: SliceSim, KIND: KIND };
+},
+function(){
 const { CONFIG, KIND } = __m(2);
-const { SliceSim, TOOLS, toolAvailable, toolName } = __m(8);
+const { SliceSim, TOOLS, toolAvailable, toolName } = __m(10);
 
 
 
@@ -4530,8 +4646,8 @@ const { reserveBerth, dockShip } = __m(4);
 const { CONFIG, UPGRADES, SHIPS, CARGOS, DEBRIS, shipById, cargoById } = __m(2);
 const { priceOf, ratioOf } = __m(6);
 const { minDepthAt, pointOnPath } = __m(3);
-const { creditContracts } = __m(15);
-const { fleetSites } = __m(16);
+const { creditContracts } = __m(16);
+const { fleetSites } = __m(17);
 
 
 
@@ -4830,7 +4946,7 @@ return { createTraffic: createTraffic, bayCapacity: bayCapacity, maxZones: maxZo
 function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(2);
 const { priceOf } = __m(6);
-const { activeClasses } = __m(14);
+const { activeClasses } = __m(15);
 
 
 
@@ -4898,8 +5014,12 @@ return { makeContract: makeContract, acceptContract: acceptContract, creditContr
 },
 function(){
 const { CONFIG, SHIPS, KIND, shipById } = __m(2);
-const { toolAvailable } = __m(8);
-const { zoneSupports } = __m(14);
+const { toolAvailable } = __m(10);
+const { zoneSupports } = __m(15);
+const { HARBOR, harborTarget } = __m(7);
+const { kaiLevel } = __m(4);
+
+
 
 
 
@@ -5007,7 +5127,8 @@ function openColumns(g, cls) {
   return out;
 }
 
-const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
+const locOf = (u) => u.loc ?? 'main'; // Einsatzort: 'main' (Hauptkarte) oder 'harbor' (Hafenkarte)
+const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && locOf(u) === locOf(me) && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
 const overlaps = (res, c0) => res.some((s) => c0 < s.c0 + CONFIG.box.cols && s.c0 < c0 + CONFIG.box.cols);
 const skipKey = (s) => (s.aid ? `A${s.aid}:${s.col}` : s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
 
@@ -5104,6 +5225,16 @@ function setAreaWidth(g, id, w) {
 }
 // Kreuzungsstelle einem Ponton zuteilen (Vorrang): dieses Ponton baut sie vor allem anderen aus und macht sonst nichts, bis sie fertig ist; andere Pontons lassen sie in Ruhe
 function setZoneUnit(g, zoneId, unitId) { const z = g.zones.find((q) => q.id === zoneId); if (!z) return false; z.unit = unitId ?? null; bump(g); return true; }
+// Einsatzort eines Pontons wählen (Hauptkarte oder Hafenkarte): bricht die Arbeit ab und setzt das Ponton an die Zufahrt der anderen Karte
+function setUnitLoc(g, id, loc) {
+  const u = g.fleet.units.find((q) => q.id === id); if (!u || (loc !== 'main' && loc !== 'harbor')) return false;
+  if (loc === 'harbor' && !g.port.harbor) return false;
+  if (locOf(u) === loc) return true;
+  u.sim?.leave(); u.sim = null; u.loc = loc; u.state = 'idle'; u.site = null; u.idle = 0; u.path = null; u.note = loc === 'harbor' ? 'fährt in den Hafen' : 'fährt auf die Hauptkarte';
+  u.x = loc === 'harbor' ? 1.5 : 1.5; u.y = loc === 'harbor' ? (HARBOR.entrance.y0 + HARBOR.entrance.y1 + 1) / 2 : g.river.centerY(1);
+  return true;
+}
+const unitsAt = (g, loc) => g.fleet.units.filter((u) => locOf(u) === loc);
 function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; bump(g); return true; }
 
 // Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
@@ -5274,7 +5405,26 @@ function pickMine(g, u) {
   return { none: 'Alle Vorkommen sind vergeben' };
 }
 
+// Hafenbecken ausbaggern: Spalten des Beckens, in denen die Sohle noch über der Solltiefe (Kai-Stufe) liegt
+function pickHarbor(g, u) {
+  const h = g.port.harbor; if (!h) return { none: 'Kein Hafenbecken' };
+  const r = h.river, B = HARBOR.basin, target = harborTarget(Math.max(1, kaiLevel(g))), needTop = g.wl - target + 0.06, res = reservedBy(g, u), cols = CONFIG.box.cols;
+  let note = 'Hafenbecken ist tief genug';
+  for (let x = B.x0; x <= B.x1; x++) {
+    let y0 = Infinity, y1 = -Infinity, rock = false;
+    for (let y = B.y0; y <= B.y1; y++) { const i = y * r.cols + x; if (r.top[i] > needTop) { y0 = Math.min(y0, y); y1 = Math.max(y1, y); if (r.rock[i] > needTop) rock = true; } }
+    if (y1 < 0 || (u.skip[`H${x}`] && g.time < u.skip[`H${x}`])) continue;
+    if (rock && !canRock(g)) { note = 'Fels im Becken: braucht Felsfräse oder Löffelbagger'; continue; }
+    const c0 = Math.min(Math.max(0, x), r.cols - cols); if (overlaps(res, c0)) { note = 'Becken: Stelle ist vergeben'; continue; }
+    const px = c0 + Math.floor(cols / 2), mid = (y0 + y1) / 2, cands = [mid + 0.5]; for (let d = 1; d <= y1 - y0 + 3; d++) cands.push(mid + 0.5 + d, mid + 0.5 - d);
+    const y = cands.find((yy) => yy > 0 && yy < r.rows && r.depthAt(r.idx(px, Math.floor(yy))) >= 0.8) ?? (B.y0 + B.y1) / 2;
+    return { harbor: true, c0, col: x, y, rows: [y0, y1], cls: g.level.classes[0], depth: target, tool: rock && g.stats.loeffel > 0 ? 'loeffel' : 'pump', rock };
+  }
+  return { none: note };
+}
+
 function pickSite(g, u) {
+  if (locOf(u) === 'harbor') return pickHarbor(g, u);
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
   const mine = g.zones.filter((z) => z.unit === u.id && !zoneSupports(g, z, z.cls ?? g.zoneClassId));
   if (mine.length) { const s = pickZone(g, u); return s.none ? { none: `Kreuzungsstelle (Vorrang): ${s.none}` } : s; } // zugeteilte Kreuzung hat Vorrang: sonst nichts anderes bauen
@@ -5286,7 +5436,7 @@ function pickSite(g, u) {
 }
 
 function makeSim(g, u) {
-  const sim = g.createSession();
+  const sim = g.createSession(locOf(u) === 'harbor' && g.port.harbor ? g.port.harbor.river : g.river);
   sim.x = u.x; sim.y = u.y; sim.tool = 'pump';
   u.state = 'idle'; u.site = null; u.idle = 0;
   return sim;
@@ -5326,10 +5476,10 @@ function stepUnit(g, u, dt) {
     if (u.idle <= 0) {
       const s = pickSite(g, u);
       if (s.none) { u.idle = CONFIG.fleet.idleRetry; u.note = s.none; }
-      else { u.site = s; u.rev = g.fleet.rev ?? 0; u.state = 'travel'; u.travelT = 0; u.note = `fährt zu Spalte ${s.col + 1}`; }
+      else { u.site = s; u.rev = g.fleet.rev ?? 0; u.state = 'travel'; u.travelT = 0; u.chk = null; u.stuckT = 0; u.note = `fährt zu Spalte ${s.col + 1}`; }
     }
   } else if (u.state === 'travel') {
-    const s = u.site, route = g.fair?.[g.level.classes[0]];
+    const s = u.site, route = locOf(u) === 'harbor' ? { nodes: [{ x: 1, y: Math.floor((HARBOR.entrance.y0 + HARBOR.entrance.y1) / 2) }] } : g.fair?.[g.level.classes[0]];
     if (!route?.nodes || sim.mode !== 'map') { u.state = 'idle'; u.idle = 0; }
     else {
       u.travelT = (u.travelT ?? 0) + dt;
@@ -5354,7 +5504,8 @@ function stepUnit(g, u, dt) {
           if (sim.anchor()) {
             const sl = sim.slice;
             sl.soundNoise = CONFIG.fleet.soundNoise; sl.avoidAltlast = !!g.fleet.noAltlast; sl.avoidNature = !!g.fleet.noNature; sl.sound();
-            if (s.pour) { sl.autoPour = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; }
+            if (s.harbor) { sl.autoRange = [s.rows[0], s.rows[1]]; }
+            else if (s.pour) { sl.autoPour = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; }
             else if (s.mine) { sl.autoRange = [s.rows[0] - 1, s.rows[1] + 1]; }
             else if (s.area) { if (s.land) sl.autoLand = true; sl.autoRange = [s.rows[0], s.rows[1]]; } // Arbeitsgebiet: genau das Rechteck
             else if (s.land || s.zid) { if (s.land) sl.autoLand = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; } // Uferstreifen bzw. Kreuzungsstelle
@@ -5366,14 +5517,17 @@ function stepUnit(g, u, dt) {
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();
-            u.state = 'work'; u.workT = 0; u.note = s.area ? `baggert Gebiet ${s.aid} bei Spalte ${s.col + 1}` : s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
+            u.state = 'work'; u.workT = 0; u.note = s.harbor ? `baggert das Hafenbecken (Spalte ${s.col + 1})` : s.area ? `baggert Gebiet ${s.aid} bei Spalte ${s.col + 1}` : s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
           } else { u.skip[skipKey(s)] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         }
       } else if (dist > 1e-6) {
         // Festhänger (Flachwasser/Land ringsum, Zittern auf der Stelle): nach kurzer Zeit auf die Rinne setzen und ein Stück Richtung Ziel weiter
-        const moved = Math.hypot(sim.x - (u.px ?? sim.x), sim.y - (u.py ?? sim.y));
-        u.stuckT = moved < 0.3 * g.stats.speed * CONFIG.fleet.speedMult * dt ? (u.stuckT ?? 0) + dt : 0;
-        if (u.stuckT > 2) {
+        u.chk ??= { x: sim.x, y: sim.y, t: g.time };
+        if (g.time - u.chk.t >= 1.5) { // alle 1,5 s prüfen, ob das Ponton vorankommt
+          u.stuckT = Math.hypot(sim.x - u.chk.x, sim.y - u.chk.y) < 0.5 ? (u.stuckT ?? 0) + 1.5 : 0;
+          u.chk = { x: sim.x, y: sim.y, t: g.time };
+        }
+        if (u.stuckT >= 3) { // Festhänger (Flachwasser/Land ringsum): auf die Rinne setzen und ein Stück Richtung Ziel weiter
           u.stuckT = 0;
           const step = Math.sign(gi - ni) * (nd > 1.2 ? 0 : 3), n = route.nodes[Math.max(0, Math.min(route.nodes.length - 1, ni + step))];
           if (sim.canFloat(n.x + 0.5, n.y + 0.5)) { sim.x = n.x + 0.5; sim.y = n.y + 0.5; u.note = 'wurde freigesetzt'; }
@@ -5384,7 +5538,7 @@ function stepUnit(g, u, dt) {
   } else if (u.state === 'work') {
     u.workT += dt;
     if (sim.mode === 'slice' && !sim.pumpOn && sim.slice.auto.on) { sim.pumpOn = true; sim.autoStartedPump = true; }
-    const limit = u.site?.area ? 300 : u.site?.did ? 300 : u.site?.land ? 420 : u.site?.zid ? 300 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
+    const limit = u.site?.harbor ? 240 : u.site?.area ? 300 : u.site?.did ? 300 : u.site?.land ? 420 : u.site?.zid ? 300 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
     const noConcrete = u.site?.pour && g.concrete <= 0.05;
     if (noConcrete) u.note = 'Kein Beton mehr im Lager';
     if (sim.mode !== 'slice' || !sim.slice.auto.on || u.workT > limit || noConcrete) {
@@ -5405,10 +5559,10 @@ function updateFleet(g, dt) {
 
 // Positionen verankerter Flottenpontons (bremsen den Verkehr in der Rinne wie dein eigener Ponton)
 function fleetSites(g) {
-  return g.fleet.units.filter((u) => u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
+  return g.fleet.units.filter((u) => locOf(u) === 'main' && u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);
@@ -5450,7 +5604,7 @@ return { stockTotal: stockTotal, materialPrice: materialPrice, processPlant: pro
 },
 function(){
 const { CONFIG, shipById } = __m(2);
-const { shipPos } = __m(14);
+const { shipPos } = __m(15);
 
 
 
@@ -5517,10 +5671,10 @@ return { TowSim: TowSim, groundedNear: groundedNear };
 },
 function(){
 const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(2);
-const { upgradeCost } = __m(12);
-const { waitingByClass, bayCapacity, activeClasses } = __m(14);
+const { upgradeCost } = __m(13);
+const { waitingByClass, bayCapacity, activeClasses } = __m(15);
 const { ratioOf } = __m(6);
-const { hireBlock, nextHireCost } = __m(16);
+const { hireBlock, nextHireCost } = __m(17);
 
 
 
@@ -5682,12 +5836,12 @@ class Advisor {
 return { Advisor: Advisor };
 },
 function(){
-const { Game, endlessRiver } = __m(7);
-const { createRng } = __m(13);
+const { Game, endlessRiver } = __m(9);
+const { createRng } = __m(14);
 const { createMarket } = __m(6);
 const { createPort, ensurePort } = __m(4);
 const { levelById } = __m(2);
-const { River } = __m(9);
+const { River } = __m(8);
 
 
 
@@ -5725,9 +5879,10 @@ const packRiver = (river) => {
 function serializeGame(game) {
   const data = {};
   for (const [k, v] of Object.entries(game)) if (!SKIP.has(k)) data[k] = v;
-  data.maps = game.maps.map(({ river, fair, site, ...rest }) => rest); // Flussbett je Karte separat (Typed Arrays)
+  data.maps = game.maps.map(({ river, fair, site, port, ...rest }) => ({ ...rest, port: port && { ...port, harbor: port.harbor && { ...port.harbor, river: undefined } } })); // Flussbett je Karte (und Hafenbecken) separat (Typed Arrays)
   const rivers = game.maps.map((m) => packRiver(m.river));
-  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, rivers }, (k, v) => (k === 'path' || k === 'sim' ? undefined : v));
+  const harborRivers = game.maps.map((m) => (m.port?.harbor ? packRiver(m.port.harbor.river) : null));
+  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, rivers, harborRivers }, (k, v) => (k === 'path' || k === 'sim' ? undefined : v));
 }
 
 // Gibt ein Game zurück oder null, wenn der Text kaputt oder von einer anderen Version ist.
@@ -5750,6 +5905,8 @@ function restoreGame(text) {
       m.river = river; m.site = null; m.fair = null;
       m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort(); ensurePort(m.port);
       m.fairClock = m.fairClock ?? 0; m.sedClock = m.sedClock ?? 0;
+      const hs = s.harborRivers?.[i];
+      if (hs && m.port.harbor) { const hr = new River(hs.cols, hs.rows); for (const [k, v] of Object.entries(hs)) hr[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v; m.port.harbor.river = hr; hr.wl = game.wl; } else if (m.port.harbor) m.port.harbor = null; // kaputter Stand: neu anlegen lassen
     });
     game.rng.setState(s.rng);
     const cur = game.mapIdx;
@@ -5766,7 +5923,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(22);
+const { isTap } = __m(23);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -5860,7 +6017,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(22);
+const { snapStick } = __m(23);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -5939,11 +6096,13 @@ function setupTouch(input, hooks) {
 return { setupTouch: setupTouch };
 },
 function(){
-const { CONFIG, shipById } = __m(2);
+const { CONFIG, SHIPS, shipById } = __m(2);
 const { needDepth, minNeedDepth } = __m(3);
 const { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } = __m(5);
-const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked } = __m(4);
+const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget } = __m(4);
 const { priceOf, ratioOf } = __m(6);
+const { HARBOR } = __m(7);
+
 
 
 
@@ -6021,8 +6180,8 @@ function setupPort(root, getGame, onChange) {
       { const L = landOf(g), conn = connectedRoads(g);
         h += `<div class="port-card"><b>🛣 Landseite</b> <small>${L.roads.length} Strassenzellen (${conn.size} angebunden) · Umschlag ×${roadFactor(g).toFixed(2)} · Bau auf der Karte (L): Strassen ans Hafenbecken, Lagerhallen für Container und Kies</small>` +
           (L.halls.length ? L.halls.map((hl) => { const ok = hallConnected(g, hl, conn), up = hl.level <= LAND.hall.up.length; return `<div class="row"><span>🏭 ${hl.id} · Stufe ${hl.level} · ${ok ? `+${LAND.hall.cap.container[hl.level - 1]} t Container, +${LAND.hall.cap.kies[hl.level - 1]} t Kies` : '<span class="warn">nicht angebunden</span>'}</span>${up ? `<button data-act="hallup" data-hall="${hl.id}" ${hallUpgradeBlock(g, hl.id) ? 'disabled' : ''}>Ausbauen · ${chf(LAND.hall.up[hl.level - 1])}</button>` : ''}</div>`; }).join('') : '<small>Noch keine Lagerhalle.</small>') + `</div>`; }
-      { const d = bayDepth(g), T = PORT.bay.target, ok = d >= T - 0.05;
-        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>${ok ? `tief genug (${d.toFixed(1)} m): alle Schiffe können anlegen` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: Schiffe legen nur an, wenn das Becken tief genug für sie ist (Lastkahn ab ${minNeedDepth(shipById('kahn')).toFixed(1)} m, Motorschiff ${minNeedDepth(shipById('motor')).toFixed(1)}–${needDepth(shipById('motor')).toFixed(1)} m). Die Bucht ist auf der Karte markiert: dort mit dem Ponton ankern und ausbaggern.`}</small></div>`; }
+      { const d = bayDepth(g), T = bayTarget(g), ok = d >= T - 0.05, kl = kaiLevel(g) || 1, kc = HARBOR.kaiClasses[kl - 1], names = SHIPS.slice(0, kc).map((c) => c.name).join(', ');
+        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>Becken ${ok ? `tief genug (${d.toFixed(1)} m)` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: noch ausbaggern`}. Der Kai (Stufe ${kl}) nimmt an: <b>${names}</b>${kc < SHIPS.length ? ' (weitere Klassen mit dem Kai-Ausbau)' : ''}; sie legen nur an, wenn das Becken tief genug ist (Lastkahn ab ${minNeedDepth(shipById('kahn')).toFixed(1)} m). Das Becken liegt auf der eigenen <b>Hafenkarte</b> (Knopf «⚓ Hafenkarte», Y): dort selbst ankern und ausbaggern oder Pontons im Panel «Flotte» dem Hafen zuteilen.</small></div>`; }
       if (!hasKai(g)) h += `<div class="port-card"><b>Ohne Kai kein Handel.</b> Baue zuerst einen Kai mit Verladestation.</div>`;
       else {
         const jobs = (p.jobs ?? []).slice().sort((a, b) => (isDocked(b) ? 1 : 0) - (isDocked(a) ? 1 : 0)), M = PORT.machines[machineOf(g)], docked = jobs.filter(isDocked).length;
@@ -6257,16 +6416,18 @@ function createAudio() {
 return { createAudio: createAudio };
 },
 function(){
-const { SLICE } = __m(8);
+const { SLICE } = __m(10);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
-const { shipPos, queuePos, bayCapacity } = __m(14);
+const { shipPos, queuePos, bayCapacity } = __m(15);
 const { needDepth, minNeedDepth } = __m(3);
-const { PORT, bayDepth, bayReady, dockPos } = __m(4);
-const { areaWork } = __m(16);
+const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, isDocked, kaiLevel } = __m(4);
+const { HARBOR, berthPos } = __m(7);
+const { areaWork } = __m(17);
 const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(5);
-const { Chain, drawChain } = __m(30);
-const { groundedNear } = __m(18);
+const { Chain, drawChain } = __m(31);
+const { groundedNear } = __m(19);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
+
 
 
 
@@ -6638,7 +6799,7 @@ function drawHarbor(ctx, game) {
   const x = OX + bay.x0 * CELL, y = bay.y0 * CELL, w = (bay.x1 - bay.x0 + 1) * CELL, h = (bay.y1 - bay.y0 + 1) * CELL;
   ctx.fillStyle = ready ? 'rgba(120,230,150,.22)' : 'rgba(255,200,70,.18)'; ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = ready ? '#7be39a' : '#ffc94a'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [6, 4]); ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); ctx.setLineDash([]);
-  const cx = x + w / 2, label = open ? (ready ? '⚓ Hafen' : `⚓ Hafen ${d.toFixed(1)}/${PORT.bay.target.toFixed(1)} m`) : '⚓ Hafen (frei)';
+  const cx = x + w / 2, label = open ? (ready ? '⚓ Hafen' : `⚓ Hafen ${d.toFixed(1)}/${bayTarget(game).toFixed(1)} m`) : '⚓ Hafen (frei)';
   ctx.font = font(12); ctx.textAlign = 'center';
   const tw = ctx.measureText(label).width + 10, ty = bay.side < 0 ? y - 4 : y + h + fs(12) + 4;
   const hdy = labelDy(cx - tw / 2, ty - fs(12) - 1, tw, fs(12) + 5);
@@ -6681,6 +6842,50 @@ function drawZones(ctx, game, ui) {
 }
 
 // Gemietete Pontons der Flotte: kleiner, cyan, mit Name; beim Baggern mit gestricheltem Kasten
+// Hafenkarte: Zufahrt, Becken mit Kaimauer, Bauplätze mit den gebauten Gebäuden und die angelegten Schiffe an ihren Liegeplätzen
+function drawHarborScene(ctx, game, ui = {}) {
+  const g = game, p = g.port, B = HARBOR.basin, E = HARBOR.entrance, L = (x, y) => ({ x: OX + x * CELL, y: y * CELL });
+  LABELS = [];
+  const tag = (text, cx, cy, color = '#fff') => { ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(text).width + 10, dy = labelDy(cx - tw / 2, cy - fs(12), tw, fs(12) + 5); ctx.fillStyle = '#000b'; ctx.fillRect(cx - tw / 2, cy - fs(12) - 1 + dy, tw, fs(12) + 5); ctx.fillStyle = color; ctx.fillText(text, cx, cy + dy + 2); ctx.textAlign = 'start'; };
+  // Becken: Rahmen gelb (zu flach) oder grün (bereit)
+  const depth = bayDepth(g), ready = bayReady(g), a = L(B.x0, B.y0);
+  ctx.strokeStyle = ready ? '#7be39a' : '#ffc94a'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [7, 5]); ctx.strokeRect(a.x + 1, a.y + 1, (B.x1 - B.x0 + 1) * CELL - 2, (B.y1 - B.y0 + 1) * CELL - 2); ctx.setLineDash([]);
+  tag(ready ? `⚓ Hafenbecken ${depth.toFixed(1)} m ✓` : `⚓ Hafenbecken ${depth.toFixed(1)}/${bayTarget(g).toFixed(1)} m: ausbaggern`, a.x + ((B.x1 - B.x0 + 1) * CELL) / 2, (B.y1 + 1) * CELL + 16, ready ? '#b9f5c9' : '#ffe08a');
+  const en = L(E.x0, E.y0); tag('Zufahrt vom Fluss ➜', en.x + 70, E.y0 * CELL - 8, '#bfeaff');
+  // Kai: Pier an der Nordseite des Beckens
+  const hasKai = (p.slots ?? []).some((s) => s?.type === 'kai'), nb = berthsOf(g);
+  if (hasKai) {
+    const px0 = L(B.x0, B.y0 - 1.4);
+    ctx.fillStyle = '#9aa0a8'; ctx.fillRect(px0.x, px0.y, (B.x1 - B.x0 + 1) * CELL, CELL * 1.4); ctx.strokeStyle = '#4b5057'; ctx.lineWidth = 2; ctx.strokeRect(px0.x, px0.y, (B.x1 - B.x0 + 1) * CELL, CELL * 1.4);
+    for (let k = 0; k < HARBOR.berthX.length; k++) { // Liegeplätze: markiert, gesperrte grau
+      const bp = berthPos(k), x = OX + (bp.x - 2) * CELL, y = B.y0 * CELL, on = k < nb;
+      ctx.strokeStyle = on ? '#ffe9a0' : '#ffffff44'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [] : [3, 4]); ctx.strokeRect(x + 1, y + 1, 4 * CELL - 2, CELL * 3.2); ctx.setLineDash([]);
+      ctx.fillStyle = on ? '#ffe9a0' : '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(on ? `${k + 1}` : '🔒', x + 2 * CELL, y - CELL * 0.35); ctx.textAlign = 'start';
+    }
+  }
+  // Bauplätze und Gebäude
+  (p.slots ?? []).forEach((sl, i) => {
+    const pl = HARBOR.plots[i]; if (!pl) return; const q = L(pl[0], pl[1]), w = HARBOR.plotW * CELL, h = HARBOR.plotH * CELL;
+    if (!sl) { ctx.strokeStyle = '#ffffff33'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeRect(q.x, q.y, w, h); ctx.setLineDash([]); ctx.fillStyle = '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(`Bauplatz ${i + 1}`, q.x + w / 2, q.y + h / 2 + 4); ctx.textAlign = 'start'; return; }
+    const Bd = PORT.buildings[sl.type];
+    ctx.fillStyle = '#b79b6e'; ctx.fillRect(q.x, q.y, w, h); ctx.strokeStyle = '#4a3b22'; ctx.lineWidth = 2; ctx.strokeRect(q.x + 1, q.y + 1, w - 2, h - 2);
+    ctx.font = font(22); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(Bd.icon, q.x + w / 2, q.y + h / 2 + 4);
+    ctx.font = font(11); ctx.fillStyle = '#fff'; const fill = Bd.commodity ? ` · ${Math.round(p.stock[Bd.commodity] ?? 0)} t` : ''; ctx.fillText(`${Bd.name.split(' ')[0]} ${sl.level}${fill}`, q.x + w / 2, q.y + h - 5); ctx.textAlign = 'start';
+  });
+  // angelegte Schiffe an den Liegeplätzen, mit Ladefortschritt
+  const docked = (p.jobs ?? []).filter((j) => isDocked(j) && j.shipId != null);
+  docked.forEach((j, k) => {
+    const ship = (game.maps ? g.maps[g.mapIdx].traffic : g.traffic).ships.find((s) => s.id === j.shipId); if (!ship) return;
+    const cls = shipById(ship.cls), bp = berthPos(k);
+    drawShip(ctx, cls, { ...ship, state: 'harbor' }, bp, g, ui);
+    const q = mapPx(bp.x, bp.y), wBar = 3 * CELL;
+    ctx.fillStyle = '#000b'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar, 5); ctx.fillStyle = '#7bd88f'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar * Math.min(1, j.done / j.tons), 5);
+    ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(`${PORT.commodities[j.cargo].icon} ${j.out ? 'lädt' : 'entlädt'}`, q.x, q.y + CELL * 1.2 + 16); ctx.textAlign = 'start';
+  });
+  const res = (p.jobs ?? []).filter((j) => !isDocked(j)).length;
+  tag(`Liegeplätze ${(p.jobs ?? []).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
+}
+
 function drawFleet(ctx, game) {
   for (const u of game.fleet?.units ?? []) {
     const px = OX + u.x * CELL, py = u.y * CELL, sim = u.sim;
@@ -7031,7 +7236,7 @@ function drawTowView(ctx, game, tow, ui = {}) {
 const CONFIG_TOW_SNAP = () => CONFIG.tow.snapAt;
 
 
-return { CELL: CELL, MARGIN: MARGIN, OX: OX, W: W, H: H, sizeCanvas: sizeCanvas, view: view, fs: fs, mapPx: mapPx, sliceY: sliceY, drawMap: drawMap, autoLineX: autoLineX, sliceHeadScreen: sliceHeadScreen, sliceMouthScreen: sliceMouthScreen, drawSlice: drawSlice, drawTowView: drawTowView, CARGOS: CARGOS, groundedNear: groundedNear };
+return { CELL: CELL, MARGIN: MARGIN, OX: OX, W: W, H: H, sizeCanvas: sizeCanvas, view: view, fs: fs, mapPx: mapPx, sliceY: sliceY, drawMap: drawMap, drawHarborScene: drawHarborScene, autoLineX: autoLineX, sliceHeadScreen: sliceHeadScreen, sliceMouthScreen: sliceMouthScreen, drawSlice: drawSlice, drawTowView: drawTowView, CARGOS: CARGOS, groundedNear: groundedNear };
 },
 function(){
 

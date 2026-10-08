@@ -1,8 +1,9 @@
-import { CONFIG, shipById } from '../config.js';
+import { CONFIG, SHIPS, shipById } from '../config.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } from '../sim/land.js';
-import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked } from '../sim/port.js';
+import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget } from '../sim/port.js';
 import { priceOf, ratioOf } from '../sim/market.js';
+import { HARBOR } from '../sim/harbor.js';
 
 // Hafen-Seite: Vollbild-Overlay mit Bauplätzen, Lagern, Handel und Automatik. Die Simulation läuft im Hintergrund weiter.
 const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
@@ -75,8 +76,8 @@ export function setupPort(root, getGame, onChange) {
       { const L = landOf(g), conn = connectedRoads(g);
         h += `<div class="port-card"><b>🛣 Landseite</b> <small>${L.roads.length} Strassenzellen (${conn.size} angebunden) · Umschlag ×${roadFactor(g).toFixed(2)} · Bau auf der Karte (L): Strassen ans Hafenbecken, Lagerhallen für Container und Kies</small>` +
           (L.halls.length ? L.halls.map((hl) => { const ok = hallConnected(g, hl, conn), up = hl.level <= LAND.hall.up.length; return `<div class="row"><span>🏭 ${hl.id} · Stufe ${hl.level} · ${ok ? `+${LAND.hall.cap.container[hl.level - 1]} t Container, +${LAND.hall.cap.kies[hl.level - 1]} t Kies` : '<span class="warn">nicht angebunden</span>'}</span>${up ? `<button data-act="hallup" data-hall="${hl.id}" ${hallUpgradeBlock(g, hl.id) ? 'disabled' : ''}>Ausbauen · ${chf(LAND.hall.up[hl.level - 1])}</button>` : ''}</div>`; }).join('') : '<small>Noch keine Lagerhalle.</small>') + `</div>`; }
-      { const d = bayDepth(g), T = PORT.bay.target, ok = d >= T - 0.05;
-        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>${ok ? `tief genug (${d.toFixed(1)} m): alle Schiffe können anlegen` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: Schiffe legen nur an, wenn das Becken tief genug für sie ist (Lastkahn ab ${minNeedDepth(shipById('kahn')).toFixed(1)} m, Motorschiff ${minNeedDepth(shipById('motor')).toFixed(1)}–${needDepth(shipById('motor')).toFixed(1)} m). Die Bucht ist auf der Karte markiert: dort mit dem Ponton ankern und ausbaggern.`}</small></div>`; }
+      { const d = bayDepth(g), T = bayTarget(g), ok = d >= T - 0.05, kl = kaiLevel(g) || 1, kc = HARBOR.kaiClasses[kl - 1], names = SHIPS.slice(0, kc).map((c) => c.name).join(', ');
+        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>Becken ${ok ? `tief genug (${d.toFixed(1)} m)` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: noch ausbaggern`}. Der Kai (Stufe ${kl}) nimmt an: <b>${names}</b>${kc < SHIPS.length ? ' (weitere Klassen mit dem Kai-Ausbau)' : ''}; sie legen nur an, wenn das Becken tief genug ist (Lastkahn ab ${minNeedDepth(shipById('kahn')).toFixed(1)} m). Das Becken liegt auf der eigenen <b>Hafenkarte</b> (Knopf «⚓ Hafenkarte», Y): dort selbst ankern und ausbaggern oder Pontons im Panel «Flotte» dem Hafen zuteilen.</small></div>`; }
       if (!hasKai(g)) h += `<div class="port-card"><b>Ohne Kai kein Handel.</b> Baue zuerst einen Kai mit Verladestation.</div>`;
       else {
         const jobs = (p.jobs ?? []).slice().sort((a, b) => (isDocked(b) ? 1 : 0) - (isDocked(a) ? 1 : 0)), M = PORT.machines[machineOf(g)], docked = jobs.filter(isDocked).length;

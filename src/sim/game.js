@@ -172,8 +172,8 @@ export class Game {
     return true;
   }
 
-  createSession() {
-    const sim = new DredgeSim(this.river, this.stats, this.rng);
+  createSession(river = this.river) {
+    const sim = new DredgeSim(river, this.stats, this.rng);
     sim.targetDepth = this.targetDepth;
     sim.pumpSpeed = this.pumpSpeed;
     sim.bufferRoom = this.bufferRoom;
@@ -373,7 +373,7 @@ export class Game {
     const K = CONFIG.water, W = this.water;
     if (W.until && this.time >= W.until) { W.target = K.base; W.until = 0; }
     this.wl += (W.target - this.wl) * Math.min(1, dt * K.followRate);
-    for (const m of this.maps) m.river.wl = this.wl;
+    for (const m of this.maps) { m.river.wl = this.wl; if (m.port?.harbor) m.port.harbor.river.wl = this.wl; }
     const wasClosed = this.closed;
     this.closed = this.wl > K.base + K.floodClose;
     if (this.closed !== wasClosed) { this.say(this.closed ? 'Schifffahrt gesperrt (Hochwasser).' : 'Schifffahrt wieder frei.', this.closed ? 'bad' : 'good'); if (!this.closed) this.notify('Schifffahrt wieder frei', 'good'); }
@@ -400,8 +400,9 @@ export class Game {
       this.mapIdx = k;
       this.river.wl = this.wl;
       this.river.settle();
+      const hb = this.port.harbor?.river; if (hb) hb.settle(); // Hafenbecken: rutscht und verlandet wie der Fluss, langsamer
       this.sedClock += dt;
-      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.river.tribDeposit(this.sedClock); this.sedClock = 0; }
+      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.river.tribDeposit(this.sedClock); if (hb) hb.deposit(this.sedClock, 0.15); this.sedClock = 0; }
       this.fairClock -= dt;
       if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
       this.updateGlut(dt);

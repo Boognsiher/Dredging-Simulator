@@ -296,7 +296,8 @@ import { setAvoid, cellAllowed } from '../src/sim/fleet.js';
 import { lendPonton, recallPonton, lendBlock, lentUnit, nextHireCost } from '../src/sim/fleet.js';
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
-import { berthsOf, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
+import { harborAccepts } from '../src/sim/harbor.js';
+import { berthsOf, bayDepth, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
   assert.ok(openBlock(g), 'ohne Motorschiff gesperrt');
@@ -597,7 +598,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
-import { setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+import { setUnitLoc, setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
 
 function bankSlice(levels = { loeffel: 3 }) {
   const g = new Game(3, 'hochrhein'), r = g.river;
@@ -1701,7 +1702,7 @@ test('Hafen: Liegeplätze werden reserviert, Schiffe legen an und fahren nach de
   const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.money = 1e7; g.unlocked.motor = true;
   assert.ok(openPort(g)); for (const s of g.port.sites) s.ready = true;
   assert.ok(build(g, 0, 'kai')); assert.ok(build(g, 1, 'kies'));
-  for (const i of g.port.bay.cells) g.river.top[i] = g.wl - 3; // Becken tief genug
+  for (const i of g.port.harbor.cells) g.port.harbor.river.top[i] = g.wl - 3; // Becken tief genug
   assert.equal(berthsOf(g), 2);
   const cid = Object.keys(g.fair).find((id) => g.fair[id].passable);
   const mk = () => { let s = null; for (let k = 0; k < 60 && !s; k++) s = spawnShip(g); s.cls = cid; s.dir = 1; s.cargo = 'kies'; s.tons = 400; return s; };
@@ -1730,4 +1731,23 @@ test('Zuflüsse: nur auf weiteren Karten, tragen laufend Sand/Kies in die Rinne'
   assert.ok(grown.length >= 3, 'Sohle wächst an der Mündung');
   assert.ok(t.cells.every((i) => r.top[i] <= Math.max(before[t.cells.indexOf(i)], r.cap[i] + 0.81)), 'aber nur begrenzt');
   const rt = restoreGame(serializeGame(g)); assert.equal(rt.maps[1].river.tribs.length, r.tribs.length);
+});
+
+test('Hafenkarte: eigenes Becken, Pontons lassen sich zuteilen und baggern es aus, Kai-Stufe 1 nimmt nur die einfachste Klasse an', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.money = 1e7; g.unlocked.motor = true;
+  for (const id of ['auto', 'auto']) g.buyUpgrade(id);
+  assert.ok(openPort(g)); assert.ok(g.port.harbor, 'Hafenkarte entsteht mit dem Hafen');
+  for (const s of g.port.sites) s.ready = true; assert.ok(build(g, 0, 'kai')); assert.ok(build(g, 1, 'kies'));
+  assert.ok(bayDepth(g) < 1.2, 'Becken anfangs flach');
+  assert.ok(!harborAccepts(g.port, g.wl, 1, 'kahn'), 'zu flach');
+  hireUnit(g); const u = g.fleet.units[0];
+  assert.ok(setUnitLoc(g, u.id, 'harbor')); assert.equal(u.loc, 'harbor');
+  for (let t = 0; t < 1500 && bayDepth(g) < 1.5; t += 0.1) g.update(0.1);
+  assert.ok(bayDepth(g) >= 1.5, 'Pontons baggern das Becken: ' + bayDepth(g));
+  assert.ok(harborAccepts(g.port, g.wl, 1, 'kahn'), 'Lastkahn passt jetzt');
+  assert.ok(!harborAccepts(g.port, g.wl, 1, 'motor'), 'Kai Stufe 1: nur die einfachste Klasse');
+  assert.equal(fleetSites(g).length, 0, 'Pontons im Hafen bremsen den Fluss nicht');
+  assert.ok(setUnitLoc(g, u.id, 'main'));
+  const rt = restoreGame(serializeGame(g)); assert.ok(rt.port.harbor?.river?.top instanceof Float32Array);
+  assert.ok(Math.abs(bayDepth(rt) - bayDepth(g)) < 1e-6);
 });

@@ -1,6 +1,8 @@
 import { CONFIG, SHIPS, KIND, shipById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { zoneSupports } from './traffic.js';
+import { HARBOR, harborTarget } from './harbor.js';
+import { kaiLevel } from './port.js';
 
 // Flotte: gemietete Pontons arbeiten selbstständig. Jeder fährt zur nächsten Engstelle der Ausbauklasse, ankert, lässt die Automatik
 // mit dem passenden Gerät (Saugkopf, bei Fels der Löffel) auf die Solltiefe baggern und sucht danach die nächste offene Stelle.
@@ -105,7 +107,8 @@ export function openColumns(g, cls) {
   return out;
 }
 
-const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
+const locOf = (u) => u.loc ?? 'main'; // Einsatzort: 'main' (Hauptkarte) oder 'harbor' (Hafenkarte)
+const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && locOf(u) === locOf(me) && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
 const overlaps = (res, c0) => res.some((s) => c0 < s.c0 + CONFIG.box.cols && s.c0 < c0 + CONFIG.box.cols);
 const skipKey = (s) => (s.aid ? `A${s.aid}:${s.col}` : s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
 
@@ -202,6 +205,16 @@ export function setAreaWidth(g, id, w) {
 }
 // Kreuzungsstelle einem Ponton zuteilen (Vorrang): dieses Ponton baut sie vor allem anderen aus und macht sonst nichts, bis sie fertig ist; andere Pontons lassen sie in Ruhe
 export function setZoneUnit(g, zoneId, unitId) { const z = g.zones.find((q) => q.id === zoneId); if (!z) return false; z.unit = unitId ?? null; bump(g); return true; }
+// Einsatzort eines Pontons wählen (Hauptkarte oder Hafenkarte): bricht die Arbeit ab und setzt das Ponton an die Zufahrt der anderen Karte
+export function setUnitLoc(g, id, loc) {
+  const u = g.fleet.units.find((q) => q.id === id); if (!u || (loc !== 'main' && loc !== 'harbor')) return false;
+  if (loc === 'harbor' && !g.port.harbor) return false;
+  if (locOf(u) === loc) return true;
+  u.sim?.leave(); u.sim = null; u.loc = loc; u.state = 'idle'; u.site = null; u.idle = 0; u.path = null; u.note = loc === 'harbor' ? 'fährt in den Hafen' : 'fährt auf die Hauptkarte';
+  u.x = loc === 'harbor' ? 1.5 : 1.5; u.y = loc === 'harbor' ? (HARBOR.entrance.y0 + HARBOR.entrance.y1 + 1) / 2 : g.river.centerY(1);
+  return true;
+}
+export const unitsAt = (g, loc) => g.fleet.units.filter((u) => locOf(u) === loc);
 export function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; bump(g); return true; }
 
 // Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
@@ -372,7 +385,26 @@ function pickMine(g, u) {
   return { none: 'Alle Vorkommen sind vergeben' };
 }
 
+// Hafenbecken ausbaggern: Spalten des Beckens, in denen die Sohle noch über der Solltiefe (Kai-Stufe) liegt
+function pickHarbor(g, u) {
+  const h = g.port.harbor; if (!h) return { none: 'Kein Hafenbecken' };
+  const r = h.river, B = HARBOR.basin, target = harborTarget(Math.max(1, kaiLevel(g))), needTop = g.wl - target + 0.06, res = reservedBy(g, u), cols = CONFIG.box.cols;
+  let note = 'Hafenbecken ist tief genug';
+  for (let x = B.x0; x <= B.x1; x++) {
+    let y0 = Infinity, y1 = -Infinity, rock = false;
+    for (let y = B.y0; y <= B.y1; y++) { const i = y * r.cols + x; if (r.top[i] > needTop) { y0 = Math.min(y0, y); y1 = Math.max(y1, y); if (r.rock[i] > needTop) rock = true; } }
+    if (y1 < 0 || (u.skip[`H${x}`] && g.time < u.skip[`H${x}`])) continue;
+    if (rock && !canRock(g)) { note = 'Fels im Becken: braucht Felsfräse oder Löffelbagger'; continue; }
+    const c0 = Math.min(Math.max(0, x), r.cols - cols); if (overlaps(res, c0)) { note = 'Becken: Stelle ist vergeben'; continue; }
+    const px = c0 + Math.floor(cols / 2), mid = (y0 + y1) / 2, cands = [mid + 0.5]; for (let d = 1; d <= y1 - y0 + 3; d++) cands.push(mid + 0.5 + d, mid + 0.5 - d);
+    const y = cands.find((yy) => yy > 0 && yy < r.rows && r.depthAt(r.idx(px, Math.floor(yy))) >= 0.8) ?? (B.y0 + B.y1) / 2;
+    return { harbor: true, c0, col: x, y, rows: [y0, y1], cls: g.level.classes[0], depth: target, tool: rock && g.stats.loeffel > 0 ? 'loeffel' : 'pump', rock };
+  }
+  return { none: note };
+}
+
 function pickSite(g, u) {
+  if (locOf(u) === 'harbor') return pickHarbor(g, u);
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
   const mine = g.zones.filter((z) => z.unit === u.id && !zoneSupports(g, z, z.cls ?? g.zoneClassId));
   if (mine.length) { const s = pickZone(g, u); return s.none ? { none: `Kreuzungsstelle (Vorrang): ${s.none}` } : s; } // zugeteilte Kreuzung hat Vorrang: sonst nichts anderes bauen
@@ -384,7 +416,7 @@ function pickSite(g, u) {
 }
 
 function makeSim(g, u) {
-  const sim = g.createSession();
+  const sim = g.createSession(locOf(u) === 'harbor' && g.port.harbor ? g.port.harbor.river : g.river);
   sim.x = u.x; sim.y = u.y; sim.tool = 'pump';
   u.state = 'idle'; u.site = null; u.idle = 0;
   return sim;
@@ -424,10 +456,10 @@ function stepUnit(g, u, dt) {
     if (u.idle <= 0) {
       const s = pickSite(g, u);
       if (s.none) { u.idle = CONFIG.fleet.idleRetry; u.note = s.none; }
-      else { u.site = s; u.rev = g.fleet.rev ?? 0; u.state = 'travel'; u.travelT = 0; u.note = `fährt zu Spalte ${s.col + 1}`; }
+      else { u.site = s; u.rev = g.fleet.rev ?? 0; u.state = 'travel'; u.travelT = 0; u.chk = null; u.stuckT = 0; u.note = `fährt zu Spalte ${s.col + 1}`; }
     }
   } else if (u.state === 'travel') {
-    const s = u.site, route = g.fair?.[g.level.classes[0]];
+    const s = u.site, route = locOf(u) === 'harbor' ? { nodes: [{ x: 1, y: Math.floor((HARBOR.entrance.y0 + HARBOR.entrance.y1) / 2) }] } : g.fair?.[g.level.classes[0]];
     if (!route?.nodes || sim.mode !== 'map') { u.state = 'idle'; u.idle = 0; }
     else {
       u.travelT = (u.travelT ?? 0) + dt;
@@ -452,7 +484,8 @@ function stepUnit(g, u, dt) {
           if (sim.anchor()) {
             const sl = sim.slice;
             sl.soundNoise = CONFIG.fleet.soundNoise; sl.avoidAltlast = !!g.fleet.noAltlast; sl.avoidNature = !!g.fleet.noNature; sl.sound();
-            if (s.pour) { sl.autoPour = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; }
+            if (s.harbor) { sl.autoRange = [s.rows[0], s.rows[1]]; }
+            else if (s.pour) { sl.autoPour = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; }
             else if (s.mine) { sl.autoRange = [s.rows[0] - 1, s.rows[1] + 1]; }
             else if (s.area) { if (s.land) sl.autoLand = true; sl.autoRange = [s.rows[0], s.rows[1]]; } // Arbeitsgebiet: genau das Rechteck
             else if (s.land || s.zid) { if (s.land) sl.autoLand = true; sl.autoRange = [Math.min(...s.rows) - 1, Math.max(...s.rows) + 1]; } // Uferstreifen bzw. Kreuzungsstelle
@@ -464,14 +497,17 @@ function stepUnit(g, u, dt) {
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();
-            u.state = 'work'; u.workT = 0; u.note = s.area ? `baggert Gebiet ${s.aid} bei Spalte ${s.col + 1}` : s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
+            u.state = 'work'; u.workT = 0; u.note = s.harbor ? `baggert das Hafenbecken (Spalte ${s.col + 1})` : s.area ? `baggert Gebiet ${s.aid} bei Spalte ${s.col + 1}` : s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
           } else { u.skip[skipKey(s)] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         }
       } else if (dist > 1e-6) {
         // Festhänger (Flachwasser/Land ringsum, Zittern auf der Stelle): nach kurzer Zeit auf die Rinne setzen und ein Stück Richtung Ziel weiter
-        const moved = Math.hypot(sim.x - (u.px ?? sim.x), sim.y - (u.py ?? sim.y));
-        u.stuckT = moved < 0.3 * g.stats.speed * CONFIG.fleet.speedMult * dt ? (u.stuckT ?? 0) + dt : 0;
-        if (u.stuckT > 2) {
+        u.chk ??= { x: sim.x, y: sim.y, t: g.time };
+        if (g.time - u.chk.t >= 1.5) { // alle 1,5 s prüfen, ob das Ponton vorankommt
+          u.stuckT = Math.hypot(sim.x - u.chk.x, sim.y - u.chk.y) < 0.5 ? (u.stuckT ?? 0) + 1.5 : 0;
+          u.chk = { x: sim.x, y: sim.y, t: g.time };
+        }
+        if (u.stuckT >= 3) { // Festhänger (Flachwasser/Land ringsum): auf die Rinne setzen und ein Stück Richtung Ziel weiter
           u.stuckT = 0;
           const step = Math.sign(gi - ni) * (nd > 1.2 ? 0 : 3), n = route.nodes[Math.max(0, Math.min(route.nodes.length - 1, ni + step))];
           if (sim.canFloat(n.x + 0.5, n.y + 0.5)) { sim.x = n.x + 0.5; sim.y = n.y + 0.5; u.note = 'wurde freigesetzt'; }
@@ -482,7 +518,7 @@ function stepUnit(g, u, dt) {
   } else if (u.state === 'work') {
     u.workT += dt;
     if (sim.mode === 'slice' && !sim.pumpOn && sim.slice.auto.on) { sim.pumpOn = true; sim.autoStartedPump = true; }
-    const limit = u.site?.area ? 300 : u.site?.did ? 300 : u.site?.land ? 420 : u.site?.zid ? 300 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
+    const limit = u.site?.harbor ? 240 : u.site?.area ? 300 : u.site?.did ? 300 : u.site?.land ? 420 : u.site?.zid ? 300 : u.site?.pour ? 240 : 140; // Landabtrag ist viel Material
     const noConcrete = u.site?.pour && g.concrete <= 0.05;
     if (noConcrete) u.note = 'Kein Beton mehr im Lager';
     if (sim.mode !== 'slice' || !sim.slice.auto.on || u.workT > limit || noConcrete) {
@@ -503,5 +539,5 @@ export function updateFleet(g, dt) {
 
 // Positionen verankerter Flottenpontons (bremsen den Verkehr in der Rinne wie dein eigener Ponton)
 export function fleetSites(g) {
-  return g.fleet.units.filter((u) => u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
+  return g.fleet.units.filter((u) => locOf(u) === 'main' && u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }

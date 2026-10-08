@@ -454,3 +454,6 @@ body.mode-map #ptabs { top: 0; }
   body:not(.mode-map):not(.mode-slice) #shift-actions::-webkit-scrollbar { display: none; }
   body:not(.mode-map):not(.mode-slice) #shift-actions button { flex: 0 0 auto; min-height: 44px; padding: 6px 12px; font-size: 14px; white-space: nowrap; }
 }
+
+/* Hafenkarte: Aktionen der Hauptkarte ausblenden */
+body.harbor-view :is(#btn-area, #btn-route, #btn-zone, #btn-land, #btn-fleetlend, #btn-tow, #btn-goto) { display: none !important; }

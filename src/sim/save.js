@@ -2,6 +2,7 @@ import { Game, endlessRiver } from './game.js';
 import { createRng } from './rng.js';
 import { createMarket } from './market.js';
 import { createPort, ensurePort } from './port.js';
+import { ensureHarbor } from './harbor.js';
 import { levelById } from '../config.js';
 import { River } from './river.js';
 
@@ -35,9 +36,10 @@ const packRiver = (river) => {
 export function serializeGame(game) {
   const data = {};
   for (const [k, v] of Object.entries(game)) if (!SKIP.has(k)) data[k] = v;
-  data.maps = game.maps.map(({ river, fair, site, ...rest }) => rest); // Flussbett je Karte separat (Typed Arrays)
+  data.maps = game.maps.map(({ river, fair, site, port, ...rest }) => ({ ...rest, port: port && { ...port, harbor: port.harbor && { ...port.harbor, river: undefined } } })); // Flussbett je Karte (und Hafenbecken) separat (Typed Arrays)
   const rivers = game.maps.map((m) => packRiver(m.river));
-  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, rivers }, (k, v) => (k === 'path' || k === 'sim' ? undefined : v));
+  const harborRivers = game.maps.map((m) => (m.port?.harbor ? packRiver(m.port.harbor.river) : null));
+  return JSON.stringify({ version: SAVE_VERSION, rng: game.rng.getState(), data, rivers, harborRivers }, (k, v) => (k === 'path' || k === 'sim' ? undefined : v));
 }
 
 // Gibt ein Game zurück oder null, wenn der Text kaputt oder von einer anderen Version ist.
@@ -60,7 +62,10 @@ export function restoreGame(text) {
       m.river = river; m.site = null; m.fair = null;
       m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort(); ensurePort(m.port);
       m.fairClock = m.fairClock ?? 0; m.sedClock = m.sedClock ?? 0;
+      const hs = s.harborRivers?.[i];
+      if (hs && m.port.harbor) { const hr = new River(hs.cols, hs.rows); for (const [k, v] of Object.entries(hs)) hr[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v; m.port.harbor.river = hr; hr.wl = game.wl; } else if (m.port.harbor) m.port.harbor = null; // kaputter Stand: neu anlegen lassen
     });
+    for (const m of game.maps) ensureHarbor(m.port, game.wl); // ältere Stände mit geöffnetem Hafen bekommen die Hafenkarte nachträglich
     game.rng.setState(s.rng);
     const cur = game.mapIdx;
     for (let i = 0; i < game.maps.length; i++) { game.mapIdx = i; game.analyze(true); game.fairClock = 0; }

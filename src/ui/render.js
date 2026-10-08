@@ -3,7 +3,8 @@ import { SLICE } from '../sim/slice.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
 import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
-import { PORT, bayDepth, bayReady, dockPos } from '../sim/port.js';
+import { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, isDocked, kaiLevel } from '../sim/port.js';
+import { HARBOR, berthPos } from '../sim/harbor.js';
 import { areaWork } from '../sim/fleet.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } from '../sim/land.js';
 import { Chain, drawChain } from './chain.js';
@@ -370,7 +371,7 @@ function drawHarbor(ctx, game) {
   const x = OX + bay.x0 * CELL, y = bay.y0 * CELL, w = (bay.x1 - bay.x0 + 1) * CELL, h = (bay.y1 - bay.y0 + 1) * CELL;
   ctx.fillStyle = ready ? 'rgba(120,230,150,.22)' : 'rgba(255,200,70,.18)'; ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = ready ? '#7be39a' : '#ffc94a'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [6, 4]); ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); ctx.setLineDash([]);
-  const cx = x + w / 2, label = open ? (ready ? '⚓ Hafen' : `⚓ Hafen ${d.toFixed(1)}/${PORT.bay.target.toFixed(1)} m`) : '⚓ Hafen (frei)';
+  const cx = x + w / 2, label = open ? (ready ? '⚓ Hafen' : `⚓ Hafen ${d.toFixed(1)}/${bayTarget(game).toFixed(1)} m`) : '⚓ Hafen (frei)';
   ctx.font = font(12); ctx.textAlign = 'center';
   const tw = ctx.measureText(label).width + 10, ty = bay.side < 0 ? y - 4 : y + h + fs(12) + 4;
   const hdy = labelDy(cx - tw / 2, ty - fs(12) - 1, tw, fs(12) + 5);
@@ -413,6 +414,50 @@ function drawZones(ctx, game, ui) {
 }
 
 // Gemietete Pontons der Flotte: kleiner, cyan, mit Name; beim Baggern mit gestricheltem Kasten
+// Hafenkarte: Zufahrt, Becken mit Kaimauer, Bauplätze mit den gebauten Gebäuden und die angelegten Schiffe an ihren Liegeplätzen
+export function drawHarborScene(ctx, game, ui = {}) {
+  const g = game, p = g.port, B = HARBOR.basin, E = HARBOR.entrance, L = (x, y) => ({ x: OX + x * CELL, y: y * CELL });
+  LABELS = [];
+  const tag = (text, cx, cy, color = '#fff') => { ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(text).width + 10, dy = labelDy(cx - tw / 2, cy - fs(12), tw, fs(12) + 5); ctx.fillStyle = '#000b'; ctx.fillRect(cx - tw / 2, cy - fs(12) - 1 + dy, tw, fs(12) + 5); ctx.fillStyle = color; ctx.fillText(text, cx, cy + dy + 2); ctx.textAlign = 'start'; };
+  // Becken: Rahmen gelb (zu flach) oder grün (bereit)
+  const depth = bayDepth(g), ready = bayReady(g), a = L(B.x0, B.y0);
+  ctx.strokeStyle = ready ? '#7be39a' : '#ffc94a'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [7, 5]); ctx.strokeRect(a.x + 1, a.y + 1, (B.x1 - B.x0 + 1) * CELL - 2, (B.y1 - B.y0 + 1) * CELL - 2); ctx.setLineDash([]);
+  tag(ready ? `⚓ Hafenbecken ${depth.toFixed(1)} m ✓` : `⚓ Hafenbecken ${depth.toFixed(1)}/${bayTarget(g).toFixed(1)} m: ausbaggern`, a.x + ((B.x1 - B.x0 + 1) * CELL) / 2, (B.y1 + 1) * CELL + 16, ready ? '#b9f5c9' : '#ffe08a');
+  const en = L(E.x0, E.y0); tag('Zufahrt vom Fluss ➜', en.x + 70, E.y0 * CELL - 8, '#bfeaff');
+  // Kai: Pier an der Nordseite des Beckens
+  const hasKai = (p.slots ?? []).some((s) => s?.type === 'kai'), nb = berthsOf(g);
+  if (hasKai) {
+    const px0 = L(B.x0, B.y0 - 1.4);
+    ctx.fillStyle = '#9aa0a8'; ctx.fillRect(px0.x, px0.y, (B.x1 - B.x0 + 1) * CELL, CELL * 1.4); ctx.strokeStyle = '#4b5057'; ctx.lineWidth = 2; ctx.strokeRect(px0.x, px0.y, (B.x1 - B.x0 + 1) * CELL, CELL * 1.4);
+    for (let k = 0; k < HARBOR.berthX.length; k++) { // Liegeplätze: markiert, gesperrte grau
+      const bp = berthPos(k), x = OX + (bp.x - 2) * CELL, y = B.y0 * CELL, on = k < nb;
+      ctx.strokeStyle = on ? '#ffe9a0' : '#ffffff44'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [] : [3, 4]); ctx.strokeRect(x + 1, y + 1, 4 * CELL - 2, CELL * 3.2); ctx.setLineDash([]);
+      ctx.fillStyle = on ? '#ffe9a0' : '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(on ? `${k + 1}` : '🔒', x + 2 * CELL, y - CELL * 0.35); ctx.textAlign = 'start';
+    }
+  }
+  // Bauplätze und Gebäude
+  (p.slots ?? []).forEach((sl, i) => {
+    const pl = HARBOR.plots[i]; if (!pl) return; const q = L(pl[0], pl[1]), w = HARBOR.plotW * CELL, h = HARBOR.plotH * CELL;
+    if (!sl) { ctx.strokeStyle = '#ffffff33'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeRect(q.x, q.y, w, h); ctx.setLineDash([]); ctx.fillStyle = '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(`Bauplatz ${i + 1}`, q.x + w / 2, q.y + h / 2 + 4); ctx.textAlign = 'start'; return; }
+    const Bd = PORT.buildings[sl.type];
+    ctx.fillStyle = '#b79b6e'; ctx.fillRect(q.x, q.y, w, h); ctx.strokeStyle = '#4a3b22'; ctx.lineWidth = 2; ctx.strokeRect(q.x + 1, q.y + 1, w - 2, h - 2);
+    ctx.font = font(22); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(Bd.icon, q.x + w / 2, q.y + h / 2 + 4);
+    ctx.font = font(11); ctx.fillStyle = '#fff'; const fill = Bd.commodity ? ` · ${Math.round(p.stock[Bd.commodity] ?? 0)} t` : ''; ctx.fillText(`${Bd.name.split(' ')[0]} ${sl.level}${fill}`, q.x + w / 2, q.y + h - 5); ctx.textAlign = 'start';
+  });
+  // angelegte Schiffe an den Liegeplätzen, mit Ladefortschritt
+  const docked = (p.jobs ?? []).filter((j) => isDocked(j) && j.shipId != null);
+  docked.forEach((j, k) => {
+    const ship = (game.maps ? g.maps[g.mapIdx].traffic : g.traffic).ships.find((s) => s.id === j.shipId); if (!ship) return;
+    const cls = shipById(ship.cls), bp = berthPos(k);
+    drawShip(ctx, cls, { ...ship, state: 'harbor' }, bp, g, ui);
+    const q = mapPx(bp.x, bp.y), wBar = 3 * CELL;
+    ctx.fillStyle = '#000b'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar, 5); ctx.fillStyle = '#7bd88f'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar * Math.min(1, j.done / j.tons), 5);
+    ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(`${PORT.commodities[j.cargo].icon} ${j.out ? 'lädt' : 'entlädt'}`, q.x, q.y + CELL * 1.2 + 16); ctx.textAlign = 'start';
+  });
+  const res = (p.jobs ?? []).filter((j) => !isDocked(j)).length;
+  tag(`Liegeplätze ${(p.jobs ?? []).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
+}
+
 function drawFleet(ctx, game) {
   for (const u of game.fleet?.units ?? []) {
     const px = OX + u.x * CELL, py = u.y * CELL, sim = u.sim;
