@@ -51,6 +51,13 @@
         <button id="btn-port">🏗 Hafen (H)</button>
         <button id="btn-harborview" hidden>⚓ Hafenkarte (Y)</button>
         <button id="btn-fleetmenu" hidden>🚤 Flotte ▾</button>
+        <button id="btn-goto" hidden>📍 Zum Aufläufer</button>
+        <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
+        <button id="btn-sound" hidden>🔊 Ton an (M)</button>
+        <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
+        <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="7.2" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
+      </div>
+      <div id="tool-row" hidden>
         <button id="btn-area" class="tool-btn" hidden>▭ Gebiet (G)</button>
         <button id="btn-route" class="tool-btn" hidden>〰 Route (N)</button>
         <button id="btn-lane" class="tool-btn" hidden>🧭 Rinne festlegen (R)</button>
@@ -58,11 +65,6 @@
         <button id="btn-zone" class="tool-btn">↔ Kreuzung (K)</button>
         <button id="btn-land" class="tool-btn" hidden>🛣 Land (L)</button>
         <button id="btn-fleetlend" class="tool-btn" hidden>🧑‍✈️ Zur Flotte (J)</button>
-        <button id="btn-goto" hidden>📍 Zum Aufläufer</button>
-        <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
-        <button id="btn-sound" hidden>🔊 Ton an (M)</button>
-        <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
-        <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="7.2" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
       </div>
       <div id="pile-bar" hidden><button data-ptool="cell" class="on">✏ Zelle</button><button data-ptool="line">📏 Linie</button><button data-ptool="remove">🗑 Rückbau</button><button id="pile-zin">＋ Zoom</button><button id="pile-zout">− Zoom</button><button id="pile-clear">🧹 Plan löschen</button><button id="pile-done" class="primary">Fertig</button></div>
       <div id="land-bar" hidden><button data-tool="road" class="on">🛣 Strasse</button><button data-tool="hall">🏭 Lagerhalle</button><button data-tool="auto">➜ Strasse automatisch</button><button data-tool="demo">✖ Abriss</button><button id="land-done" class="primary">Fertig</button></div>

@@ -929,13 +929,14 @@ function toggleLend() {
 }
 // Knöpfe unter der Karte: «Flotte ▾» klappt alle Werkzeuge rund um die Flotte (Gebiet, Route, Pfahlwand, Kreuzung, Land, Ponton zuteilen) auf
 let toolsOpen = false;
-function toggleTools(open = !toolsOpen) { toolsOpen = open; document.body.classList.toggle('tools-open', open); resetBars(); fitCanvas(); }
+function toggleTools(open = !toolsOpen) { toolsOpen = open; document.body.classList.toggle('tools-open', open); updateToolButtons(); resetBars(); fitCanvas(); }
 function updateToolButtons() {
   const act = { 'btn-lane': areaMode && areaKind === 'lane', 'btn-area': areaMode && areaKind === 'rect', 'btn-route': areaMode && areaKind === 'route', 'btn-pile': pileMode, 'btn-zone': zoneMode, 'btn-land': landMode };
-  const tools = [...document.querySelectorAll('#shift-actions .tool-btn')];
+  const tools = [...document.querySelectorAll('#tool-row .tool-btn')];
   for (const b of tools) b.classList.toggle('on', !!act[b.id]);
   $('btn-lane').hidden = sim.mode !== 'map' || !!tow || harborView;
   $('btn-pile').hidden = !(game.stats.piler > 0 || (game.fleet.pilePlan ?? []).length || pileMode) || sim.mode !== 'map' || !!tow;
+  $('tool-row').hidden = !(toolsOpen || tools.some((b) => b.classList.contains('on'))) || sim.mode !== 'map' || !!tow || harborView;
   const fm = $('btn-fleetmenu'); fm.hidden = !tools.some((b) => !b.hidden) || sim.mode !== 'map' || !!tow;
   fm.classList.toggle('open', toolsOpen); fm.textContent = toolsOpen ? '🚤 Flotte ▴' : '🚤 Flotte ▾';
 }

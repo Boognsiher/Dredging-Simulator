@@ -487,13 +487,12 @@ body.harbor-view :is(#btn-area, #btn-route, #btn-zone, #btn-land, #btn-fleetlend
 #pile-bar button.primary { background: var(--accent); color: #04222b; font-weight: 700; }
 @media (max-width: 860px) and (orientation: portrait) { #pile-bar { bottom: auto; top: 64px; } }
 /* Knöpfe unter der Karte: nur das Regelmässige sichtbar, alles rund um die Flotte steckt hinter «Flotte ▾» */
-body:not(.tools-open) #shift-actions .tool-btn:not(.on) { display: none !important; }
+body:not(.tools-open) #tool-row .tool-btn:not(.on) { display: none !important; }
 #btn-fleetmenu.open { background: var(--accent); color: #04222b; font-weight: 700; }
 #btn-sound { display: none !important; }
 
 /* Hochformat: aufgeklappte Flotten-Werkzeuge in mehreren Zeilen, sonst liegen sie ausserhalb des Sichtbereichs der einzeiligen Leiste */
 @media (max-width: 860px) and (orientation: portrait) {
-  body.tools-open:not(.mode-map):not(.mode-slice) #shift-actions { flex-wrap: wrap; overflow: visible; }
 }
 
 /* Schleppen: Joystick weg (der Ponton liegt still), Ziehen-Knopf als flache Leiste */
@@ -503,6 +502,16 @@ body.mode-tow #touch-ui #act { width: 100%; height: 54px; border-radius: 14px; m
 
 #harbor-back { position: fixed; top: calc(var(--hdr-h, 44px) + 54px); right: 10px; z-index: 15; width: auto; margin: 0; padding: 8px 14px; font-weight: 600; background: var(--accent); color: #04222b; border-radius: 10px; box-shadow: 0 2px 10px #0009; }
 #harbor-back[hidden] { display: none; }
+
+/* Werkzeugzeile der Flotte: zweite Zeile, seitlich scrollbar (spart Platz für die Karte) */
+#tool-row { display: flex; flex-wrap: nowrap; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 0 8px 6px; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+#tool-row[hidden] { display: none; }
+#tool-row button { flex: none; width: auto; margin: 0; white-space: nowrap; min-height: 36px; padding: 6px 12px; font-size: 13px; }
+#tool-row button[hidden] { display: none; }
+body.mode-map #tool-row { position: absolute; left: 50%; transform: translateX(-50%); bottom: 52px; max-width: calc(100vw - 12px); z-index: 11; padding: 0; }
+body.mode-map #tool-row button { min-height: 0; padding: 5px 10px; background: #12283bd9; backdrop-filter: blur(3px); }
+body.mode-map #tool-row button.on { background: var(--accent); color: #04222b; }
+body.mode-slice #tool-row, body.harbor-view #tool-row { display: none !important; }
 
 </style>
 </head>
@@ -544,6 +553,13 @@ body.mode-tow #touch-ui #act { width: 100%; height: 54px; border-radius: 14px; m
         <button id="btn-port">🏗 Hafen (H)</button>
         <button id="btn-harborview" hidden>⚓ Hafenkarte (Y)</button>
         <button id="btn-fleetmenu" hidden>🚤 Flotte ▾</button>
+        <button id="btn-goto" hidden>📍 Zum Aufläufer</button>
+        <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
+        <button id="btn-sound" hidden>🔊 Ton an (M)</button>
+        <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
+        <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="7.2" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
+      </div>
+      <div id="tool-row" hidden>
         <button id="btn-area" class="tool-btn" hidden>▭ Gebiet (G)</button>
         <button id="btn-route" class="tool-btn" hidden>〰 Route (N)</button>
         <button id="btn-lane" class="tool-btn" hidden>🧭 Rinne festlegen (R)</button>
@@ -551,11 +567,6 @@ body.mode-tow #touch-ui #act { width: 100%; height: 54px; border-radius: 14px; m
         <button id="btn-zone" class="tool-btn">↔ Kreuzung (K)</button>
         <button id="btn-land" class="tool-btn" hidden>🛣 Land (L)</button>
         <button id="btn-fleetlend" class="tool-btn" hidden>🧑‍✈️ Zur Flotte (J)</button>
-        <button id="btn-goto" hidden>📍 Zum Aufläufer</button>
-        <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
-        <button id="btn-sound" hidden>🔊 Ton an (M)</button>
-        <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
-        <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="7.2" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
       </div>
       <div id="pile-bar" hidden><button data-ptool="cell" class="on">✏ Zelle</button><button data-ptool="line">📏 Linie</button><button data-ptool="remove">🗑 Rückbau</button><button id="pile-zin">＋ Zoom</button><button id="pile-zout">− Zoom</button><button id="pile-clear">🧹 Plan löschen</button><button id="pile-done" class="primary">Fertig</button></div>
       <div id="land-bar" hidden><button data-tool="road" class="on">🛣 Strasse</button><button data-tool="hall">🏭 Lagerhalle</button><button data-tool="auto">➜ Strasse automatisch</button><button data-tool="demo">✖ Abriss</button><button id="land-done" class="primary">Fertig</button></div>
@@ -1610,13 +1621,14 @@ function toggleLend() {
 }
 // Knöpfe unter der Karte: «Flotte ▾» klappt alle Werkzeuge rund um die Flotte (Gebiet, Route, Pfahlwand, Kreuzung, Land, Ponton zuteilen) auf
 let toolsOpen = false;
-function toggleTools(open = !toolsOpen) { toolsOpen = open; document.body.classList.toggle('tools-open', open); resetBars(); fitCanvas(); }
+function toggleTools(open = !toolsOpen) { toolsOpen = open; document.body.classList.toggle('tools-open', open); updateToolButtons(); resetBars(); fitCanvas(); }
 function updateToolButtons() {
   const act = { 'btn-lane': areaMode && areaKind === 'lane', 'btn-area': areaMode && areaKind === 'rect', 'btn-route': areaMode && areaKind === 'route', 'btn-pile': pileMode, 'btn-zone': zoneMode, 'btn-land': landMode };
-  const tools = [...document.querySelectorAll('#shift-actions .tool-btn')];
+  const tools = [...document.querySelectorAll('#tool-row .tool-btn')];
   for (const b of tools) b.classList.toggle('on', !!act[b.id]);
   $('btn-lane').hidden = sim.mode !== 'map' || !!tow || harborView;
   $('btn-pile').hidden = !(game.stats.piler > 0 || (game.fleet.pilePlan ?? []).length || pileMode) || sim.mode !== 'map' || !!tow;
+  $('tool-row').hidden = !(toolsOpen || tools.some((b) => b.classList.contains('on'))) || sim.mode !== 'map' || !!tow || harborView;
   const fm = $('btn-fleetmenu'); fm.hidden = !tools.some((b) => !b.hidden) || sim.mode !== 'map' || !!tow;
   fm.classList.toggle('open', toolsOpen); fm.textContent = toolsOpen ? '🚤 Flotte ▴' : '🚤 Flotte ▾';
 }
