@@ -2,6 +2,7 @@ import { CONFIG, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
 import { hallCapacity, roadFactor } from './land.js';
 import { priceOf, ratioOf } from './market.js';
+import { rankOf, NEED, rankName } from './rank.js';
 import { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } from './harbor.js';
 
 // Hafen an Land: Kai mit Verladestation plus Lager (Kies, Tanklager) und Sanierungsanlage (Altlasten). Reine Daten und Logik, speicherbar.
@@ -111,6 +112,7 @@ export const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
 export function openBlock(g) {
   if (g.port.open) return 'Hafen ist schon eröffnet';
   if (!g.unlocked.motor) return 'Erst muss das Motorschiff die Rinne befahren';
+  if (rankOf(g) < NEED.port) return `Der Hafen braucht Level ${NEED.port} (${rankName(NEED.port)} fährt)`;
   if (g.money < PORT.openCost) return `Braucht ${PORT.openCost.toLocaleString('de-CH')} CHF`;
   return g.status === 'playing' ? null : 'Spiel beendet';
 }

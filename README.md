@@ -197,3 +197,17 @@ Das Spiel ist eine **Progressive Web App**: Manifest (`manifest.webmanifest`), S
 **Planungsansicht Pfahlwand:** Im Planungsmodus (Taste O) verschwinden die normalen Knöpfe unter der Karte; es bleibt eine Leiste mit «↩ Zurück», Zelle, Linie, Rückbau, Zoom, «▶ Ausführen» und «Löschen».
 
 **Pontonmiete:** Der Preis steigt mit jedem gemieteten Ponton über alle Karten hinweg weiter (30'000, 45'000, 65'000, 90'000, danach ×1,35 je Ponton); eine neue Karte fängt nicht wieder bei 30'000 an.
+
+## Level-System nach Schiffsklassen
+
+Das Level ist die höchste Klasse, deren Rinne schon einmal befahrbar war (auf irgendeiner Karte); es bleibt für den Spielstand. Die Tabelle steht zentral in `src/sim/rank.js`.
+
+| Level | Klasse | Freigeschaltet |
+|---|---|---|
+| 1 | Lastkahn | Dein Ponton (Pumpe, Querschnitt, Fahrrinne, Automatik) und die Flotte mit höchstens 1 gemieteten Ponton |
+| 2 | Motorgüterschiff | Verkehr (Kreuzungsstellen, Warteplätze), Anlage ausbauen, Rohstoffgebiete, «Rinne festlegen»; Flotte bis 2 Pontons |
+| 3 | Tankschiff | Handel, Geräte (Felsfräse, Löffel, Beton, Betonwerk), Altlasten, Uferstreifen; Flotte bis 3 Pontons |
+| 4 | Containerschiff | Hafen und Hafenkarte, Pfahlgerät und Pfahlwand, Gebiet und Route; Flotte bis 4 Pontons |
+| 5 | Schubverband | Weitere Karten, eigene Frachtschiffe |
+
+Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Bestehende Spielstände bekommen das Level passend zu den schon befahrbaren Klassen.

@@ -1,3 +1,4 @@
+import { UNLOCK } from "../src/sim/rank.js"; UNLOCK.enabled = false; // bestehende Tests prüfen die Mechaniken ohne Level-Sperren
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG, SHIPS, KIND, UPGRADES, LEVELS, DEBRIS, shipById } from '../src/config.js';
@@ -1922,4 +1923,22 @@ test('Pontonmiete steigt über alle Karten weiter', async () => {
   hireUnit(g); hireUnit(g);
   assert.equal(hiredTotal(g), 2);
   assert.equal(nextHireCost(g), hireCostAt(2));
+});
+
+// ---------- Level-System nach Schiffsklassen ----------
+import { rankOf as rankOf2, fleetMax, hasRank } from '../src/sim/rank.js';
+test('Level: Start = Level 1 (eine gemietete Flotte mit 1 Ponton), Hafen/Geräte/Handel gesperrt; Motorschiff-Rinne öffnet Level 2', () => {
+  UNLOCK.enabled = true;
+  try {
+    const g = new Game(6, 'hochrhein'); g.eventsOn = false; g.money = 1e8;
+    assert.equal(rankOf2(g), 1); assert.equal(fleetMax(g), 1);
+    assert.equal(g.buyUpgrade('auto'), true);
+    assert.equal(g.buyUpgrade('cutter'), false, 'Felsfräse braucht Level 3');
+    assert.equal(g.buyUpgrade('piler'), false, 'Pfahlgerät braucht Level 4');
+    assert.ok(g.zoneBlock(20), 'Kreuzungen brauchen Level 2');
+    assert.ok(hireUnit(g)); assert.ok(hireBlock(g), 'zweiter Ponton erst mit Level 2');
+    assert.equal(hasRank(g, 'port'), false);
+    g.unlocked.motor = true; g.analyze(true);
+    assert.equal(rankOf2(g), 2); assert.equal(fleetMax(g), 2); assert.equal(g.zoneBlock(20) === null || !/Level/.test(g.zoneBlock(20)), true);
+  } finally { UNLOCK.enabled = false; }
 });

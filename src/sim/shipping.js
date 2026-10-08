@@ -21,10 +21,12 @@ export const createShipping = () => ({ ships: [], seq: 0, trips: 0, profit: 0 })
 // Funktion fn im Kontext der Karte i ausführen (Markt, Hafen und Flussbett sind je Karte)
 export function withMap(g, i, fn) { const c = g.mapIdx; g.mapIdx = i; try { return fn(); } finally { g.mapIdx = c; } }
 
+import { rankOf, NEED, rankName } from './rank.js';
 export function shipBlock(g, type) {
   const T = SHIPPING.types[type];
   if (!T) return 'Unbekannt';
   if (g.status !== 'playing') return 'Spiel beendet';
+  if (rankOf(g) < NEED.ships) return `Eigene Schiffe brauchen Level ${NEED.ships} (${rankName(NEED.ships)} fährt)`;
   if (g.shipping.ships.length >= SHIPPING.maxShips) return 'Die Reederei ist voll';
   return g.money < T.cost ? `Braucht ${T.cost.toLocaleString('de-CH')} CHF` : null;
 }

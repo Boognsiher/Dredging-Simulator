@@ -541,6 +541,7 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
     <select id="map-select" aria-label="Karte wechseln" hidden></select>
     <button id="btn-menu" aria-label="Menü">☰ Menü</button>
     <div id="hud">
+      <span title="Level = höchste befahrbare Schiffsklasse">Level <b id="h-rank"></b></span>
       <span>Tag <b id="h-day"></b> <small id="h-left"></small></span>
       <span>Geld <b id="h-money"></b> <small id="h-income"></small></span>
       <span>Fracht <b id="h-tons"></b></span>
@@ -688,28 +689,30 @@ const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } =
 const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit: portLoadHit } = __m(6);
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(7);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
-const { Game } = __m(9);
-const { acceptContract } = __m(16);
-const { waitingByClass, shipPos } = __m(15);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(17);
-const { bayCapacity, maxZones, zoneClasses } = __m(15);
-const { materialPrice } = __m(18);
-const { TowSim, groundedNear } = __m(19);
+const { Game } = __m(10);
+const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO } = __m(9);
+const { acceptContract } = __m(17);
+const { waitingByClass, shipPos } = __m(16);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
+const { bayCapacity, maxZones, zoneClasses } = __m(16);
+const { materialPrice } = __m(19);
+const { TowSim, groundedNear } = __m(20);
 const { makeHarborView, HARBOR, waitPos } = __m(4);
-const { toolName } = __m(11);
+const { toolName } = __m(12);
 const { priceOf, trend } = __m(8);
 const { needDepth, minNeedDepth } = __m(3);
-const { Advisor } = __m(20);
-const { serializeGame, restoreGame, savedSummary } = __m(21);
-const { createInput } = __m(22);
-const { setupTouch } = __m(24);
-const { steerToward } = __m(23);
-const { setupPort } = __m(25);
-const { fitSize, renderQuality } = __m(26);
-const { hintsFor } = __m(27);
-const { Fx } = __m(28);
-const { createAudio } = __m(29);
-const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(30);
+const { Advisor } = __m(21);
+const { serializeGame, restoreGame, savedSummary } = __m(22);
+const { createInput } = __m(23);
+const { setupTouch } = __m(25);
+const { steerToward } = __m(24);
+const { setupPort } = __m(26);
+const { fitSize, renderQuality } = __m(27);
+const { hintsFor } = __m(28);
+const { Fx } = __m(29);
+const { createAudio } = __m(30);
+const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(31);
+
 
 
 
@@ -878,9 +881,11 @@ function updateUpgrades() {
   for (const [id, def] of Object.entries(UPGRADES)) {
     const cost = game.nextUpgradeCost(id), r = upRows[id];
     r.small.textContent = `Stufe ${game.levels[id]}/${def.maxLevel} · ${def.desc}`;
-    r.btn.textContent = game.upgradeLocked(id) ? '🔒 Hafen' : cost === null ? 'Max' : chf(cost);
+    const rankLock = rankOf(game) < upgradeRank(id);
+    r.btn.textContent = rankLock ? `🔒 Level ${upgradeRank(id)}` : game.upgradeLocked(id) ? '🔒 Hafen' : cost === null ? 'Max' : chf(cost);
     r.btn.disabled = cost === null || game.money < cost || game.status !== 'playing';
-    if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: Aufbereitungshalle im Hafen bauen/ausbauen (jede Karte mit Halle zählt)';
+    if (rankLock) r.small.textContent += ` · gesperrt: braucht Level ${upgradeRank(id)} (${rankName(upgradeRank(id))} fährt)`;
+    else if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: Aufbereitungshalle im Hafen bauen/ausbauen (jede Karte mit Halle zählt)';
     const refund = game.refundFor(id);
     if (!r.armed()) r.sell.textContent = '↩';
     if (refund !== null) r.small.textContent += ` · Rückbau +${chf(refund)}`;
@@ -1103,6 +1108,7 @@ function landClick(px, py) {
   updatePanel();
 }
 function toggleAreaMode() {
+  if (!hasRank(game, 'area')) { toast(`Gebiete und Routen brauchen Level 4 (${rankName(4)} fährt)`, 'info', true); return; }
   if (tow || sim.mode !== 'map') { toast('Arbeitsgebiete gibst du auf der Karte vor (Anker lichten mit Q)', 'info', true); return; }
   if (areaMode && areaKind !== 'rect') { finishRoute(); return; }
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (pileMode) togglePileMode();
@@ -1119,6 +1125,7 @@ function syncAreaButtons() {
 }
 // Baggerroute: Wegpunkte antippen, «fertig» legt die Route an; die Flotte baggert sie auf Tiefe aus (auch Ufer und Land im Ausbaustreifen mit Löffelbagger)
 function toggleRouteMode() {
+  if (!hasRank(game, 'area')) { toast(`Gebiete und Routen brauchen Level 4 (${rankName(4)} fährt)`, 'info', true); return; }
   if (tow || sim.mode !== 'map') { toast('Routen zeichnest du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
   if (areaMode && areaKind !== 'rect') { finishRoute(); return; }
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) toggleAreaMode(); if (pileMode) togglePileMode();
@@ -1139,6 +1146,7 @@ function finishRoute() {
 // Fahrrinne selbst festlegen: Wegpunkte von links nach rechts antippen; die Analyse sucht dann nur noch entlang dieser Linie (±1 Zelle) und die Flotte kann sich darauf konzentrieren
 let laneSlot = 0;
 function toggleLaneMode(slot = 0) {
+  if (!hasRank(game, 'lane')) { toast(`Die Rinne festlegen braucht Level 2 (${rankName(2)} fährt)`, 'info', true); return; }
   if (tow || sim.mode !== 'map' || harborView) { toast('Die Rinne legst du auf der Hauptkarte fest (Anker lichten mit Q)', 'info', true); return; }
   if (areaMode && areaKind === 'lane') { finishLane(); return; }
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) toggleAreaMode(); if (pileMode) togglePileMode();
@@ -1242,7 +1250,7 @@ function updateConcrete() {
 let fleetSig = null;
 function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden;
-  $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
+  $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open; applyRankButtons();
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
   const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, F.second, F.focus, JSON.stringify(game.river.trasse), game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
   if (sig === fleetSig) return;
@@ -1327,6 +1335,7 @@ let deltaUntil = 0, lastMoney = null, moneyTimer = 0;
 function updateHud() {
   const left = game.timeLeft, mm = Math.floor(left / 60), ss = String(Math.floor(left % 60)).padStart(2, '0');
   const fin = Number.isFinite(game.deadlineDays);
+  $('h-rank').textContent = `${rankOf(game) > 9 ? '' : rankOf(game)} · ${rankName(Math.min(5, rankOf(game)))}`;
   $('h-day').textContent = fin ? `${Math.min(game.day, game.deadlineDays)}/${game.deadlineDays}` : `${game.day}`;
   $('h-left').textContent = fin ? `(${mm}:${ss})` : '';
   $('h-money').textContent = chf(game.money);
@@ -1365,16 +1374,16 @@ const PTABS = [
 ];
 // Freischaltung: Bedingung → Name (für die Meldung «Neu»). Einmal erfüllt bleibt der Bereich offen.
 const GATES = {
-  tab_fleet: { when: (g) => g.stats.autoLevel >= 1 || g.fleet.units.length > 0 || g.totals.removed >= 600, text: 'Flotte: gemietete Pontons baggern selbstständig' },
-  tab_trade: { when: (g) => g.totals.removed >= 150, text: 'Handel: Frachtmarkt und Aufträge' },
-  tab_maps: { when: (g) => g.endless, text: 'Karten' },
-  sec_traffic: { when: (g) => g.totals.ships >= 3, text: 'Verkehr: Kreuzungsstellen und Warteplätze (Reiter Fluss)' },
-  sec_hazard: { when: (g) => g.totals.removed >= 300, text: 'Altlasten (Reiter Fluss)' },
-  sec_deposits: { when: (g) => g.day >= 3 || g.totals.removed >= 400, text: 'Rohstoffgebiete (Reiter Fluss)' },
-  sec_shore: { when: (g) => g.totals.removed >= 800, text: 'Uferstreifen: breitere Rinne (Reiter Fluss)' },
-  up_plant: { when: (g) => g.totals.removed >= 200, text: 'Technik: Anlage ausbauen' },
-  up_traffic: { when: (g) => g.totals.ships >= 2, text: 'Technik: Verkehr verbessern' },
-  up_gear: { when: (g) => g.totals.removed >= 200, text: 'Technik: Geräte' },
+  tab_fleet: { when: () => true, text: 'Flotte: gemietete Pontons baggern selbstständig (zuerst 1, mehr mit höherem Level)' },
+  tab_trade: { when: (g) => hasRank(g, 'trade'), text: 'Handel: Frachtmarkt und Aufträge' },
+  tab_maps: { when: (g) => g.endless && hasRank(g, 'maps'), text: 'Karten' },
+  sec_traffic: { when: (g) => hasRank(g, 'zone'), text: 'Verkehr: Kreuzungsstellen und Warteplätze (Reiter Fluss)' },
+  sec_hazard: { when: (g) => hasRank(g, 'hazard'), text: 'Altlasten (Reiter Fluss)' },
+  sec_deposits: { when: (g) => hasRank(g, 'deposits'), text: 'Rohstoffgebiete (Reiter Fluss)' },
+  sec_shore: { when: (g) => hasRank(g, 'shore'), text: 'Uferstreifen: breitere Rinne (Reiter Fluss)' },
+  up_plant: { when: (g) => hasRank(g, 'plantTab'), text: 'Technik: Anlage ausbauen' },
+  up_traffic: { when: (g) => hasRank(g, 'trafficTab'), text: 'Technik: Verkehr verbessern' },
+  up_gear: { when: () => true, text: 'Technik: Geräte' },
 };
 let curTab = 'home', ptabsInit = false, newTabs = new Set(), unlockSilent = true;
 function gateOpen(id) { return !id || !!game.tabsSeen?.[id]; }
@@ -1569,7 +1578,7 @@ function syncMode() {
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
   $('s-mode').textContent = { map: 'Karte', slice: 'Querschnitt', tow: 'Schleppen' }[mode];
   if (mode !== 'slice') { $('btn-tool').hidden = true; $('btn-auto').hidden = true; $('btn-fix').hidden = true; $('cut-box').hidden = true; $('spd-box').hidden = true; }
-  updateHints(); fitCanvas();
+  updateHints(); applyRankButtons(); fitCanvas();
 }
 function anchor() {
   if (lentUnit(game)) { toast('Dein Ponton arbeitet für die Flotte: im Panel «Flotte» zurückrufen', 'bad', true); return; }
@@ -1652,14 +1661,22 @@ function toggleLend() {
 // Knöpfe unter der Karte: «Flotte ▾» klappt alle Werkzeuge rund um die Flotte (Gebiet, Route, Pfahlwand, Kreuzung, Land, Ponton zuteilen) auf
 let toolsOpen = false;
 function toggleTools(open = !toolsOpen) { toolsOpen = open; document.body.classList.toggle('tools-open', open); updateToolButtons(); resetBars(); fitCanvas(); }
+function applyRankButtons() {
+  const map = sim.mode === 'map' && !tow && !harborView;
+  $('btn-zone').hidden = !map || !hasRank(game, 'zone');
+  $('btn-lane').hidden = !map || !hasRank(game, 'lane');
+  if (!hasRank(game, 'area')) { $('btn-area').hidden = true; $('btn-route').hidden = true; }
+  $('btn-port').hidden = !(hasRank(game, 'port') || game.port.open);
+}
 function updateToolButtons() {
   const act = { 'btn-lane': areaMode && areaKind === 'lane', 'btn-area': areaMode && areaKind === 'rect', 'btn-route': areaMode && areaKind === 'route', 'btn-pile': pileMode, 'btn-zone': zoneMode, 'btn-land': landMode };
   const tools = [...document.querySelectorAll('#tool-row .tool-btn')];
   for (const b of tools) b.classList.toggle('on', !!act[b.id]);
-  $('btn-lane').hidden = sim.mode !== 'map' || !!tow || harborView;
   $('btn-pile').hidden = !(game.stats.piler > 0 || (game.fleet.pilePlan ?? []).length || pileMode) || sim.mode !== 'map' || !!tow;
   $('tool-row').hidden = !(toolsOpen || tools.some((b) => b.classList.contains('on'))) || sim.mode !== 'map' || !!tow || harborView;
   const fm = $('btn-fleetmenu'); fm.hidden = !tools.some((b) => !b.hidden) || sim.mode !== 'map' || !!tow;
+  applyRankButtons();
+  fm.hidden = !tools.some((b) => !b.hidden) || sim.mode !== 'map' || !!tow;
   fm.classList.toggle('open', toolsOpen); fm.textContent = toolsOpen ? '🚤 Flotte ▴' : '🚤 Flotte ▾';
 }
 $('btn-fleetmenu').onclick = () => toggleTools();
@@ -2134,6 +2151,7 @@ const { CONFIG, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
 const { ensureHarbor, harborAccepts } = __m(4);
 const { PORT, hasKai, capacity, bayDepth, kaiLevel, bridgeLevel, buy: portBuy, buyPrice, sellPrice, marketImpact } = __m(6);
+const { rankOf, NEED, rankName } = __m(9);
 
 
 
@@ -2157,10 +2175,12 @@ const createShipping = () => ({ ships: [], seq: 0, trips: 0, profit: 0 });
 // Funktion fn im Kontext der Karte i ausführen (Markt, Hafen und Flussbett sind je Karte)
 function withMap(g, i, fn) { const c = g.mapIdx; g.mapIdx = i; try { return fn(); } finally { g.mapIdx = c; } }
 
+
 function shipBlock(g, type) {
   const T = SHIPPING.types[type];
   if (!T) return 'Unbekannt';
   if (g.status !== 'playing') return 'Spiel beendet';
+  if (rankOf(g) < NEED.ships) return `Eigene Schiffe brauchen Level ${NEED.ships} (${rankName(NEED.ships)} fährt)`;
   if (g.shipping.ships.length >= SHIPPING.maxShips) return 'Die Reederei ist voll';
   return g.money < T.cost ? `Braucht ${T.cost.toLocaleString('de-CH')} CHF` : null;
 }
@@ -3337,7 +3357,9 @@ const { CONFIG, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
 const { hallCapacity, roadFactor } = __m(7);
 const { priceOf, ratioOf } = __m(8);
+const { rankOf, NEED, rankName } = __m(9);
 const { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } = __m(4);
+
 
 
 
@@ -3451,6 +3473,7 @@ const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
 function openBlock(g) {
   if (g.port.open) return 'Hafen ist schon eröffnet';
   if (!g.unlocked.motor) return 'Erst muss das Motorschiff die Rinne befahren';
+  if (rankOf(g) < NEED.port) return `Der Hafen braucht Level ${NEED.port} (${rankName(NEED.port)} fährt)`;
   if (g.money < PORT.openCost) return `Braucht ${PORT.openCost.toLocaleString('de-CH')} CHF`;
   return g.status === 'playing' ? null : 'Spiel beendet';
 }
@@ -3874,21 +3897,53 @@ function trend(m, id) {
 return { createMarket: createMarket, priceOf: priceOf, ratioOf: ratioOf, stepMarket: stepMarket, shockMarket: shockMarket, trend: trend };
 },
 function(){
+
+// Level-System nach Schiffsklassen: Das Level ist die höchste Klasse, deren Rinne schon einmal befahrbar war (auf irgendeiner Karte).
+// Jedes Level schaltet Mechaniken frei; so wächst die Komplexität im Takt der Tiefe. Zentrale Tabelle: hier verschieben, was wann kommt.
+const RANK_ORDER = ['kahn', 'motor', 'tank', 'container', 'schub'];
+const UNLOCK = { enabled: true };
+// Freischaltungen je Level (Text für Meldungen und Sperrhinweise)
+const RANK_INFO = [
+  { text: 'Dein Ponton: Pumpe, Querschnitt, Fahrrinne, Automatik; eine gemietete Flotte mit 1 Ponton' },
+  { text: 'Verkehr (Kreuzungsstellen, Warteplätze), Anlage ausbauen, Rohstoffgebiete, «Rinne festlegen»; Flotte bis 2 Pontons' },
+  { text: 'Handel (Frachtmarkt, Aufträge), Geräte (Felsfräse, Löffel, Beton, Betonwerk), Altlasten, Uferstreifen; Flotte bis 3 Pontons' },
+  { text: 'Hafen und Hafenkarte, Pfahlgerät und Pfahlwand, Gebiet und Route; Flotte bis 4 Pontons' },
+  { text: 'Weitere Karten, eigene Frachtschiffe' },
+];
+const NEED = { zone: 2, lane: 2, trafficTab: 2, plantTab: 2, deposits: 2, trade: 3, gear: 3, hazard: 3, shore: 3, port: 4, area: 4, ships: 5, maps: 5 };
+const UP_NEED = { cutter: 3, loeffel: 3, betonrohr: 3, mixer: 3, piler: 4, plant: 2, dewater: 2, sorter: 2, beacons: 2, signals: 2, tugs: 2, vts: 2, pilot: 2 };
+const upgradeRank = (id) => UP_NEED[id] ?? 1;
+const rankOf = (g) => (UNLOCK.enabled ? g.rank ?? 1 : 99);
+const hasRank = (g, key) => rankOf(g) >= (typeof key === 'number' ? key : NEED[key]);
+const fleetMax = (g) => [1, 2, 3, 4, 4][Math.min(4, rankOf(g) - 1)];
+const rankName = (n) => ({ kahn: 'Lastkahn', motor: 'Motorgüterschiff', tank: 'Tankschiff', container: 'Containerschiff', schub: 'Schubverband' })[RANK_ORDER[n - 1]];
+// Höchstes Level aus den freigeschalteten Klassen aller Karten
+function computeRank(g) {
+  let r = 1;
+  for (const m of g.maps) RANK_ORDER.forEach((id, k) => { if (m.unlocked?.[id] && g.level.classes.includes(id)) r = Math.max(r, k + 1); });
+  return r;
+}
+
+return { RANK_ORDER: RANK_ORDER, UNLOCK: UNLOCK, RANK_INFO: RANK_INFO, NEED: NEED, upgradeRank: upgradeRank, rankOf: rankOf, hasRank: hasRank, fleetMax: fleetMax, rankName: rankName, computeRank: computeRank };
+},
+function(){
 const { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } = __m(2);
-const { toolAvailable } = __m(10);
+const { toolAvailable } = __m(11);
 const { River } = __m(5);
+const { rankOf, upgradeRank, computeRank, rankName, RANK_INFO, NEED } = __m(9);
 const { carveFairway, analyzeFairway, zonePlan } = __m(3);
-const { DredgeSim } = __m(11);
-const { EVENTS } = __m(12);
-const { computeStats, upgradeCost } = __m(13);
-const { createRng } = __m(14);
+const { DredgeSim } = __m(12);
+const { EVENTS } = __m(13);
+const { computeStats, upgradeCost } = __m(14);
+const { createRng } = __m(15);
 const { createMarket, stepMarket } = __m(8);
 const { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } = __m(6);
 const { createShipping, updateShipping } = __m(1);
-const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(15);
-const { processPlant, stockTotal, materialPrice } = __m(18);
-const { updateContracts } = __m(16);
-const { createFleet, updateFleet } = __m(17);
+const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(16);
+const { processPlant, stockTotal, materialPrice } = __m(19);
+const { updateContracts } = __m(17);
+const { createFleet, updateFleet } = __m(18);
+
 
 
 
@@ -4005,6 +4060,7 @@ class Game {
   mapCost() { return this.maps.length >= (ENDLESS.maxMaps) ? null : ENDLESS.mapCosts[this.maps.length]; }
   mapBlock() {
     if (!this.endless) return 'Nur im Endlos-Modus';
+    if (rankOf(this) < NEED.maps) return `Braucht Level ${NEED.maps} (${rankName(NEED.maps)} fährt)`;
     if (this.status !== 'playing') return 'Spiel beendet';
     const c = this.mapCost();
     if (c === null) return 'Das Flussnetz ist vollständig erschlossen';
@@ -4042,7 +4098,7 @@ class Game {
   setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
 
   // gesperrt: Anlage über Stufe 6 braucht die Aufbereitungshalle im Hafen
-  upgradeLocked(id) { return id === 'plant' && this.levels.plant >= plantLimit(this) && this.levels.plant < UPGRADES.plant.maxLevel; }
+  upgradeLocked(id) { return rankOf(this) < upgradeRank(id) || id === 'plant' && this.levels.plant >= plantLimit(this) && this.levels.plant < UPGRADES.plant.maxLevel; }
   nextUpgradeCost(id) { return this.levels[id] >= UPGRADES[id].maxLevel || this.upgradeLocked(id) ? null : upgradeCost(id, this.levels[id]); }
 
   buyUpgrade(id) {
@@ -4089,6 +4145,8 @@ class Game {
       }
       this.fairSig[cls.id] = f.passable;
     }
+    const rk = computeRank(this), was = this.rank ?? 1;
+    if (rk > was) { this.rank = rk; if (!silent) this.say(`Level ${rk}: ${rankName(rk)}! Neu: ${RANK_INFO[rk - 1].text}`, 'good'); } else this.rank = was;
   }
 
   // Klasse, für die neue Kreuzungsstellen geplant werden (gewählt, sonst die grösste Klasse, die schon fährt)
@@ -4110,6 +4168,7 @@ class Game {
   zoneBlock(x, clsId = this.zoneClassId) {
     const Z = CONFIG.zones;
     if (this.status !== 'playing') return 'Spiel beendet';
+    if (rankOf(this) < NEED.zone) return `Kreuzungsstellen brauchen Level ${NEED.zone} (${rankName(NEED.zone)} fährt)`;
     if (x < 2 || x > this.river.cols - 3) return 'Zu nah am Rand';
     if (this.zones.some((z) => Math.abs(z.x - x) < Z.width + 1)) return 'Zu nah an einer anderen Kreuzungsstelle';
     if (this.zones.length >= maxZones(this)) return 'Mehr Kreuzungsstellen brauchen Rotlichter (Wasserstrasse ausbauen)';
@@ -4689,7 +4748,7 @@ return { SLICE: SLICE, TOOLS: TOOLS, toolAvailable: toolAvailable, toolName: too
 },
 function(){
 const { CONFIG, KIND } = __m(2);
-const { SliceSim, TOOLS, toolAvailable, toolName } = __m(10);
+const { SliceSim, TOOLS, toolAvailable, toolName } = __m(11);
 
 
 
@@ -4952,8 +5011,8 @@ const { reserveBerth, dockShip } = __m(6);
 const { CONFIG, UPGRADES, SHIPS, CARGOS, DEBRIS, shipById, cargoById } = __m(2);
 const { priceOf, ratioOf } = __m(8);
 const { minDepthAt, pointOnPath } = __m(3);
-const { creditContracts } = __m(16);
-const { fleetSites } = __m(17);
+const { creditContracts } = __m(17);
+const { fleetSites } = __m(18);
 
 
 
@@ -5252,7 +5311,7 @@ return { createTraffic: createTraffic, bayCapacity: bayCapacity, maxZones: maxZo
 function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(2);
 const { priceOf } = __m(8);
-const { activeClasses } = __m(15);
+const { activeClasses } = __m(16);
 
 
 
@@ -5319,11 +5378,13 @@ function updateContracts(g) {
 return { makeContract: makeContract, acceptContract: acceptContract, creditContracts: creditContracts, updateContracts: updateContracts, shipById: shipById };
 },
 function(){
+const { fleetMax } = __m(9);
 const { CONFIG, SHIPS, KIND, shipById } = __m(2);
-const { toolAvailable } = __m(10);
-const { zoneSupports } = __m(15);
+const { toolAvailable } = __m(11);
+const { zoneSupports } = __m(16);
 const { HARBOR, harborTarget } = __m(4);
 const { kaiLevel } = __m(6);
+
 
 
 
@@ -5346,7 +5407,7 @@ const nextHireCost = (g) => hireCostAt(hiredTotal(g));
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 function hireBlock(g) {
   if (g.status !== 'playing') return 'Spiel beendet';
-  if (hiredCount(g) >= CONFIG.fleet.max) return 'Flotte ist voll';
+  if (hiredCount(g) >= Math.min(CONFIG.fleet.max, fleetMax(g))) return hiredCount(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : 'Mehr Pontons brauchen das nächste Level (grössere Schiffsklasse)';
   if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
   const cost = nextHireCost(g);
   if (g.money < cost) return `Braucht ${cost.toLocaleString('de-CH')} CHF`;
@@ -6048,7 +6109,7 @@ return { stockTotal: stockTotal, materialPrice: materialPrice, processPlant: pro
 },
 function(){
 const { CONFIG, shipById } = __m(2);
-const { shipPos } = __m(15);
+const { shipPos } = __m(16);
 
 
 
@@ -6115,10 +6176,10 @@ return { TowSim: TowSim, groundedNear: groundedNear };
 },
 function(){
 const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(2);
-const { upgradeCost } = __m(13);
-const { waitingByClass, bayCapacity, activeClasses } = __m(15);
+const { upgradeCost } = __m(14);
+const { waitingByClass, bayCapacity, activeClasses } = __m(16);
 const { ratioOf } = __m(8);
-const { hireBlock, nextHireCost } = __m(17);
+const { hireBlock, nextHireCost } = __m(18);
 
 
 
@@ -6280,8 +6341,8 @@ class Advisor {
 return { Advisor: Advisor };
 },
 function(){
-const { Game, endlessRiver } = __m(9);
-const { createRng } = __m(14);
+const { Game, endlessRiver } = __m(10);
+const { createRng } = __m(15);
 const { createMarket } = __m(8);
 const { createPort, ensurePort } = __m(6);
 const { ensureHarbor } = __m(4);
@@ -6371,7 +6432,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(23);
+const { isTap } = __m(24);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -6472,7 +6533,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(23);
+const { snapStick } = __m(24);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -6876,16 +6937,16 @@ function createAudio() {
 return { createAudio: createAudio };
 },
 function(){
-const { SLICE } = __m(10);
+const { SLICE } = __m(11);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
-const { shipPos, queuePos, bayCapacity } = __m(15);
+const { shipPos, queuePos, bayCapacity } = __m(16);
 const { needDepth, minNeedDepth, trasseY } = __m(3);
 const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(6);
 const { HARBOR, berthPos, waitPos } = __m(4);
-const { areaWork, wallSpans } = __m(17);
+const { areaWork, wallSpans } = __m(18);
 const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(7);
-const { Chain, drawChain } = __m(31);
-const { groundedNear } = __m(19);
+const { Chain, drawChain } = __m(32);
+const { groundedNear } = __m(20);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 
 

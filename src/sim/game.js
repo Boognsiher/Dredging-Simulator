@@ -1,6 +1,7 @@
 import { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { River } from './river.js';
+import { rankOf, upgradeRank, computeRank, rankName, RANK_INFO, NEED } from './rank.js';
 import { carveFairway, analyzeFairway, zonePlan } from './fairway.js';
 import { DredgeSim } from './dredge.js';
 import { EVENTS } from './events.js';
@@ -114,6 +115,7 @@ export class Game {
   mapCost() { return this.maps.length >= (ENDLESS.maxMaps) ? null : ENDLESS.mapCosts[this.maps.length]; }
   mapBlock() {
     if (!this.endless) return 'Nur im Endlos-Modus';
+    if (rankOf(this) < NEED.maps) return `Braucht Level ${NEED.maps} (${rankName(NEED.maps)} fährt)`;
     if (this.status !== 'playing') return 'Spiel beendet';
     const c = this.mapCost();
     if (c === null) return 'Das Flussnetz ist vollständig erschlossen';
@@ -151,7 +153,7 @@ export class Game {
   setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
 
   // gesperrt: Anlage über Stufe 6 braucht die Aufbereitungshalle im Hafen
-  upgradeLocked(id) { return id === 'plant' && this.levels.plant >= plantLimit(this) && this.levels.plant < UPGRADES.plant.maxLevel; }
+  upgradeLocked(id) { return rankOf(this) < upgradeRank(id) || id === 'plant' && this.levels.plant >= plantLimit(this) && this.levels.plant < UPGRADES.plant.maxLevel; }
   nextUpgradeCost(id) { return this.levels[id] >= UPGRADES[id].maxLevel || this.upgradeLocked(id) ? null : upgradeCost(id, this.levels[id]); }
 
   buyUpgrade(id) {
@@ -198,6 +200,8 @@ export class Game {
       }
       this.fairSig[cls.id] = f.passable;
     }
+    const rk = computeRank(this), was = this.rank ?? 1;
+    if (rk > was) { this.rank = rk; if (!silent) this.say(`Level ${rk}: ${rankName(rk)}! Neu: ${RANK_INFO[rk - 1].text}`, 'good'); } else this.rank = was;
   }
 
   // Klasse, für die neue Kreuzungsstellen geplant werden (gewählt, sonst die grösste Klasse, die schon fährt)
@@ -219,6 +223,7 @@ export class Game {
   zoneBlock(x, clsId = this.zoneClassId) {
     const Z = CONFIG.zones;
     if (this.status !== 'playing') return 'Spiel beendet';
+    if (rankOf(this) < NEED.zone) return `Kreuzungsstellen brauchen Level ${NEED.zone} (${rankName(NEED.zone)} fährt)`;
     if (x < 2 || x > this.river.cols - 3) return 'Zu nah am Rand';
     if (this.zones.some((z) => Math.abs(z.x - x) < Z.width + 1)) return 'Zu nah an einer anderen Kreuzungsstelle';
     if (this.zones.length >= maxZones(this)) return 'Mehr Kreuzungsstellen brauchen Rotlichter (Wasserstrasse ausbauen)';

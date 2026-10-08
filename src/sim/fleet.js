@@ -1,3 +1,4 @@
+import { fleetMax } from './rank.js';
 import { CONFIG, SHIPS, KIND, shipById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { zoneSupports } from './traffic.js';
@@ -20,7 +21,7 @@ export const nextHireCost = (g) => hireCostAt(hiredTotal(g));
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 export function hireBlock(g) {
   if (g.status !== 'playing') return 'Spiel beendet';
-  if (hiredCount(g) >= CONFIG.fleet.max) return 'Flotte ist voll';
+  if (hiredCount(g) >= Math.min(CONFIG.fleet.max, fleetMax(g))) return hiredCount(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : 'Mehr Pontons brauchen das nächste Level (grössere Schiffsklasse)';
   if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
   const cost = nextHireCost(g);
   if (g.money < cost) return `Braucht ${cost.toLocaleString('de-CH')} CHF`;
