@@ -928,7 +928,7 @@ function toggleTool() {
 }
 function updateToolButton() {
   const b = $('btn-tool'), has = game.stats.loeffel > 0 || game.stats.betonrohr > 0;
-  b.hidden = !has || !!tow;
+  b.hidden = !has || !!tow || sim.mode !== 'slice'; // das Gerät wählt man im Querschnitt; auf der Karte reicht die Taste V für die nächste Verankerung
   if (has) b.textContent = `🔧 Gerät: ${toolName(sim.tool)} (V)`;
 }
 function setDepthValue(v) {
