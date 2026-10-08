@@ -262,6 +262,8 @@ export function planRemoval(g, cells, on = true) {
   F.pileRemove = [...set].sort((a, b) => a - b); if (n) bump(g);
   return n;
 }
+// Pfahlplan erst auf Knopfdruck ausführen: geplante Pfähle/Rückbau bleiben bis dahin liegen
+export function startPiles(g, on) { const n = (g.fleet.pilePlan ?? []).length + (g.fleet.pileRemove ?? []).length; if (on && !n) return false; g.fleet.pileGo = !!on; bump(g); return true; }
 export const clearPilePlan = (g) => { const n = (g.fleet.pilePlan ?? []).length + (g.fleet.pileRemove ?? []).length; g.fleet.pilePlan = []; g.fleet.pileRemove = []; if (n) bump(g); return n; };
 // Zellen einer geraden Linie (Rasterlinie) von Zelle a nach Zelle b
 export function lineCells(r, ax, ay, bx, by) {
@@ -287,7 +289,8 @@ export function wallSpans(g) {
   return out;
 }
 function pickPile(g, u) {
-  const plan = g.fleet.pilePlan ?? [], rem = g.fleet.pileRemove ?? []; if (!plan.length && !rem.length) return { none: 'Kein Pfahl geplant' };
+  const plan = g.fleet.pilePlan ?? [], rem = g.fleet.pileRemove ?? []; if (!plan.length && !rem.length) { g.fleet.pileGo = false; return { none: 'Kein Pfahl geplant' }; }
+  if (!g.fleet.pileGo) return { none: 'Pfahlplan wartet auf «Ausführen»' };
   if (g.stats.piler <= 0) return { none: 'Pfähle brauchen das Pfahlgerät (Technik, Geräte)' };
   const r = g.river, taken = new Set(g.fleet.units.filter((q) => q !== u && q.site?.pile).map((q) => q.site.cell));
   const canBuild = g.concrete >= PILE.base + PILE.perM * 1;

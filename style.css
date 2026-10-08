@@ -503,3 +503,10 @@ body.mode-slice #tool-row, body.harbor-view #tool-row { display: none !important
   body.mode-map #tool-row { bottom: 38px; max-width: calc(100vw - 310px); }
   body.mode-map #tool-row button { padding: 3px 8px; font-size: 12px; }
 }
+
+/* Knopfleiste nie in die Höhe strecken (Mindesthöhe der Ratsche) */
+body:not(.mode-map):not(.mode-slice) #shift-actions { align-items: flex-start; align-content: flex-start; }
+
+body.pile-mode #stage canvas { touch-action: none; }
+/* Pfahl-Planung im Hochformat: eine Zeile, seitlich scrollbar (verdeckt die Karte kaum) */
+@media (max-width: 860px) and (orientation: portrait) { #pile-bar { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; left: 6px; right: 6px; transform: none; max-width: none; scrollbar-width: none; } }

@@ -5,7 +5,7 @@ import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, ship
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
-import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
+import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
@@ -450,7 +450,9 @@ function togglePileMode() {
   if (pileMode) { planFocus.x = sim.x; planFocus.y = sim.y; toast('Pfahlwand: Zellen antippen (Einzelzelle) oder zwei Punkte für eine Linie. Mit Joystick/Pfeiltasten verschieben, ± zoomt. Gebaut wird mit dem Betoniergerät aus dem Betonvorrat.', 'info', true); }
   document.body.classList.toggle('pile-mode', pileMode); $('pile-bar').hidden = !pileMode; syncPileButton(); layoutSig = ''; fitCanvas();
 }
-function syncPileButton() { $('btn-pile').textContent = pileMode ? '✔ Pfahlwand: fertig (O)' : '🧱 Pfahlwand (O)'; for (const b of $('pile-bar').querySelectorAll('[data-ptool]')) b.classList.toggle('on', b.dataset.ptool === pileTool); }
+function syncPileButton() {
+  const F = game.fleet, n = (F.pilePlan ?? []).length + (F.pileRemove ?? []).length, go = $('pile-go');
+  const gt = F.pileGo ? `⏸ Pausieren (${n})` : `▶ Ausführen (${n})`; if (go.textContent !== gt) go.textContent = gt; go.classList.toggle('primary', !F.pileGo && n > 0); go.disabled = !n && !F.pileGo; $('btn-pile').textContent = pileMode ? '✔ Pfahlwand: fertig (O)' : '🧱 Pfahlwand (O)'; for (const b of $('pile-bar').querySelectorAll('[data-ptool]')) b.classList.toggle('on', b.dataset.ptool === pileTool); }
 function pileClick(px, py) {
   const c = cellAt(px, py), x = Math.floor(c.x), y = Math.floor(c.y), r = game.river;
   if (x < 0 || y < 0 || x >= r.cols || y >= r.rows) return;
@@ -758,19 +760,22 @@ function panCanvas(dt) {
     canvas.style.marginLeft = canvas.style.marginTop = canvas.style.marginBottom = canvas.style.clipPath = '';
     return;
   }
-  if (zoom > 1 && tow) canvas.style.marginLeft = `${-Math.max(0, cw - stageW) / 2}px`;
+  if (zoom > 1 && sim.mode === 'map' && !tow && !pileMode) {
+    const fxp = ((OX + sim.x * CELL) / canvas.logicalW) * cw, want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
+    panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1); canvas.style.marginLeft = `${-panX}px`;
+  } else if (zoom > 1 && tow) canvas.style.marginLeft = `${-Math.max(0, cw - stageW) / 2}px`;
   else if (zoom > 1 && pileMode) {
     const fxp = ((OX + planFocus.x * CELL) / canvas.logicalW) * cw, want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
-    panX += (want - panX) * Math.min(1, dt * 6); canvas.style.marginLeft = `${-panX}px`;
+    panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1); canvas.style.marginLeft = `${-panX}px`;
   } else if (zoom > 1 && sim.mode === 'slice') {
     const sl = sim.slice, fxp = ((sl.x - sl.x0) / 16) * cw;
     const want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
-    panX += (want - panX) * Math.min(1, dt * 6);
+    panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1);
     canvas.style.marginLeft = `${-panX}px`;
   } else canvas.style.marginLeft = '';
   if (cropVis !== null && ch > cropVis) {
     const want = Math.min(Math.max(0, focusY(canvas.logicalH, ch) - cropVis / 2), ch - cropVis);
-    panY += (want - panY) * Math.min(1, dt * 6);
+    panY += (want - panY) * (dt > 0 ? Math.min(1, dt * 6) : 1);
     const bottom = ch - cropVis - panY;
     canvas.style.marginTop = `${-panY}px`; canvas.style.marginBottom = `${-bottom}px`; canvas.style.clipPath = `inset(${panY}px 0 ${bottom}px 0)`;
   } else { panY = 0; canvas.style.marginTop = canvas.style.marginBottom = canvas.style.clipPath = ''; }
@@ -807,6 +812,11 @@ function fitCanvas() {
   else if (portrait && tow) { // Schleppen im Hochformat: so gross wie die Höhe erlaubt, seitlich mittig (Aufläufer und Ponton bleiben im Bild)
     const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
     zoom = Math.min(1.18, Math.max(1, visAvail / nat));
+    w = stageW * zoom; h = w * (lh / lw);
+  }
+  else if (portrait && sim.mode === 'map') { // Karte im Hochformat: freie Höhe nutzen, seitlich dem Ponton folgen
+    const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
+    zoom = Math.min(2, Math.max(1, visAvail / nat));
     w = stageW * zoom; h = w * (lh / lw);
   }
   else if (portrait && sim.mode === 'slice') {
@@ -1140,6 +1150,11 @@ $('map-select').onchange = (e) => changeMap(+e.target.value);
 $('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
 addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
 
+readInput.onDrag((dx, dy) => { // Planungsmodus: Karte mit dem Finger verschieben
+  if (!pileMode || sim.mode !== 'map' || tow || paused || sheetOpen || overlayOpen()) return;
+  const r = canvas.getBoundingClientRect(), k = canvas.logicalW / CELL / r.width, ky = canvas.logicalH / CELL / r.height;
+  planFocus.x = Math.min(game.river.cols, Math.max(0, planFocus.x - dx * k)); planFocus.y = Math.min(game.river.rows, Math.max(0, planFocus.y - dy * ky));
+});
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
 readInput.onTap((px, py) => {
   if (pileMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { pileClick(px, py); return; }
@@ -1159,6 +1174,7 @@ $('btn-lane').onclick = () => toggleLaneMode(0); $('btn-harborview').onclick = t
 for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
 $('land-done').onclick = toggleLandMode;
 for (const b of $('pile-bar').querySelectorAll('[data-ptool]')) b.onclick = () => { pileTool = b.dataset.ptool; pileA = null; ui.pileA = null; syncPileButton(); };
+$('pile-go').onclick = () => { const on = !game.fleet.pileGo; if (!startPiles(game, on)) { toast('Es ist nichts geplant', 'info', true); return; } toast(on ? 'Ausführung gestartet: die Flotte baut die geplanten Pfähle' : 'Ausführung pausiert', on ? 'good' : 'info', true); syncPileButton(); fleetSig = null; };
 $('pile-clear').onclick = () => { const n = clearPilePlan(game); toast(n ? `Plan gelöscht (${n} Zellen)` : 'Plan ist leer', 'info', true); fleetSig = null; };
 $('pile-zin').onclick = () => pileZoomBy(1.3); $('pile-zout').onclick = () => pileZoomBy(1 / 1.3); $('pile-done').onclick = togglePileMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
@@ -1234,6 +1250,7 @@ function frame(now) {
     if (lentUnit(game) && sim.mode === 'map') { const lu = lentUnit(game); sim.x = lu.x; sim.y = lu.y; } // der eigene Ponton fährt als Flottenschiff mit
     if (pileMode) { planFocus.x = Math.min(game.river.cols, Math.max(0, planFocus.x + inp.dx * dt * 16)); planFocus.y = Math.min(game.river.rows, Math.max(0, planFocus.y + inp.dy * dt * 16)); }
     if (tow || zoneMode || areaMode || landMode || pileMode || lentUnit(game)) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    if (pileMode) syncPileButton();
     ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {

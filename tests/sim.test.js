@@ -1818,7 +1818,9 @@ test('Pfahlwand: Pontons mit Betoniergerät setzen die geplanten Pfähle (Beton 
   hireUnit(g); const r = g.river, x = 12, cy = Math.round(r.centerY(x)), cells = lineCells(r, x, cy - 4, x, cy - 2);
   assert.equal(planPile(g, cells), cells.length);
   assert.equal(planPile(g, [r.idx(0, 0)]), 0, 'Land ist nicht planbar');
-  g.concrete = 0; for (let t = 0; t < 60; t += 0.1) g.update(0.1);
+  g.concrete = 100; for (let t = 0; t < 40; t += 0.1) g.update(0.1);
+  assert.equal(g.totals.piles ?? 0, 0, 'ohne «Ausführen» wird nichts gebaut');
+  startPiles(g, true); g.concrete = 0; for (let t = 0; t < 60; t += 0.1) g.update(0.1);
   assert.equal(g.totals.piles ?? 0, 0, 'ohne Beton wird nichts gebaut');
   g.concrete = 100; for (let t = 0; t < 200; t += 0.1) g.update(0.1);
   assert.equal(g.totals.piles, cells.length); assert.ok(cells.every((i) => r.pile[i]));
@@ -1838,7 +1840,7 @@ test('Tiefe Rinne für grosse Schiffe: ohne Pfahlwand rutschen die Böschungen z
   };
   assert.equal(run(false), false, 'ohne Wand füllt die Böschung die tiefe Rinne wieder auf'); assert.equal(run(true), true, 'mit Wand bleibt sie offen');
   const g = new Game(3, 'hochrhein'); g.eventsOn = false; g.money = 1e7; g.buyUpgrade('auto'); hireUnit(g); g.buyUpgrade('betonrohr');
-  const r = g.river, cy = Math.round(r.centerY(12)), cell = r.idx(12, cy - 3); planPile(g, [cell]); g.concrete = 200;
+  const r = g.river, cy = Math.round(r.centerY(12)), cell = r.idx(12, cy - 3); planPile(g, [cell]); startPiles(g, true); g.concrete = 200;
   for (let t = 0; t < 100; t += 0.1) g.update(0.1);
   assert.equal(r.pile[cell], 0, 'ohne Pfahlgerät keine Pfähle');
   g.buyUpgrade('piler'); const t1 = g.stats.pileTime; g.buyUpgrade('piler'); assert.ok(g.stats.pileTime < t1, 'höhere Stufe baut schneller');
@@ -1850,7 +1852,7 @@ test('Pfahl-Rückbau: vorgemerkte Pfähle werden herausgerammt, Beton teilweise 
   const g = new Game(3, 'hochrhein'); g.eventsOn = false; g.money = 1e7; for (const id of ['auto', 'piler']) g.buyUpgrade(id);
   hireUnit(g); const r = g.river, cy = Math.round(r.centerY(12)), pile = r.idx(12, cy - 3), shore = r.idx(12, cy - 5);
   r.setPile(pile, true); assert.ok(r.lim[shore] > -90);
-  assert.equal(planRemoval(g, [r.idx(12, cy)], true), 0, 'ohne Pfahl nichts vorzumerken'); assert.equal(planRemoval(g, [pile], true), 1);
+  assert.equal(planRemoval(g, [r.idx(12, cy)], true), 0, 'ohne Pfahl nichts vorzumerken'); assert.equal(planRemoval(g, [pile], true), 1); startPiles(g, true);
   g.concrete = 0; for (let t = 0; t < 100; t += 0.1) g.update(0.1);
   assert.equal(r.pile[pile], 0, 'Pfahl ist weg (Rückbau braucht keinen Beton)'); assert.ok(r.lim[shore] < -90, 'Abtragsperre fällt weg');
   assert.ok(g.concrete > 3, 'ein Teil des Betons kommt zurück: ' + g.concrete); assert.equal(g.totals.pilesRemoved, 1); assert.equal(g.fleet.pileRemove.length, 0);
@@ -1883,7 +1885,7 @@ test('Pfahlwand-Planung: zeigt je Abschnitt Breite zwischen den Wänden sowie fa
 });
 
 // ---------- Rinne selbst festlegen, Fokus der Flotte ----------
-import { setFocus, focusActive } from '../src/sim/fleet.js';
+import { startPiles, setFocus, focusActive } from '../src/sim/fleet.js';
 test('Festgelegte Rinne: Analyse folgt der Linie (±1 Zelle); Löschen stellt die freie Suche wieder her', () => {
   const g = new Game(6, 'hochrhein'); g.eventsOn = false; g.traffic.spawnIn = 1e9;
   const free = g.fair.kahn.nodes.map((p) => p.y);

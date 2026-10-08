@@ -9,7 +9,7 @@ export function createInput(canvas) {
   const pointer = { active: false, down: false, x: 0, y: 0 }; // Canvas-Pixel (nur Maus/Stift)
   const virtual = { dx: 0, dy: 0, suction: false }; // wird vom Touch-Stick und -Knopf gesetzt
   let tapHandler = null;
-  let touchStart = null;
+  let touchStart = null, dragHandler = null;
 
   addEventListener('keydown', (e) => {
     if (!e.repeat) taps.add(e.code);
@@ -28,9 +28,15 @@ export function createInput(canvas) {
     if (e.pointerType === 'touch') { touchStart = { ...toCanvas(e), cx: e.clientX, cy: e.clientY, t: performance.now(), id: e.pointerId }; return; }
     setPos(e); pointer.down = true; canvas.setPointerCapture(e.pointerId);
   });
+  canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'touch' || !touchStart || touchStart.id !== e.pointerId || !dragHandler) return;
+    if (!touchStart.drag && Math.hypot(e.clientX - touchStart.cx, e.clientY - touchStart.cy) < 10) return;
+    dragHandler(e.clientX - (touchStart.lx ?? touchStart.cx), e.clientY - (touchStart.ly ?? touchStart.cy));
+    touchStart.drag = true; touchStart.lx = e.clientX; touchStart.ly = e.clientY;
+  });
   canvas.addEventListener('pointerup', (e) => {
     if (e.pointerType === 'touch') {
-      if (touchStart && touchStart.id === e.pointerId && isTap(Math.hypot(e.clientX - touchStart.cx, e.clientY - touchStart.cy), performance.now() - touchStart.t)) {
+      if (touchStart && !touchStart.drag && touchStart.id === e.pointerId && isTap(Math.hypot(e.clientX - touchStart.cx, e.clientY - touchStart.cy), performance.now() - touchStart.t)) {
         tapHandler?.(touchStart.x, touchStart.y);
       }
       touchStart = null;
@@ -43,6 +49,7 @@ export function createInput(canvas) {
 
   return {
     virtual,
+    onDrag(fn) { dragHandler = fn; }, // Ziehen mit dem Finger (Client-Pixel, Differenz zum letzten Ereignis)
     onTap(fn) { tapHandler = fn; }, // Tippen aufs Spielfeld (Canvas-Pixel)
     // cur = Position des gesteuerten Objekts in Canvas-Pixeln. holdToMove: Maus steuert nur bei gedrückter Taste.
     read(cur, { holdToMove = false, soft = false, keysOnly = false } = {}) {
