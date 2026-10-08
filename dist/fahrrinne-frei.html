@@ -5840,8 +5840,10 @@ const { Game, endlessRiver } = __m(9);
 const { createRng } = __m(14);
 const { createMarket } = __m(6);
 const { createPort, ensurePort } = __m(4);
+const { ensureHarbor } = __m(7);
 const { levelById } = __m(2);
 const { River } = __m(8);
+
 
 
 
@@ -5908,6 +5910,7 @@ function restoreGame(text) {
       const hs = s.harborRivers?.[i];
       if (hs && m.port.harbor) { const hr = new River(hs.cols, hs.rows); for (const [k, v] of Object.entries(hs)) hr[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v; m.port.harbor.river = hr; hr.wl = game.wl; } else if (m.port.harbor) m.port.harbor = null; // kaputter Stand: neu anlegen lassen
     });
+    for (const m of game.maps) ensureHarbor(m.port, game.wl); // ältere Stände mit geöffnetem Hafen bekommen die Hafenkarte nachträglich
     game.rng.setState(s.rng);
     const cur = game.mapIdx;
     for (let i = 0; i < game.maps.length; i++) { game.mapIdx = i; game.analyze(true); game.fairClock = 0; }
@@ -6099,7 +6102,7 @@ function(){
 const { CONFIG, SHIPS, shipById } = __m(2);
 const { needDepth, minNeedDepth } = __m(3);
 const { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } = __m(5);
-const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget } = __m(4);
+const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel } = __m(4);
 const { priceOf, ratioOf } = __m(6);
 const { HARBOR } = __m(7);
 

@@ -1,7 +1,7 @@
 import { CONFIG, SHIPS, shipById } from '../config.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } from '../sim/land.js';
-import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget } from '../sim/port.js';
+import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel } from '../sim/port.js';
 import { priceOf, ratioOf } from '../sim/market.js';
 import { HARBOR } from '../sim/harbor.js';
 

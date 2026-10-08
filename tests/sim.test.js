@@ -297,7 +297,7 @@ import { lendPonton, recallPonton, lendBlock, lentUnit, nextHireCost } from '../
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
 import { harborAccepts } from '../src/sim/harbor.js';
-import { berthsOf, bayDepth, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
+import { isDocked, berthsOf, bayDepth, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
   assert.ok(openBlock(g), 'ohne Motorschiff gesperrt');
@@ -1750,4 +1750,15 @@ test('Hafenkarte: eigenes Becken, Pontons lassen sich zuteilen und baggern es au
   assert.ok(setUnitLoc(g, u.id, 'main'));
   const rt = restoreGame(serializeGame(g)); assert.ok(rt.port.harbor?.river?.top instanceof Float32Array);
   assert.ok(Math.abs(bayDepth(rt) - bayDepth(g)) < 1e-6);
+});
+
+test('Alter Spielstand mit geöffnetem Hafen (ohne Hafenkarte, Aufträge ohne Zustand) lädt und bekommt die Hafenkarte nachträglich', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.money = 1e7; g.unlocked.motor = true;
+  openPort(g); for (const s of g.port.sites) s.ready = true; build(g, 0, 'kai');
+  g.port.jobs.push({ id: 1, cargo: 'kies', tons: 100, done: 0, out: false, price: 18, left: 30, fee: 500, ship: 'kahn' }); // alt: ohne state/shipId
+  delete g.port.harbor; g.port.bay = g.port.bay;
+  const rt = restoreGame(serializeGame(g));
+  assert.ok(rt, 'lädt'); assert.ok(rt.port.harbor?.river?.top instanceof Float32Array, 'Hafenkarte nachgerüstet');
+  assert.ok(isDocked(rt.port.jobs[0]));
+  updatePort(rt, 1); rt.update(0.5); assert.ok(bayDepth(rt) > 0);
 });
