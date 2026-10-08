@@ -491,6 +491,11 @@ body:not(.tools-open) #shift-actions .tool-btn:not(.on) { display: none !importa
 #btn-fleetmenu.open { background: var(--accent); color: #04222b; font-weight: 700; }
 #btn-sound { display: none !important; }
 
+/* Hochformat: aufgeklappte Flotten-Werkzeuge in mehreren Zeilen, sonst liegen sie ausserhalb des Sichtbereichs der einzeiligen Leiste */
+@media (max-width: 860px) and (orientation: portrait) {
+  body.tools-open:not(.mode-map):not(.mode-slice) #shift-actions { flex-wrap: wrap; overflow: visible; }
+}
+
 </style>
 </head>
 <body>
@@ -645,7 +650,7 @@ const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipB
 const { Game } = __m(9);
 const { acceptContract } = __m(16);
 const { waitingByClass, shipPos } = __m(15);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(17);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(17);
 const { bayCapacity, maxZones, zoneClasses } = __m(15);
 const { materialPrice } = __m(18);
 const { TowSim, groundedNear } = __m(19);
@@ -1171,7 +1176,7 @@ function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden;
   $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, F.second, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
@@ -1180,6 +1185,7 @@ function updateFleet() {
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
     <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
+    <label class="fleet-widen"><input type="checkbox" id="fleet-second" ${F.second ? 'checked' : ''}> Zweite Rinne mit ausbauen, sobald die Hauptrinne fertig ist (Gegenverkehr ohne Warten, mehr Durchsatz; Vorschau: Klasse wählen)</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-mine" ${F.mine ? 'checked' : ''}> Rohstoffe abbauen: freie Pontons baggern Vorkommen mit Konzession (Preisaufschlag)</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-pour" ${F.pour ? 'checked' : ''} ${game.stats.betonrohr > 0 ? '' : 'disabled'}> Rinne betonieren (Betoniergerät und Beton nötig): freie Pontons verhärten Rinne und Böschung</label>
     ${(F.areas ?? []).map((a) => `<div class="unit"><div><b>${a.route ? '〰 Route' : '▭ Gebiet'} ${a.id}</b> <small>Spalten ${a.x0 + 1}–${a.x1 + 1}${a.route ? ` · Breite ${a.w}` : `, Zeilen ${a.y0 + 1}–${a.y1 + 1}`} · ${areaWork(game, a) ? `noch ${areaWork(game, a)} Spalten offen` : '✓ fertig'}</small>
@@ -1194,6 +1200,7 @@ function updateFleet() {
     <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
   $('fleet-nonat').onchange = (e) => { setAvoid(game, e.target.checked, F.noAltlast); fleetSig = null; updateFleet(); };
   $('fleet-noalt').onchange = (e) => { setAvoid(game, F.noNature, e.target.checked); fleetSig = null; updateFleet(); };
+  $('fleet-second').onchange = (e) => { setSecond(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-mine').onchange = (e) => { setMine(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-pour').onchange = (e) => { setPour(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-widen').onchange = (e) => { setWiden(game, e.target.checked); fleetSig = null; updateFleet(); };
@@ -1556,7 +1563,7 @@ function toggleLend() {
 }
 // Knöpfe unter der Karte: «Flotte ▾» klappt alle Werkzeuge rund um die Flotte (Gebiet, Route, Pfahlwand, Kreuzung, Land, Ponton zuteilen) auf
 let toolsOpen = false;
-function toggleTools(open = !toolsOpen) { toolsOpen = open; document.body.classList.toggle('tools-open', open); layoutSig = ''; }
+function toggleTools(open = !toolsOpen) { toolsOpen = open; document.body.classList.toggle('tools-open', open); resetBars(); fitCanvas(); }
 function updateToolButtons() {
   const act = { 'btn-area': areaMode && areaKind === 'rect', 'btn-route': areaMode && areaKind === 'route', 'btn-pile': pileMode, 'btn-zone': zoneMode, 'btn-land': landMode };
   const tools = [...document.querySelectorAll('#shift-actions .tool-btn')];
@@ -2629,7 +2636,7 @@ function analyzeClass(river, wl, cls) {
       let m2 = 0;
       for (const i of covered(river, second, beam)) m2 += def[i];
       res.twoWay = m2 <= 1e-6;
-      if (res.twoWay) res.secondPath = smoothPath(river, second, beam); // zweite Rinne zum Einzeichnen
+      res.secondPath = smoothPath(river, second, beam); res.secondNodes = second; res.secondVolume = m2 * river.area; // mögliche zweite Rinne (auch wenn sie noch ausgebaggert werden muss): Vorschau und Ausbau durch die Flotte
     }
   }
   return res;
@@ -5277,12 +5284,12 @@ function targetClass(g) {
 const canRock = (g) => g.stats.loeffel > 0 || g.stats.rockFirmness >= CONFIG.fleet.rockFirmnessMin;
 
 // Spalten der Rinne der Klasse, in denen noch Sohle über der nötigen Tiefe liegt (aufsteigend); rock = Fels im Weg
-function openColumns(g, cls) {
+function openColumns(g, cls, key = 'nodes') {
   const f = g.fair?.[cls.id];
-  if (!f?.nodes) return [];
+  if (!f?.[key]) return [];
   const r = g.river, needTop = g.wl - f.need + 0.06, lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo, cols = new Map();
   let avoided = 0;
-  for (const p of f.nodes) {
+  for (const p of f[key]) {
     for (let k = p.y - lo; k <= p.y + hi; k++) {
       const i = k * r.cols + p.x;
       if (!r.zone[i] || r.top[i] <= needTop) continue;
@@ -5301,7 +5308,7 @@ function openColumns(g, cls) {
 const locOf = (u) => u.loc ?? 'main'; // Einsatzort: 'main' (Hauptkarte) oder 'harbor' (Hafenkarte)
 const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && locOf(u) === locOf(me) && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
 const overlaps = (res, c0) => res.some((s) => c0 < s.c0 + CONFIG.box.cols && s.c0 < c0 + CONFIG.box.cols);
-const skipKey = (s) => (s.pile ? `C${s.cell}` : s.aid ? `A${s.aid}:${s.col}` : s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
+const skipKey = (s) => (s.pile ? `C${s.cell}` : s.lane2 ? `S${s.col}` : s.aid ? `A${s.aid}:${s.col}` : s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
 
 // Land-Automatik: Spalten, in denen im Ausbaustreifen neben dem ursprünglichen Korridor noch Land über der Tiefe der Ausbauklasse liegt.
 // Pro Spalte und Ufer die ersten `widenW` Zeilen des Streifens (ext > 0); ursprünglicher Korridor = zone && !ext (umgewandeltes Land zählt nicht dazu).
@@ -5326,10 +5333,21 @@ function openWidenColumns(g) {
 
 // Böschungsrand je Seite (Zellen), den die Flotte zusätzlich zur Rinnenbreite ausbaggert: ohne Wand muss die Rinne breit genug sein, damit die Böschung hält
 const laneMargin = (g, need) => Math.min(6, Math.max(1, Math.ceil((need - 0.8) / CONFIG.layer.slope)));
+// Klasse für den Ausbau der zweiten Rinne: die Ausbauklasse, sonst die grösste Klasse, die schon fährt, deren zweite Rinne aber noch nicht tief genug ist
+function secondClass(g, cls) {
+  const ok = (c) => { const f = g.fair?.[c.id]; return f?.passable && f.secondNodes && !f.twoWay && f.secondVolume < Infinity; };
+  if (cls && ok(cls)) return cls;
+  return [...SHIPS].reverse().find((c) => g.level.classes.includes(c.id) && ok(c)) ?? null;
+}
+function setSecond(g, on) { g.fleet.second = !!on; bump(g); }
 function pickLane(g, u) {
-  const cls = targetClass(g);
+  let cls = targetClass(g), lane2 = false, open = cls ? openColumns(g, cls) : [];
+  if ((!cls || !open.length) && g.fleet.second) { // Hauptrinne fertig: zweite Rinne (Gegenverkehr ohne Warten, mehr Durchsatz) mit ausbauen
+    const c2 = secondClass(g, cls), o2 = c2 ? openColumns(g, c2, 'secondNodes') : [];
+    if (o2.length) { cls = c2; open = o2; lane2 = true; }
+  }
   if (!cls) return { none: 'Keine Engstelle: alle Klassen fahren' };
-  const open = openColumns(g, cls), res = reservedBy(g, u), B = CONFIG.box.cols;
+  const res = reservedBy(g, u), B = CONFIG.box.cols;
   if (!open.length) return { none: open.avoided ? 'Altlast im Weg: Meiden ist aktiv (Flotte)' : `${cls.name}: Rinne ist frei` };
   let rockSkipped = 0, armorSkipped = 0;
   for (const c of open) {
@@ -5339,7 +5357,7 @@ function pickLane(g, u) {
     const c0 = Math.min(Math.max(0, c.x), g.river.cols - B);
     if (overlaps(res, c0)) continue;
     const f = g.fair[cls.id];
-    return { c0, col: c.x, y: c.y, cls: cls.id, depth: Math.min(CONFIG.echolot.maxDepth, f.need + CONFIG.fleet.margin), tool: (c.rock || c.armor) && g.stats.loeffel > 0 ? 'loeffel' : 'pump', rock: c.rock || c.armor };
+    return { lane2, c0, col: c.x, y: c.y, cls: cls.id, depth: Math.min(CONFIG.echolot.maxDepth, f.need + CONFIG.fleet.margin), tool: (c.rock || c.armor) && g.stats.loeffel > 0 ? 'loeffel' : 'pump', rock: c.rock || c.armor };
   }
   return { none: armorSkipped ? 'Beton im Weg: braucht den Löffelbagger' : rockSkipped ? 'Fels im Weg: braucht Felsfräse oder Löffelbagger' : 'Alle offenen Stellen sind vergeben' };
 }
@@ -5790,7 +5808,7 @@ function stepUnit(g, u, dt) {
             else {
               const lane = g.fair[s.cls], cls = shipById(s.cls), lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo;
               let r0 = Infinity, r1 = -Infinity;
-              for (const n of lane.nodes) if (n.x >= s.c0 - 1 && n.x <= s.c0 + B) { r0 = Math.min(r0, n.y - lo); r1 = Math.max(r1, n.y + hi); }
+              for (const n of (s.lane2 ? lane.secondNodes : lane.nodes)) if (n.x >= s.c0 - 1 && n.x <= s.c0 + B) { r0 = Math.min(r0, n.y - lo); r1 = Math.max(r1, n.y + hi); }
               if (r0 <= r1) { // die Rinne samt Böschungsrand ausheben: je tiefer, desto breiter (Böschung hält nur CONFIG.layer.slope m je Zelle); Pfähle an der Seite ersetzen den Rand
                 const rv = g.river, cx0 = s.c0, mg = laneMargin(g, lane.need);
                 let pN = -1, pS = rv.rows; // nächste Pfahlreihe nördlich/südlich der Rinne in den Spalten des Kastens
@@ -5800,7 +5818,7 @@ function stepUnit(g, u, dt) {
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();
-            u.state = 'work'; u.workT = 0; u.note = s.harbor ? `baggert das Hafenbecken (Spalte ${s.col + 1})` : s.area ? `baggert Gebiet ${s.aid} bei Spalte ${s.col + 1}` : s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
+            u.state = 'work'; u.workT = 0; u.note = s.harbor ? `baggert das Hafenbecken (Spalte ${s.col + 1})` : s.area ? `baggert Gebiet ${s.aid} bei Spalte ${s.col + 1}` : s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `${s.lane2 ? 'baut die 2. Rinne aus' : 'baggert'} bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
           } else { u.skip[skipKey(s)] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         }
       } else if (dist > 1e-6) {
@@ -5847,7 +5865,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => locOf(u) === 'main' && u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, clearPilePlan: clearPilePlan, lineCells: lineCells, wallSpans: wallSpans, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, setSecond: setSecond, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, clearPilePlan: clearPilePlan, lineCells: lineCells, wallSpans: wallSpans, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);
@@ -6865,13 +6883,13 @@ function drawClassOverlay(ctx, game, cls) {
     ctx.fillStyle = 'rgba(190,255,90,.85)';
     for (let x = 0; x < r.cols; x++) { if (!f.cross[x]) continue; const q = f.path.points.find((pt) => Math.floor(pt.x) >= x) ?? f.path.points[f.path.points.length - 1]; ctx.fillRect(OX + x * CELL + 1, q.y * CELL - (cls.beam * CELL) / 2 - 9, CELL - 2, 5); }
   }
-  if (f.secondPath) { // zweite, getrennte Rinne (Gegenverkehr ohne Warten): orange
+  if (f.secondPath) { // zweite, getrennte Rinne (Gegenverkehr ohne Warten): orange; noch nicht tief genug: blass gestrichelt mit der fehlenden Menge
     const sp = f.secondPath.points;
     ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(255,170,70,.28)'; ctx.lineWidth = cls.beam * CELL * 0.9;
+    ctx.globalAlpha = f.twoWay ? 1 : 0.55; ctx.strokeStyle = 'rgba(255,170,70,.28)'; ctx.lineWidth = cls.beam * CELL * 0.9;
     ctx.beginPath(); sp.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); ctx.stroke();
-    ctx.strokeStyle = '#ffb04d'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.restore();
-    const mid = sp[Math.floor(sp.length / 2)]; ctx.font = font(11); const t = '2. Rinne', tw = ctx.measureText(t).width + 8;
+    ctx.strokeStyle = '#ffb04d'; ctx.lineWidth = 2; ctx.setLineDash(f.twoWay ? [8, 6] : [3, 7]); ctx.stroke(); ctx.restore();
+    const mid = sp[Math.floor(sp.length / 2)]; ctx.font = font(11); const t = f.twoWay ? '2. Rinne' : `2. Rinne möglich: fehlt ${Math.round(f.secondVolume)} m³`, tw = ctx.measureText(t).width + 8;
     const rdy = labelDy(OX + mid.x * CELL - tw / 2, mid.y * CELL - fs(11) - 6, tw, fs(11) + 4);
     ctx.fillStyle = '#000b'; ctx.fillRect(OX + mid.x * CELL - tw / 2, mid.y * CELL - fs(11) - 6 + rdy, tw, fs(11) + 4); ctx.fillStyle = '#ffd9a8'; ctx.fillText(t, OX + mid.x * CELL - tw / 2 + 4, mid.y * CELL - 8 + rdy);
   }

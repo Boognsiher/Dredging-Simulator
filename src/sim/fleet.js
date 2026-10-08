@@ -86,12 +86,12 @@ export function targetClass(g) {
 const canRock = (g) => g.stats.loeffel > 0 || g.stats.rockFirmness >= CONFIG.fleet.rockFirmnessMin;
 
 // Spalten der Rinne der Klasse, in denen noch Sohle über der nötigen Tiefe liegt (aufsteigend); rock = Fels im Weg
-export function openColumns(g, cls) {
+export function openColumns(g, cls, key = 'nodes') {
   const f = g.fair?.[cls.id];
-  if (!f?.nodes) return [];
+  if (!f?.[key]) return [];
   const r = g.river, needTop = g.wl - f.need + 0.06, lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo, cols = new Map();
   let avoided = 0;
-  for (const p of f.nodes) {
+  for (const p of f[key]) {
     for (let k = p.y - lo; k <= p.y + hi; k++) {
       const i = k * r.cols + p.x;
       if (!r.zone[i] || r.top[i] <= needTop) continue;
@@ -110,7 +110,7 @@ export function openColumns(g, cls) {
 const locOf = (u) => u.loc ?? 'main'; // Einsatzort: 'main' (Hauptkarte) oder 'harbor' (Hafenkarte)
 const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && locOf(u) === locOf(me) && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
 const overlaps = (res, c0) => res.some((s) => c0 < s.c0 + CONFIG.box.cols && s.c0 < c0 + CONFIG.box.cols);
-const skipKey = (s) => (s.pile ? `C${s.cell}` : s.aid ? `A${s.aid}:${s.col}` : s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
+const skipKey = (s) => (s.pile ? `C${s.cell}` : s.lane2 ? `S${s.col}` : s.aid ? `A${s.aid}:${s.col}` : s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
 
 // Land-Automatik: Spalten, in denen im Ausbaustreifen neben dem ursprünglichen Korridor noch Land über der Tiefe der Ausbauklasse liegt.
 // Pro Spalte und Ufer die ersten `widenW` Zeilen des Streifens (ext > 0); ursprünglicher Korridor = zone && !ext (umgewandeltes Land zählt nicht dazu).
@@ -135,10 +135,21 @@ export function openWidenColumns(g) {
 
 // Böschungsrand je Seite (Zellen), den die Flotte zusätzlich zur Rinnenbreite ausbaggert: ohne Wand muss die Rinne breit genug sein, damit die Böschung hält
 export const laneMargin = (g, need) => Math.min(6, Math.max(1, Math.ceil((need - 0.8) / CONFIG.layer.slope)));
+// Klasse für den Ausbau der zweiten Rinne: die Ausbauklasse, sonst die grösste Klasse, die schon fährt, deren zweite Rinne aber noch nicht tief genug ist
+function secondClass(g, cls) {
+  const ok = (c) => { const f = g.fair?.[c.id]; return f?.passable && f.secondNodes && !f.twoWay && f.secondVolume < Infinity; };
+  if (cls && ok(cls)) return cls;
+  return [...SHIPS].reverse().find((c) => g.level.classes.includes(c.id) && ok(c)) ?? null;
+}
+export function setSecond(g, on) { g.fleet.second = !!on; bump(g); }
 function pickLane(g, u) {
-  const cls = targetClass(g);
+  let cls = targetClass(g), lane2 = false, open = cls ? openColumns(g, cls) : [];
+  if ((!cls || !open.length) && g.fleet.second) { // Hauptrinne fertig: zweite Rinne (Gegenverkehr ohne Warten, mehr Durchsatz) mit ausbauen
+    const c2 = secondClass(g, cls), o2 = c2 ? openColumns(g, c2, 'secondNodes') : [];
+    if (o2.length) { cls = c2; open = o2; lane2 = true; }
+  }
   if (!cls) return { none: 'Keine Engstelle: alle Klassen fahren' };
-  const open = openColumns(g, cls), res = reservedBy(g, u), B = CONFIG.box.cols;
+  const res = reservedBy(g, u), B = CONFIG.box.cols;
   if (!open.length) return { none: open.avoided ? 'Altlast im Weg: Meiden ist aktiv (Flotte)' : `${cls.name}: Rinne ist frei` };
   let rockSkipped = 0, armorSkipped = 0;
   for (const c of open) {
@@ -148,7 +159,7 @@ function pickLane(g, u) {
     const c0 = Math.min(Math.max(0, c.x), g.river.cols - B);
     if (overlaps(res, c0)) continue;
     const f = g.fair[cls.id];
-    return { c0, col: c.x, y: c.y, cls: cls.id, depth: Math.min(CONFIG.echolot.maxDepth, f.need + CONFIG.fleet.margin), tool: (c.rock || c.armor) && g.stats.loeffel > 0 ? 'loeffel' : 'pump', rock: c.rock || c.armor };
+    return { lane2, c0, col: c.x, y: c.y, cls: cls.id, depth: Math.min(CONFIG.echolot.maxDepth, f.need + CONFIG.fleet.margin), tool: (c.rock || c.armor) && g.stats.loeffel > 0 ? 'loeffel' : 'pump', rock: c.rock || c.armor };
   }
   return { none: armorSkipped ? 'Beton im Weg: braucht den Löffelbagger' : rockSkipped ? 'Fels im Weg: braucht Felsfräse oder Löffelbagger' : 'Alle offenen Stellen sind vergeben' };
 }
@@ -599,7 +610,7 @@ function stepUnit(g, u, dt) {
             else {
               const lane = g.fair[s.cls], cls = shipById(s.cls), lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo;
               let r0 = Infinity, r1 = -Infinity;
-              for (const n of lane.nodes) if (n.x >= s.c0 - 1 && n.x <= s.c0 + B) { r0 = Math.min(r0, n.y - lo); r1 = Math.max(r1, n.y + hi); }
+              for (const n of (s.lane2 ? lane.secondNodes : lane.nodes)) if (n.x >= s.c0 - 1 && n.x <= s.c0 + B) { r0 = Math.min(r0, n.y - lo); r1 = Math.max(r1, n.y + hi); }
               if (r0 <= r1) { // die Rinne samt Böschungsrand ausheben: je tiefer, desto breiter (Böschung hält nur CONFIG.layer.slope m je Zelle); Pfähle an der Seite ersetzen den Rand
                 const rv = g.river, cx0 = s.c0, mg = laneMargin(g, lane.need);
                 let pN = -1, pS = rv.rows; // nächste Pfahlreihe nördlich/südlich der Rinne in den Spalten des Kastens
@@ -609,7 +620,7 @@ function stepUnit(g, u, dt) {
             }
             sl.x = Math.max(sl.bounds().min, (sl.autoRange?.[0] ?? 0) + 0.01); sl.h = Math.min(sl.maxH(), sl.surfaceAt(sl.x) + 1.5);
             sim.toggleAuto();
-            u.state = 'work'; u.workT = 0; u.note = s.harbor ? `baggert das Hafenbecken (Spalte ${s.col + 1})` : s.area ? `baggert Gebiet ${s.aid} bei Spalte ${s.col + 1}` : s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `baggert bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
+            u.state = 'work'; u.workT = 0; u.note = s.harbor ? `baggert das Hafenbecken (Spalte ${s.col + 1})` : s.area ? `baggert Gebiet ${s.aid} bei Spalte ${s.col + 1}` : s.did ? `baut Rohstoffe ab bei Spalte ${s.col + 1}` : s.zid ? `baut Kreuzungsstelle aus bei Spalte ${s.col + 1}` : s.pour ? `betoniert bei Spalte ${s.col + 1}` : s.land ? `baut Ufer ab bei Spalte ${s.col + 1} (Löffel)` : `${s.lane2 ? 'baut die 2. Rinne aus' : 'baggert'} bei Spalte ${s.col + 1} (${s.tool === 'loeffel' ? 'Löffel' : 'Saugkopf'})`;
           } else { u.skip[skipKey(s)] = g.time + 40; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         }
       } else if (dist > 1e-6) {

@@ -144,13 +144,13 @@ function drawClassOverlay(ctx, game, cls) {
     ctx.fillStyle = 'rgba(190,255,90,.85)';
     for (let x = 0; x < r.cols; x++) { if (!f.cross[x]) continue; const q = f.path.points.find((pt) => Math.floor(pt.x) >= x) ?? f.path.points[f.path.points.length - 1]; ctx.fillRect(OX + x * CELL + 1, q.y * CELL - (cls.beam * CELL) / 2 - 9, CELL - 2, 5); }
   }
-  if (f.secondPath) { // zweite, getrennte Rinne (Gegenverkehr ohne Warten): orange
+  if (f.secondPath) { // zweite, getrennte Rinne (Gegenverkehr ohne Warten): orange; noch nicht tief genug: blass gestrichelt mit der fehlenden Menge
     const sp = f.secondPath.points;
     ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(255,170,70,.28)'; ctx.lineWidth = cls.beam * CELL * 0.9;
+    ctx.globalAlpha = f.twoWay ? 1 : 0.55; ctx.strokeStyle = 'rgba(255,170,70,.28)'; ctx.lineWidth = cls.beam * CELL * 0.9;
     ctx.beginPath(); sp.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); ctx.stroke();
-    ctx.strokeStyle = '#ffb04d'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.restore();
-    const mid = sp[Math.floor(sp.length / 2)]; ctx.font = font(11); const t = '2. Rinne', tw = ctx.measureText(t).width + 8;
+    ctx.strokeStyle = '#ffb04d'; ctx.lineWidth = 2; ctx.setLineDash(f.twoWay ? [8, 6] : [3, 7]); ctx.stroke(); ctx.restore();
+    const mid = sp[Math.floor(sp.length / 2)]; ctx.font = font(11); const t = f.twoWay ? '2. Rinne' : `2. Rinne möglich: fehlt ${Math.round(f.secondVolume)} m³`, tw = ctx.measureText(t).width + 8;
     const rdy = labelDy(OX + mid.x * CELL - tw / 2, mid.y * CELL - fs(11) - 6, tw, fs(11) + 4);
     ctx.fillStyle = '#000b'; ctx.fillRect(OX + mid.x * CELL - tw / 2, mid.y * CELL - fs(11) - 6 + rdy, tw, fs(11) + 4); ctx.fillStyle = '#ffd9a8'; ctx.fillText(t, OX + mid.x * CELL - tw / 2 + 4, mid.y * CELL - 8 + rdy);
   }

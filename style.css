@@ -476,3 +476,8 @@ body.harbor-view :is(#btn-area, #btn-route, #btn-zone, #btn-land, #btn-fleetlend
 body:not(.tools-open) #shift-actions .tool-btn:not(.on) { display: none !important; }
 #btn-fleetmenu.open { background: var(--accent); color: #04222b; font-weight: 700; }
 #btn-sound { display: none !important; }
+
+/* Hochformat: aufgeklappte Flotten-Werkzeuge in mehreren Zeilen, sonst liegen sie ausserhalb des Sichtbereichs der einzeiligen Leiste */
+@media (max-width: 860px) and (orientation: portrait) {
+  body.tools-open:not(.mode-map):not(.mode-slice) #shift-actions { flex-wrap: wrap; overflow: visible; }
+}
