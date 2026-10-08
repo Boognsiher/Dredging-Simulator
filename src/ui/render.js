@@ -5,7 +5,7 @@ import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
 import { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } from '../sim/port.js';
 import { HARBOR, berthPos, waitPos } from '../sim/harbor.js';
-import { areaWork } from '../sim/fleet.js';
+import { areaWork, wallSpans } from '../sim/fleet.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } from '../sim/land.js';
 import { Chain, drawChain } from './chain.js';
 import { groundedNear } from '../sim/tow.js';
@@ -265,6 +265,18 @@ function drawPiles(ctx, game, ui) {
   for (let x = 0; x <= cols; x++) { ctx.moveTo(OX + x * CELL, 0); ctx.lineTo(OX + x * CELL, r.rows * CELL); }
   for (let y = 0; y <= r.rows; y++) { ctx.moveTo(OX, y * CELL); ctx.lineTo(OX + cols * CELL, y * CELL); }
   ctx.stroke();
+  // Rinne zwischen den Wänden: Breite und welche Klassen fahren (Symbol) bzw. kreuzen können (Symbol mit ↔)
+  for (const sp of wallSpans(game)) {
+    const x0 = OX + sp.x0 * CELL, x1 = OX + (sp.x1 + 1) * CELL, y0 = sp.rows[0] * CELL, y1 = (sp.rows[1] + 1) * CELL, ok = sp.pass.length > 0;
+    ctx.fillStyle = sp.cross.length ? 'rgba(120,230,150,.20)' : ok ? 'rgba(255,224,120,.18)' : 'rgba(255,110,100,.22)'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = sp.cross.length ? '#7be39a' : ok ? '#ffe08a' : '#ff8a7a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0, (y0 + y1) / 2); ctx.lineTo(x1, (y0 + y1) / 2); ctx.stroke();
+    const icons = (ids) => (ids.length ? ids.map((id) => shipById(id).icon).join('') : '–'), lines = [`Breite ${sp.w}${sp.x1 > sp.x0 ? ` · Sp. ${sp.x0 + 1}–${sp.x1 + 1}` : ''}`, `fahren ${icons(sp.pass)}`, `kreuzen ${icons(sp.cross)}`];
+    const k0 = 0.9 / (ui.pileZoom || 1); // die Beschriftung bleibt unabhängig vom Zoom lesbar klein
+    ctx.save(); ctx.font = font(12); ctx.textAlign = 'center'; const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 10, lh = fs(12) + 3, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, bw = tw * k0, bh = (lh * lines.length + 4) * k0, dy = labelDy(cx - bw / 2, cy - bh / 2, bw, bh);
+    ctx.translate(cx, cy + dy); ctx.scale(k0, k0); const top = -(lh * lines.length + 4) / 2;
+    ctx.fillStyle = '#000c'; ctx.fillRect(-tw / 2, top, tw, lh * lines.length + 4);
+    lines.forEach((l, k) => { ctx.fillStyle = k === 0 ? '#fff' : k === 1 ? '#ffe9a0' : '#b9f5c9'; ctx.fillText(l, 0, top + (k + 1) * lh); }); ctx.restore();
+  }
   const H = ui.hoverCell, A = ui.pileA;
   if (A && H) { // Linienvorschau
     const x1 = Math.floor(H.x), y1 = Math.floor(H.y), n = Math.max(Math.abs(x1 - A.x), Math.abs(y1 - A.y), 1);

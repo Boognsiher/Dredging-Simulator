@@ -427,7 +427,7 @@ function togglePileMode() {
   if (tow || sim.mode !== 'map' || harborView) { toast('Die Pfahlwand planst du auf der Hauptkarte (Anker lichten mit Q)', 'info', true); return; }
   if (game.stats.piler <= 0 && !pileMode) toast('Pfähle setzen kann erst, wer das Pfahlgerät hat (Technik, Reiter Geräte)', 'info', true);
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) { if (areaKind === 'route') finishRoute(); else toggleAreaMode(); }
-  pileMode = !pileMode; ui.pileMode = pileMode; pileA = null; ui.pileA = null; ui.hoverCell = null; mapTarget = null;
+  pileMode = !pileMode; ui.pileMode = pileMode; ui.pileZoom = pileZoom; pileA = null; ui.pileA = null; ui.hoverCell = null; mapTarget = null;
   if (pileMode) { planFocus.x = sim.x; planFocus.y = sim.y; toast('Pfahlwand: Zellen antippen (Einzelzelle) oder zwei Punkte für eine Linie. Mit Joystick/Pfeiltasten verschieben, ± zoomt. Gebaut wird mit dem Betoniergerät aus dem Betonvorrat.', 'info', true); }
   document.body.classList.toggle('pile-mode', pileMode); $('pile-bar').hidden = !pileMode; syncPileButton(); layoutSig = ''; fitCanvas();
 }
@@ -455,7 +455,7 @@ function pileClick(px, py) {
   note(n, on); fleetSig = null;
 }
 const pileBlockText = (i) => { const r = game.river; return r.bay[i] ? 'nicht im Hafenbecken' : 'nur im Wasser des Baggerkorridors'; };
-function pileZoomBy(f) { pileZoom = Math.min(4, Math.max(1.2, pileZoom * f)); layoutSig = ''; fitCanvas(); }
+function pileZoomBy(f) { pileZoom = Math.min(4, Math.max(1.2, pileZoom * f)); ui.pileZoom = pileZoom; layoutSig = ''; fitCanvas(); }
 function cellAt(px, py) { return { x: (px - OX) / CELL, y: py / CELL }; }
 function areaClick(px, py) {
   const c = cellAt(px, py);

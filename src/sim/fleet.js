@@ -255,6 +255,23 @@ export function lineCells(r, ax, ay, bx, by) {
   for (let s = 0; s <= n; s++) { const x = Math.round(ax + ((bx - ax) * s) / n), y = Math.round(ay + ((by - ay) * s) / n); if (x >= 0 && y >= 0 && x < r.cols && y < r.rows) out.push(y * r.cols + x); }
   return out;
 }
+// Planungshilfe für die Pfahlwand: In jeder Spalte mit Pfählen (gesetzt oder geplant) nördlich UND südlich der Rinnenmitte ist die Breite dazwischen bekannt.
+// Daraus folgt, welche Klassen dort fahren können (Breite ≥ Schiffsbreite) und welche dort kreuzen können (zwei Rinnen: 2 × Schiffsbreite + 1).
+// Gruppiert Spalten mit gleichem Ergebnis zu Abschnitten: { x0, x1, w, pass: [Klassen-IDs], cross: [Klassen-IDs] }.
+export function wallSpans(g) {
+  const r = g.river, set = new Set([...(g.fleet.pilePlan ?? [])]);
+  for (let i = 0; i < r.pile.length; i++) if (r.pile[i]) set.add(i);
+  const rm = new Set(g.fleet.pileRemove ?? []); // zum Rückbau vorgemerkte Pfähle zählen nicht mehr
+  const cols = new Map();
+  for (const i of set) { if (rm.has(i)) continue; const x = i % r.cols, y = (i / r.cols) | 0, c = r.centerY(x), e = cols.get(x) ?? { n: -1, s: r.rows }; if (y < c) e.n = Math.max(e.n, y); else e.s = Math.min(e.s, y); cols.set(x, e); }
+  const out = [];
+  for (const x of [...cols.keys()].sort((a, b) => a - b)) {
+    const { n, s } = cols.get(x); if (n < 0 || s >= r.rows) continue; // nur Spalten mit Wand auf beiden Seiten
+    const w = s - n - 1, pass = SHIPS.filter((c) => c.beam <= w).map((c) => c.id), cross = SHIPS.filter((c) => 2 * c.beam + 1 <= w).map((c) => c.id), key = `${w}|${pass}|${cross}`, last = out[out.length - 1];
+    if (last && last.key === key && last.x1 === x - 1) last.x1 = x; else out.push({ x0: x, x1: x, w, pass, cross, key, rows: [n + 1, s - 1] });
+  }
+  return out;
+}
 function pickPile(g, u) {
   const plan = g.fleet.pilePlan ?? [], rem = g.fleet.pileRemove ?? []; if (!plan.length && !rem.length) return { none: 'Kein Pfahl geplant' };
   if (g.stats.piler <= 0) return { none: 'Pfähle brauchen das Pfahlgerät (Technik, Geräte)' };

@@ -1093,7 +1093,7 @@ function togglePileMode() {
   if (tow || sim.mode !== 'map' || harborView) { toast('Die Pfahlwand planst du auf der Hauptkarte (Anker lichten mit Q)', 'info', true); return; }
   if (game.stats.piler <= 0 && !pileMode) toast('Pfähle setzen kann erst, wer das Pfahlgerät hat (Technik, Reiter Geräte)', 'info', true);
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) { if (areaKind === 'route') finishRoute(); else toggleAreaMode(); }
-  pileMode = !pileMode; ui.pileMode = pileMode; pileA = null; ui.pileA = null; ui.hoverCell = null; mapTarget = null;
+  pileMode = !pileMode; ui.pileMode = pileMode; ui.pileZoom = pileZoom; pileA = null; ui.pileA = null; ui.hoverCell = null; mapTarget = null;
   if (pileMode) { planFocus.x = sim.x; planFocus.y = sim.y; toast('Pfahlwand: Zellen antippen (Einzelzelle) oder zwei Punkte für eine Linie. Mit Joystick/Pfeiltasten verschieben, ± zoomt. Gebaut wird mit dem Betoniergerät aus dem Betonvorrat.', 'info', true); }
   document.body.classList.toggle('pile-mode', pileMode); $('pile-bar').hidden = !pileMode; syncPileButton(); layoutSig = ''; fitCanvas();
 }
@@ -1121,7 +1121,7 @@ function pileClick(px, py) {
   note(n, on); fleetSig = null;
 }
 const pileBlockText = (i) => { const r = game.river; return r.bay[i] ? 'nicht im Hafenbecken' : 'nur im Wasser des Baggerkorridors'; };
-function pileZoomBy(f) { pileZoom = Math.min(4, Math.max(1.2, pileZoom * f)); layoutSig = ''; fitCanvas(); }
+function pileZoomBy(f) { pileZoom = Math.min(4, Math.max(1.2, pileZoom * f)); ui.pileZoom = pileZoom; layoutSig = ''; fitCanvas(); }
 function cellAt(px, py) { return { x: (px - OX) / CELL, y: py / CELL }; }
 function areaClick(px, py) {
   const c = cellAt(px, py);
@@ -5446,6 +5446,23 @@ function lineCells(r, ax, ay, bx, by) {
   for (let s = 0; s <= n; s++) { const x = Math.round(ax + ((bx - ax) * s) / n), y = Math.round(ay + ((by - ay) * s) / n); if (x >= 0 && y >= 0 && x < r.cols && y < r.rows) out.push(y * r.cols + x); }
   return out;
 }
+// Planungshilfe für die Pfahlwand: In jeder Spalte mit Pfählen (gesetzt oder geplant) nördlich UND südlich der Rinnenmitte ist die Breite dazwischen bekannt.
+// Daraus folgt, welche Klassen dort fahren können (Breite ≥ Schiffsbreite) und welche dort kreuzen können (zwei Rinnen: 2 × Schiffsbreite + 1).
+// Gruppiert Spalten mit gleichem Ergebnis zu Abschnitten: { x0, x1, w, pass: [Klassen-IDs], cross: [Klassen-IDs] }.
+function wallSpans(g) {
+  const r = g.river, set = new Set([...(g.fleet.pilePlan ?? [])]);
+  for (let i = 0; i < r.pile.length; i++) if (r.pile[i]) set.add(i);
+  const rm = new Set(g.fleet.pileRemove ?? []); // zum Rückbau vorgemerkte Pfähle zählen nicht mehr
+  const cols = new Map();
+  for (const i of set) { if (rm.has(i)) continue; const x = i % r.cols, y = (i / r.cols) | 0, c = r.centerY(x), e = cols.get(x) ?? { n: -1, s: r.rows }; if (y < c) e.n = Math.max(e.n, y); else e.s = Math.min(e.s, y); cols.set(x, e); }
+  const out = [];
+  for (const x of [...cols.keys()].sort((a, b) => a - b)) {
+    const { n, s } = cols.get(x); if (n < 0 || s >= r.rows) continue; // nur Spalten mit Wand auf beiden Seiten
+    const w = s - n - 1, pass = SHIPS.filter((c) => c.beam <= w).map((c) => c.id), cross = SHIPS.filter((c) => 2 * c.beam + 1 <= w).map((c) => c.id), key = `${w}|${pass}|${cross}`, last = out[out.length - 1];
+    if (last && last.key === key && last.x1 === x - 1) last.x1 = x; else out.push({ x0: x, x1: x, w, pass, cross, key, rows: [n + 1, s - 1] });
+  }
+  return out;
+}
 function pickPile(g, u) {
   const plan = g.fleet.pilePlan ?? [], rem = g.fleet.pileRemove ?? []; if (!plan.length && !rem.length) return { none: 'Kein Pfahl geplant' };
   if (g.stats.piler <= 0) return { none: 'Pfähle brauchen das Pfahlgerät (Technik, Geräte)' };
@@ -5830,7 +5847,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => locOf(u) === 'main' && u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, clearPilePlan: clearPilePlan, lineCells: lineCells, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, clearPilePlan: clearPilePlan, lineCells: lineCells, wallSpans: wallSpans, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);
@@ -6698,7 +6715,7 @@ const { shipPos, queuePos, bayCapacity } = __m(15);
 const { needDepth, minNeedDepth } = __m(3);
 const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(6);
 const { HARBOR, berthPos, waitPos } = __m(4);
-const { areaWork } = __m(17);
+const { areaWork, wallSpans } = __m(17);
 const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(7);
 const { Chain, drawChain } = __m(31);
 const { groundedNear } = __m(19);
@@ -6969,6 +6986,18 @@ function drawPiles(ctx, game, ui) {
   for (let x = 0; x <= cols; x++) { ctx.moveTo(OX + x * CELL, 0); ctx.lineTo(OX + x * CELL, r.rows * CELL); }
   for (let y = 0; y <= r.rows; y++) { ctx.moveTo(OX, y * CELL); ctx.lineTo(OX + cols * CELL, y * CELL); }
   ctx.stroke();
+  // Rinne zwischen den Wänden: Breite und welche Klassen fahren (Symbol) bzw. kreuzen können (Symbol mit ↔)
+  for (const sp of wallSpans(game)) {
+    const x0 = OX + sp.x0 * CELL, x1 = OX + (sp.x1 + 1) * CELL, y0 = sp.rows[0] * CELL, y1 = (sp.rows[1] + 1) * CELL, ok = sp.pass.length > 0;
+    ctx.fillStyle = sp.cross.length ? 'rgba(120,230,150,.20)' : ok ? 'rgba(255,224,120,.18)' : 'rgba(255,110,100,.22)'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = sp.cross.length ? '#7be39a' : ok ? '#ffe08a' : '#ff8a7a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0, (y0 + y1) / 2); ctx.lineTo(x1, (y0 + y1) / 2); ctx.stroke();
+    const icons = (ids) => (ids.length ? ids.map((id) => shipById(id).icon).join('') : '–'), lines = [`Breite ${sp.w}${sp.x1 > sp.x0 ? ` · Sp. ${sp.x0 + 1}–${sp.x1 + 1}` : ''}`, `fahren ${icons(sp.pass)}`, `kreuzen ${icons(sp.cross)}`];
+    const k0 = 0.9 / (ui.pileZoom || 1); // die Beschriftung bleibt unabhängig vom Zoom lesbar klein
+    ctx.save(); ctx.font = font(12); ctx.textAlign = 'center'; const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 10, lh = fs(12) + 3, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, bw = tw * k0, bh = (lh * lines.length + 4) * k0, dy = labelDy(cx - bw / 2, cy - bh / 2, bw, bh);
+    ctx.translate(cx, cy + dy); ctx.scale(k0, k0); const top = -(lh * lines.length + 4) / 2;
+    ctx.fillStyle = '#000c'; ctx.fillRect(-tw / 2, top, tw, lh * lines.length + 4);
+    lines.forEach((l, k) => { ctx.fillStyle = k === 0 ? '#fff' : k === 1 ? '#ffe9a0' : '#b9f5c9'; ctx.fillText(l, 0, top + (k + 1) * lh); }); ctx.restore();
+  }
   const H = ui.hoverCell, A = ui.pileA;
   if (A && H) { // Linienvorschau
     const x1 = Math.floor(H.x), y1 = Math.floor(H.y), n = Math.max(Math.abs(x1 - A.x), Math.abs(y1 - A.y), 1);

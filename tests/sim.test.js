@@ -598,7 +598,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
-import { laneMargin, planPile, planRemoval, lineCells, setUnitLoc, setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+import { wallSpans, laneMargin, planPile, planRemoval, lineCells, setUnitLoc, setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
 
 function bankSlice(levels = { loeffel: 3 }) {
   const g = new Game(3, 'hochrhein'), r = g.river;
@@ -1870,4 +1870,14 @@ test('Tiefe Rinne ohne Wand geht, wenn sie breit genug ist (Böschung); die Wand
   assert.equal(wide(7, 'tank', 3.25), true);
   assert.equal(wide(7, 'schub', 5.55), false, 'Schubverband: der Korridor ist zu schmal für die Böschung (ohne Verbreiterung oder Wand)');
   assert.equal(laneMargin({}, 1.7), 1); assert.ok(laneMargin({}, 4.3) >= 3 && laneMargin({}, 5.5) > laneMargin({}, 4.3), 'Flotte baggert je tiefer, desto breiter');
+});
+
+test('Pfahlwand-Planung: zeigt je Abschnitt Breite zwischen den Wänden sowie fahrende und kreuzende Klassen', () => {
+  const g = new Game(7, 'hochrhein'), r = g.river, x = 15, c = Math.round(r.centerY(x));
+  assert.deepEqual(wallSpans(g), [], 'ohne Wand nichts');
+  r.setPile(r.idx(x, c - 4), true); planPile(g, [r.idx(x, c + 3)]); // 6 Zellen dazwischen (eine Wand geplant)
+  planPile(g, [r.idx(x + 1, c - 4), r.idx(x + 1, c + 3)]); r.setPile(r.idx(x + 1, c - 4), true);
+  let sp = wallSpans(g); assert.equal(sp.length, 1, 'zwei Spalten mit gleichem Ergebnis werden zusammengefasst'); assert.equal(sp[0].w, 6); assert.deepEqual([sp[0].x0, sp[0].x1], [x, x + 1]);
+  assert.deepEqual(sp[0].pass, ['kahn', 'motor', 'tank', 'container', 'schub'].filter((id) => shipById(id).beam <= 6)); assert.deepEqual(sp[0].cross, ['kahn', 'motor'], 'kreuzen: 2 × Breite + 1 ≤ 6');
+  planRemoval(g, [r.idx(x, c - 4)]); sp = wallSpans(g); assert.equal(sp.length, 1, 'zum Rückbau vorgemerkte Pfähle zählen nicht'); assert.equal(sp[0].x0, x + 1);
 });
