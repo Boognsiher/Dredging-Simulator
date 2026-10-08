@@ -204,12 +204,10 @@ Das Level ist die höchste Klasse, deren Rinne schon einmal befahrbar war (auf i
 
 | Level | Klasse | Freigeschaltet |
 |---|---|---|
-| 1 | Lastkahn | Dein Ponton (Pumpe, Querschnitt, Fahrrinne, Automatik), die Anlage (Aufbereitung, Entwässerung, Sortierung) und die Flotte mit höchstens 1 gemieteten Ponton |
-| 2 | Motorgüterschiff | Verkehr (Kreuzungsstellen, Warteplätze), Rohstoffgebiete, «Rinne festlegen»; Flotte bis 2 Pontons |
+| 1 | Lastkahn | Dein Ponton (Pumpe, Querschnitt, Fahrrinne, Automatik) und die Flotte mit höchstens 1 gemieteten Ponton |
+| 2 | Motorgüterschiff | Verkehr (Kreuzungsstellen, Warteplätze), Anlage ausbauen, Rohstoffgebiete, «Rinne festlegen»; Flotte bis 2 Pontons |
 | 3 | Tankschiff | Handel, Geräte (Felsfräse, Löffel, Beton, Betonwerk, Pfahlgerät und Pfahlwand), Altlasten, Uferstreifen, weitere Karten; Flotte bis 3 Pontons |
 | 4 | Containerschiff | Hafen und Hafenkarte, Gebiet und Route; Flotte bis 4 Pontons |
 | 5 | Schubverband | Eigene Frachtschiffe |
 
 Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Bestehende Spielstände bekommen das Level passend zu den schon befahrbaren Klassen.
-
-**Anlage:** Die Aufbereitungsanlage lässt sich schon ab Level 1 ausbauen. Ohne Aufbereitungshalle im Hafen reicht sie bis Stufe 6, dazu kommen +3 Stufen je erreichtem Level; Hallen erhöhen die Grenze weiter.

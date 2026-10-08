@@ -1938,7 +1938,6 @@ test('Level: Start = Level 1 (eine gemietete Flotte mit 1 Ponton), Hafen/Geräte
     assert.ok(g.zoneBlock(20), 'Kreuzungen brauchen Level 2');
     assert.ok(hireUnit(g)); assert.ok(hireBlock(g), 'zweiter Ponton erst mit Level 2');
     assert.equal(hasRank(g, 'port'), false);
-    assert.equal(g.nextUpgradeCost('plant') !== null, true, 'Anlage schon ab Level 1');
     g.unlocked.motor = true; g.analyze(true);
     assert.equal(rankOf2(g), 2); assert.equal(fleetMax(g), 2); assert.equal(g.zoneBlock(20) === null || !/Level/.test(g.zoneBlock(20)), true);
   } finally { UNLOCK.enabled = false; }

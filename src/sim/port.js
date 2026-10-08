@@ -2,7 +2,7 @@ import { CONFIG, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
 import { hallCapacity, roadFactor } from './land.js';
 import { priceOf, ratioOf } from './market.js';
-import { rankOf, NEED, rankName, UNLOCK } from './rank.js';
+import { rankOf, NEED, rankName } from './rank.js';
 import { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } from './harbor.js';
 
 // Hafen an Land: Kai mit Verladestation plus Lager (Kies, Tanklager) und Sanierungsanlage (Altlasten). Reine Daten und Logik, speicherbar.
@@ -105,8 +105,7 @@ export const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).m
 export const PLANT_BASE = 6;
 export const werkLevel = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => slotsOf(m.port, 'werk')[0]?.level ?? 0));
 export const werkLevels = (g) => (g.maps ?? [{ port: g.port }]).reduce((a, m) => a + (slotsOf(m.port, 'werk')[0]?.level ?? 0), 0); // Summe aller Hallenstufen (jede Karte hat ihren eigenen Hafen)
-// Anlagenstufe ohne Halle: wächst mit dem Level (je Klasse +3), damit man auch vor dem Hafen vorwärtskommt; Hallen erhöhen sie weiter
-export const plantLimit = (g) => PLANT_BASE + (UNLOCK.enabled ? 3 * (Math.min(5, rankOf(g)) - 1) : 0) + 2 * werkLevels(g);
+export const plantLimit = (g) => PLANT_BASE + 2 * werkLevels(g);
 export const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
 export const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
 

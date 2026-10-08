@@ -885,7 +885,7 @@ function updateUpgrades() {
     r.btn.textContent = rankLock ? `🔒 Level ${upgradeRank(id)}` : game.upgradeLocked(id) ? '🔒 Hafen' : cost === null ? 'Max' : chf(cost);
     r.btn.disabled = cost === null || game.money < cost || game.status !== 'playing';
     if (rankLock) r.small.textContent += ` · gesperrt: braucht Level ${upgradeRank(id)} (${rankName(upgradeRank(id))} fährt)`;
-    else if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: nächstes Level (grössere Schiffsklasse) oder Aufbereitungshalle im Hafen bauen/ausbauen';
+    else if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: Aufbereitungshalle im Hafen bauen/ausbauen (jede Karte mit Halle zählt)';
     const refund = game.refundFor(id);
     if (!r.armed()) r.sell.textContent = '↩';
     if (refund !== null) r.small.textContent += ` · Rückbau +${chf(refund)}`;
@@ -3357,7 +3357,7 @@ const { CONFIG, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
 const { hallCapacity, roadFactor } = __m(7);
 const { priceOf, ratioOf } = __m(8);
-const { rankOf, NEED, rankName, UNLOCK } = __m(9);
+const { rankOf, NEED, rankName } = __m(9);
 const { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } = __m(4);
 
 
@@ -3466,8 +3466,7 @@ const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) 
 const PLANT_BASE = 6;
 const werkLevel = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => slotsOf(m.port, 'werk')[0]?.level ?? 0));
 const werkLevels = (g) => (g.maps ?? [{ port: g.port }]).reduce((a, m) => a + (slotsOf(m.port, 'werk')[0]?.level ?? 0), 0); // Summe aller Hallenstufen (jede Karte hat ihren eigenen Hafen)
-// Anlagenstufe ohne Halle: wächst mit dem Level (je Klasse +3), damit man auch vor dem Hafen vorwärtskommt; Hallen erhöhen sie weiter
-const plantLimit = (g) => PLANT_BASE + (UNLOCK.enabled ? 3 * (Math.min(5, rankOf(g)) - 1) : 0) + 2 * werkLevels(g);
+const plantLimit = (g) => PLANT_BASE + 2 * werkLevels(g);
 const buyPrice = (g, id) => priceOf(g.market, id) * (1 + PORT.spread);
 const sellPrice = (g, id) => priceOf(g.market, id) * (1 - PORT.spread);
 
@@ -3905,14 +3904,14 @@ const RANK_ORDER = ['kahn', 'motor', 'tank', 'container', 'schub'];
 const UNLOCK = { enabled: true };
 // Freischaltungen je Level (Text für Meldungen und Sperrhinweise)
 const RANK_INFO = [
-  { text: 'Dein Ponton: Pumpe, Querschnitt, Fahrrinne, Automatik, Anlage ausbauen (Aufbereitung, Entwässerung, Sortierung); eine gemietete Flotte mit 1 Ponton' },
-  { text: 'Verkehr (Kreuzungsstellen, Warteplätze), Rohstoffgebiete, «Rinne festlegen»; Flotte bis 2 Pontons' },
+  { text: 'Dein Ponton: Pumpe, Querschnitt, Fahrrinne, Automatik; eine gemietete Flotte mit 1 Ponton' },
+  { text: 'Verkehr (Kreuzungsstellen, Warteplätze), Anlage ausbauen, Rohstoffgebiete, «Rinne festlegen»; Flotte bis 2 Pontons' },
   { text: 'Handel (Frachtmarkt, Aufträge), Geräte (Felsfräse, Löffel, Beton, Betonwerk, Pfahlgerät und Pfahlwand), Altlasten, Uferstreifen, weitere Karten; Flotte bis 3 Pontons' },
   { text: 'Hafen und Hafenkarte, Gebiet und Route; Flotte bis 4 Pontons' },
   { text: 'Eigene Frachtschiffe' },
 ];
-const NEED = { zone: 2, lane: 2, trafficTab: 2, plantTab: 1, deposits: 2, trade: 3, gear: 3, hazard: 3, shore: 3, port: 4, area: 4, ships: 5, maps: 3 };
-const UP_NEED = { cutter: 3, loeffel: 3, betonrohr: 3, mixer: 3, piler: 3, beacons: 2, signals: 2, tugs: 2, vts: 2, pilot: 2 };
+const NEED = { zone: 2, lane: 2, trafficTab: 2, plantTab: 2, deposits: 2, trade: 3, gear: 3, hazard: 3, shore: 3, port: 4, area: 4, ships: 5, maps: 3 };
+const UP_NEED = { cutter: 3, loeffel: 3, betonrohr: 3, mixer: 3, piler: 3, plant: 2, dewater: 2, sorter: 2, beacons: 2, signals: 2, tugs: 2, vts: 2, pilot: 2 };
 const upgradeRank = (id) => UP_NEED[id] ?? 1;
 const rankOf = (g) => (UNLOCK.enabled ? g.rank ?? 1 : 99);
 const hasRank = (g, key) => rankOf(g) >= (typeof key === 'number' ? key : NEED[key]);
