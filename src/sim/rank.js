@@ -6,11 +6,11 @@ export const UNLOCK = { enabled: true };
 export const RANK_INFO = [
   { text: 'Dein Ponton: Pumpe, Querschnitt, Fahrrinne, Automatik; eine gemietete Flotte mit 1 Ponton' },
   { text: 'Verkehr (Kreuzungsstellen, Warteplätze), Anlage ausbauen, Rohstoffgebiete, «Rinne festlegen»; Flotte bis 2 Pontons' },
-  { text: 'Handel (Frachtmarkt, Aufträge), Geräte (Felsfräse, Löffel, Beton, Betonwerk, Pfahlgerät und Pfahlwand), Altlasten, Uferstreifen; Flotte bis 3 Pontons' },
+  { text: 'Handel (Frachtmarkt, Aufträge), Geräte (Felsfräse, Löffel, Beton, Betonwerk, Pfahlgerät und Pfahlwand), Altlasten, Uferstreifen, weitere Karten; Flotte bis 3 Pontons' },
   { text: 'Hafen und Hafenkarte, Gebiet und Route; Flotte bis 4 Pontons' },
-  { text: 'Weitere Karten, eigene Frachtschiffe' },
+  { text: 'Eigene Frachtschiffe' },
 ];
-export const NEED = { zone: 2, lane: 2, trafficTab: 2, plantTab: 2, deposits: 2, trade: 3, gear: 3, hazard: 3, shore: 3, port: 4, area: 4, ships: 5, maps: 5 };
+export const NEED = { zone: 2, lane: 2, trafficTab: 2, plantTab: 2, deposits: 2, trade: 3, gear: 3, hazard: 3, shore: 3, port: 4, area: 4, ships: 5, maps: 3 };
 const UP_NEED = { cutter: 3, loeffel: 3, betonrohr: 3, mixer: 3, piler: 3, plant: 2, dewater: 2, sorter: 2, beacons: 2, signals: 2, tugs: 2, vts: 2, pilot: 2 };
 export const upgradeRank = (id) => UP_NEED[id] ?? 1;
 export const rankOf = (g) => (UNLOCK.enabled ? g.rank ?? 1 : 99);

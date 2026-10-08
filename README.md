@@ -206,8 +206,8 @@ Das Level ist die höchste Klasse, deren Rinne schon einmal befahrbar war (auf i
 |---|---|---|
 | 1 | Lastkahn | Dein Ponton (Pumpe, Querschnitt, Fahrrinne, Automatik) und die Flotte mit höchstens 1 gemieteten Ponton |
 | 2 | Motorgüterschiff | Verkehr (Kreuzungsstellen, Warteplätze), Anlage ausbauen, Rohstoffgebiete, «Rinne festlegen»; Flotte bis 2 Pontons |
-| 3 | Tankschiff | Handel, Geräte (Felsfräse, Löffel, Beton, Betonwerk, Pfahlgerät und Pfahlwand), Altlasten, Uferstreifen; Flotte bis 3 Pontons |
+| 3 | Tankschiff | Handel, Geräte (Felsfräse, Löffel, Beton, Betonwerk, Pfahlgerät und Pfahlwand), Altlasten, Uferstreifen, weitere Karten; Flotte bis 3 Pontons |
 | 4 | Containerschiff | Hafen und Hafenkarte, Gebiet und Route; Flotte bis 4 Pontons |
-| 5 | Schubverband | Weitere Karten, eigene Frachtschiffe |
+| 5 | Schubverband | Eigene Frachtschiffe |
 
 Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Bestehende Spielstände bekommen das Level passend zu den schon befahrbaren Klassen.
