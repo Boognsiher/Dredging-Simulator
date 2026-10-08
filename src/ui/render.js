@@ -612,6 +612,7 @@ const sx = (sl, x) => (x - sl.x0) * U;
 export function drawSlice(ctx, game, sim, ui = {}) {
   const sl = sim.slice, r = game.river, wl = r.wl, n = SLICE.cols;
   const Y = (h) => sliceY(h, wl), xs = (c) => (c + 0.5) * U;
+  const VX0 = ui.sliceView?.x0 ?? 0, VX1 = ui.sliceView?.x1 ?? W; // sichtbarer Ausschnitt (Handy: gezoomt): Beschriftungen bleiben im Bild
   // Himmel
   const sky = ctx.createLinearGradient(0, 0, 0, SURF);
   sky.addColorStop(0, '#6aa6d2'); sky.addColorStop(1, '#bcd9ee');
@@ -739,14 +740,14 @@ export function drawSlice(ctx, game, sim, ui = {}) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
     if (on) { const ym = Y(wl - minNeedDepth(cls)); ctx.globalAlpha = 0.55; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(0, ym); ctx.lineTo(W, ym); ctx.stroke(); ctx.setLineDash([]); } // Mindesttiefe
     ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const lf = game.fair?.[cls.id]?.loadFactor, label = `${ok ? '✓ ' : ''}${cls.name} ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m${ok ? ` · ${Math.round(lf * 100)} % Ladung` : ''}`; const tw = ctx.measureText(label).width;
-    ctx.fillRect(W - tw - 12, y - fs(12) + 1, tw + 8, fs(12) + 3); ctx.fillStyle = on ? '#fff' : cls.color; ctx.fillText(label, W - 6, y);
+    ctx.fillRect(VX1 - tw - 12, y - fs(12) + 1, tw + 8, fs(12) + 3); ctx.fillStyle = on ? '#fff' : cls.color; ctx.fillText(label, VX1 - 6, y);
     ctx.globalAlpha = 1;
   }
   ctx.textAlign = 'start';
   const ty = Y(sl.targetTop());
   ctx.strokeStyle = '#ffae3d'; ctx.lineWidth = 2; ctx.setLineDash([10, 6]);
   ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = '#ffae3d'; ctx.font = font(13); ctx.fillText(`Solltiefe ${sl.targetDepth.toFixed(1)} m`, 8, ty - 5);
+  ctx.fillStyle = '#ffae3d'; ctx.font = font(13); ctx.fillText(`Solltiefe ${sl.targetDepth.toFixed(1)} m`, VX0 + 8, ty - 5);
 
   // Markierungen: wo liegt noch Sohle über der Solltiefe (rot, cm), wo steckt Fels
   ctx.textAlign = 'center';

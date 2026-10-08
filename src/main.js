@@ -780,6 +780,7 @@ function panCanvas(dt) {
     panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1);
     canvas.style.marginLeft = `${-panX}px`;
   } else canvas.style.marginLeft = '';
+  ui.sliceView = zoom > 1 && sim.mode === 'slice' ? { x0: (panX / cw) * canvas.logicalW, x1: ((panX + stageW) / cw) * canvas.logicalW } : null;
   if (cropVis !== null && ch > cropVis) {
     const want = Math.min(Math.max(0, focusY(canvas.logicalH, ch) - cropVis / 2), ch - cropVis);
     panY += (want - panY) * (dt > 0 ? Math.min(1, dt * 6) : 1);

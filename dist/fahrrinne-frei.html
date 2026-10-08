@@ -534,9 +534,9 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
 }
 
 /* Legende im Querschnitt */
-#legend-btn { position: absolute; top: 8px; right: 8px; z-index: 13; width: 34px; height: 34px; padding: 0; margin: 0; border-radius: 50%; font-size: 18px; background: #12283bdd; }
+#legend-btn { width: auto; margin: 0; }
 #legend-btn[hidden], #slice-legend[hidden] { display: none; }
-#slice-legend { position: absolute; top: 46px; right: 8px; z-index: 13; max-width: min(88vw, 330px); max-height: 70%; overflow-y: auto; padding: 10px 12px; background: #0b1c2cee; border-radius: 10px; box-shadow: 0 2px 14px #000a; font-size: 12.5px; line-height: 1.3; }
+#slice-legend { position: absolute; top: 8px; left: 8px; right: 8px; margin: 0 auto; z-index: 13; max-width: min(88vw, 330px); max-height: 70%; overflow-y: auto; padding: 10px 12px; background: #0b1c2cee; border-radius: 10px; box-shadow: 0 2px 14px #000a; font-size: 12.5px; line-height: 1.3; }
 #slice-legend b { display: block; margin-bottom: 6px; }
 #slice-legend div { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; }
 #slice-legend i { flex: none; width: 24px; min-height: 14px; border-radius: 3px; font-style: normal; text-align: center; }
@@ -579,6 +579,7 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
         <button id="btn-auto">🤖 Auto (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
         <button id="btn-pump">🌀 Pumpe: AUS (Leertaste)</button>
+        <button id="legend-btn" hidden aria-label="Legende">ⓘ Legende</button>
         <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
         <button id="btn-port">🏗 Hafen (H)</button>
         <button id="btn-harborview" hidden>⚓ Hafenkarte (Y)</button>
@@ -603,7 +604,6 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
       <button id="harbor-back" hidden>↩ Hauptkarte (Esc)</button>
       <div id="toast"></div>
       <div id="port-page" hidden></div>
-      <button id="legend-btn" hidden aria-label="Legende">ⓘ</button>
       <div id="slice-legend" hidden></div>
       <div id="load-bar" hidden><small id="lb-text"></small><div class="lb-track"><div id="lb-zone"></div><div id="lb-mark"></div></div><button id="lb-hit" class="primary">🏗 Laden! (L)</button></div>
       <div id="overlay"></div>
@@ -1505,6 +1505,7 @@ function panCanvas(dt) {
     panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1);
     canvas.style.marginLeft = `${-panX}px`;
   } else canvas.style.marginLeft = '';
+  ui.sliceView = zoom > 1 && sim.mode === 'slice' ? { x0: (panX / cw) * canvas.logicalW, x1: ((panX + stageW) / cw) * canvas.logicalW } : null;
   if (cropVis !== null && ch > cropVis) {
     const want = Math.min(Math.max(0, focusY(canvas.logicalH, ch) - cropVis / 2), ch - cropVis);
     panY += (want - panY) * (dt > 0 ? Math.min(1, dt * 6) : 1);
@@ -7593,6 +7594,7 @@ const sx = (sl, x) => (x - sl.x0) * U;
 function drawSlice(ctx, game, sim, ui = {}) {
   const sl = sim.slice, r = game.river, wl = r.wl, n = SLICE.cols;
   const Y = (h) => sliceY(h, wl), xs = (c) => (c + 0.5) * U;
+  const VX0 = ui.sliceView?.x0 ?? 0, VX1 = ui.sliceView?.x1 ?? W; // sichtbarer Ausschnitt (Handy: gezoomt): Beschriftungen bleiben im Bild
   // Himmel
   const sky = ctx.createLinearGradient(0, 0, 0, SURF);
   sky.addColorStop(0, '#6aa6d2'); sky.addColorStop(1, '#bcd9ee');
@@ -7720,14 +7722,14 @@ function drawSlice(ctx, game, sim, ui = {}) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
     if (on) { const ym = Y(wl - minNeedDepth(cls)); ctx.globalAlpha = 0.55; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(0, ym); ctx.lineTo(W, ym); ctx.stroke(); ctx.setLineDash([]); } // Mindesttiefe
     ctx.globalAlpha = on ? 1 : 0.75; ctx.fillStyle = '#000a'; const lf = game.fair?.[cls.id]?.loadFactor, label = `${ok ? '✓ ' : ''}${cls.name} ${minNeedDepth(cls).toFixed(1)}–${needDepth(cls).toFixed(1)} m${ok ? ` · ${Math.round(lf * 100)} % Ladung` : ''}`; const tw = ctx.measureText(label).width;
-    ctx.fillRect(W - tw - 12, y - fs(12) + 1, tw + 8, fs(12) + 3); ctx.fillStyle = on ? '#fff' : cls.color; ctx.fillText(label, W - 6, y);
+    ctx.fillRect(VX1 - tw - 12, y - fs(12) + 1, tw + 8, fs(12) + 3); ctx.fillStyle = on ? '#fff' : cls.color; ctx.fillText(label, VX1 - 6, y);
     ctx.globalAlpha = 1;
   }
   ctx.textAlign = 'start';
   const ty = Y(sl.targetTop());
   ctx.strokeStyle = '#ffae3d'; ctx.lineWidth = 2; ctx.setLineDash([10, 6]);
   ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = '#ffae3d'; ctx.font = font(13); ctx.fillText(`Solltiefe ${sl.targetDepth.toFixed(1)} m`, 8, ty - 5);
+  ctx.fillStyle = '#ffae3d'; ctx.font = font(13); ctx.fillText(`Solltiefe ${sl.targetDepth.toFixed(1)} m`, VX0 + 8, ty - 5);
 
   // Markierungen: wo liegt noch Sohle über der Solltiefe (rot, cm), wo steckt Fels
   ctx.textAlign = 'center';
