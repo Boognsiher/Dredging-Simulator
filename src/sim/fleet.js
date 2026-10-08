@@ -12,7 +12,10 @@ import { kaiLevel } from './port.js';
 export const createFleet = () => ({ pilePlan: [], pileRemove: [], units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false, focus: false });
 
 const hiredCount = (g) => g.fleet.units.filter((u) => !u.self).length; // dein eigener Ponton (self) zählt nicht zu den gemieteten
-export const nextHireCost = (g) => CONFIG.fleet.costs[hiredCount(g)] ?? null;
+// Mietpreise steigen über alle Karten hinweg weiter: massgebend ist die Zahl aller gemieteten Pontons (neue Karten fangen nicht wieder bei 30k an)
+export const hiredTotal = (g) => (g.maps ?? []).reduce((n, m) => n + (m.fleet?.units ?? []).filter((u) => !u.self).length, 0) || hiredCount(g);
+export const hireCostAt = (n) => { const c = CONFIG.fleet.costs; return n < c.length ? c[n] : Math.round((c[c.length - 1] * 1.35 ** (n - c.length + 1)) / 1000) * 1000; };
+export const nextHireCost = (g) => hireCostAt(hiredTotal(g));
 
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 export function hireBlock(g) {

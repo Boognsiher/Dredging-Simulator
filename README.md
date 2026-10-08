@@ -195,3 +195,5 @@ Das Spiel ist eine **Progressive Web App**: Manifest (`manifest.webmanifest`), S
 **Pfahlwand planen, dann ausführen:** Geplante Pfähle und Rückbau bleiben nur ein Plan, bis du «▶ Ausführen» drückst (nochmals: «⏸ Pausieren»); ein Verklicken betoniert also nichts. Auf dem Handy verschiebst du die Karte im Planungsmodus mit dem Finger (Wischen) oder dem Joystick; der Zoom springt direkt auf die neue Stufe. Karte im Hochformat füllt die freie Höhe und folgt dem Ponton.
 
 **Planungsansicht Pfahlwand:** Im Planungsmodus (Taste O) verschwinden die normalen Knöpfe unter der Karte; es bleibt eine Leiste mit «↩ Zurück», Zelle, Linie, Rückbau, Zoom, «▶ Ausführen» und «Löschen».
+
+**Pontonmiete:** Der Preis steigt mit jedem gemieteten Ponton über alle Karten hinweg weiter (30'000, 45'000, 65'000, 90'000, danach ×1,35 je Ponton); eine neue Karte fängt nicht wieder bei 30'000 an.

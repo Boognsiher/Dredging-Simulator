@@ -1913,3 +1913,13 @@ test('Spielstand: Trasse bleibt erhalten; fehlende Geräte-Stufen werden mit 0 e
   assert.equal(g2.levels.piler, 0);
   assert.ok(Number.isFinite(g2.nextUpgradeCost('piler')));
 });
+
+test('Pontonmiete steigt über alle Karten weiter', async () => {
+  const { hireCostAt, hiredTotal } = await import('../src/sim/fleet.js');
+  assert.equal(hireCostAt(0), 30000);
+  assert.ok(hireCostAt(4) > hireCostAt(3) && hireCostAt(7) > hireCostAt(5));
+  const g = new Game(6, 'hochrhein'); g.eventsOn = false; g.money = 1e8; g.buyUpgrade('auto');
+  hireUnit(g); hireUnit(g);
+  assert.equal(hiredTotal(g), 2);
+  assert.equal(nextHireCost(g), hireCostAt(2));
+});
