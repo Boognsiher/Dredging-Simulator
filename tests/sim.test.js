@@ -598,7 +598,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
-import { planPile, lineCells, setUnitLoc, setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+import { planPile, planRemoval, lineCells, setUnitLoc, setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
 
 function bankSlice(levels = { loeffel: 3 }) {
   const g = new Game(3, 'hochrhein'), r = g.river;
@@ -1844,4 +1844,16 @@ test('Tiefe Rinne für grosse Schiffe: ohne Pfahlwand rutschen die Böschungen z
   g.buyUpgrade('piler'); const t1 = g.stats.pileTime; g.buyUpgrade('piler'); assert.ok(g.stats.pileTime < t1, 'höhere Stufe baut schneller');
   const c0 = g.concrete; for (let t = 0; t < 100; t += 0.1) g.update(0.1);
   assert.equal(r.pile[cell], 1); assert.ok(c0 - g.concrete > 8, 'Pfahl reicht bis auf den Fels: Beton nach Länge, nicht pauschal');
+});
+
+test('Pfahl-Rückbau: vorgemerkte Pfähle werden herausgerammt, Beton teilweise zurück, Sperre fällt weg', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false; g.money = 1e7; for (const id of ['auto', 'piler']) g.buyUpgrade(id);
+  hireUnit(g); const r = g.river, cy = Math.round(r.centerY(12)), pile = r.idx(12, cy - 3), shore = r.idx(12, cy - 5);
+  r.setPile(pile, true); assert.ok(r.lim[shore] > -90);
+  assert.equal(planRemoval(g, [r.idx(12, cy)], true), 0, 'ohne Pfahl nichts vorzumerken'); assert.equal(planRemoval(g, [pile], true), 1);
+  g.concrete = 0; for (let t = 0; t < 100; t += 0.1) g.update(0.1);
+  assert.equal(r.pile[pile], 0, 'Pfahl ist weg (Rückbau braucht keinen Beton)'); assert.ok(r.lim[shore] < -90, 'Abtragsperre fällt weg');
+  assert.ok(g.concrete > 3, 'ein Teil des Betons kommt zurück: ' + g.concrete); assert.equal(g.totals.pilesRemoved, 1); assert.equal(g.fleet.pileRemove.length, 0);
+  assert.ok(r.cap[pile] > r.top[pile], 'Zelle kann wieder verlanden');
+  planRemoval(g, [pile], true); assert.equal(g.fleet.pileRemove.length, 0, 'Zelle ohne Pfahl ist nicht vormerkbar');
 });

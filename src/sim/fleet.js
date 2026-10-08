@@ -9,7 +9,7 @@ import { kaiLevel } from './port.js';
 // Sie nutzen dieselbe Physik wie dein eigener Ponton (DredgeSim/SliceSim), nur ohne Anzeige. Das Ausbauziel ist eine Schiffsklasse
 // (Standard: die kleinste Klasse, die noch nicht fährt). Pontons ohne Arbeit warten und melden, was fehlt.
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
-export const createFleet = () => ({ pilePlan: [], units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false });
+export const createFleet = () => ({ pilePlan: [], pileRemove: [], units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false });
 
 const hiredCount = (g) => g.fleet.units.filter((u) => !u.self).length; // dein eigener Ponton (self) zählt nicht zu den gemieteten
 export const nextHireCost = (g) => CONFIG.fleet.costs[hiredCount(g)] ?? null;
@@ -235,7 +235,18 @@ export function planPile(g, cells, on = true) {
   F.pilePlan = [...set].sort((a, b) => a - b); if (n) bump(g);
   return n;
 }
-export const clearPilePlan = (g) => { const n = (g.fleet.pilePlan ?? []).length; g.fleet.pilePlan = []; if (n) bump(g); return n; };
+// Rückbau: gesetzte Pfähle zum Abbau vormerken (nochmals = Vormerkung aufheben); die Flotte rammt sie heraus und bekommt einen Teil des Betons zurück
+export const PILE_REFUND = 0.4;
+export function planRemoval(g, cells, on = true) {
+  const F = g.fleet; F.pileRemove ??= []; let n = 0; const set = new Set(F.pileRemove);
+  for (const i of cells) {
+    if (on) { if (g.river.pile[i] && !set.has(i)) { set.add(i); n++; } }
+    else if (set.delete(i)) n++;
+  }
+  F.pileRemove = [...set].sort((a, b) => a - b); if (n) bump(g);
+  return n;
+}
+export const clearPilePlan = (g) => { const n = (g.fleet.pilePlan ?? []).length + (g.fleet.pileRemove ?? []).length; g.fleet.pilePlan = []; g.fleet.pileRemove = []; if (n) bump(g); return n; };
 // Zellen einer geraden Linie (Rasterlinie) von Zelle a nach Zelle b
 export function lineCells(r, ax, ay, bx, by) {
   const out = [], n = Math.max(Math.abs(bx - ax), Math.abs(by - ay), 1);
@@ -243,22 +254,44 @@ export function lineCells(r, ax, ay, bx, by) {
   return out;
 }
 function pickPile(g, u) {
-  const plan = g.fleet.pilePlan ?? []; if (!plan.length) return { none: 'Kein Pfahl geplant' };
+  const plan = g.fleet.pilePlan ?? [], rem = g.fleet.pileRemove ?? []; if (!plan.length && !rem.length) return { none: 'Kein Pfahl geplant' };
   if (g.stats.piler <= 0) return { none: 'Pfähle brauchen das Pfahlgerät (Technik, Geräte)' };
-  if (g.concrete < PILE.base + PILE.perM * 1) return { none: 'Kein Beton für Pfähle (Betonvorrat)' };
   const r = g.river, taken = new Set(g.fleet.units.filter((q) => q !== u && q.site?.pile).map((q) => q.site.cell));
-  let best = null, bd = Infinity;
-  for (const i of plan) {
-    if (taken.has(i) || pileBlock(g, i) || (u.skip[`C${i}`] && g.time < u.skip[`C${i}`])) continue;
+  const canBuild = g.concrete >= PILE.base + PILE.perM * 1;
+  let best = null, bd = Infinity, remove = false;
+  const consider = (i, rm) => {
+    if (taken.has(i) || (u.skip[`C${i}`] && g.time < u.skip[`C${i}`])) return;
+    if (rm ? !r.pile[i] : pileBlock(g, i)) return;
     const x = i % r.cols, y = (i / r.cols) | 0, d = Math.hypot(x + 0.5 - u.x, y + 0.5 - u.y);
-    if (d < bd) { bd = d; best = i; }
-  }
-  if (best === null) return { none: 'Alle geplanten Pfähle sind vergeben' };
+    if (d < bd) { bd = d; best = i; remove = rm; }
+  };
+  for (const i of rem) consider(i, true);
+  if (canBuild) for (const i of plan) consider(i, false);
+  if (best === null) return { none: !canBuild && plan.length ? 'Kein Beton für Pfähle (Betonvorrat)' : 'Alle geplanten Pfähle sind vergeben' };
   const x = best % r.cols, y = (best / r.cols) | 0;
-  return { pile: true, cell: best, col: x, c0: Math.max(0, x - 2), px: x + 0.5, py: y + 0.5, y: y + 0.5, cls: g.level.classes[0], depth: 0, tool: 'pump', rock: false };
+  let gx = x + 0.5, gy = y + 0.5;
+  if (remove) { // der Pfahl ist flach: das Ponton liegt auf der nächsten Zelle mit genug Wasser daneben
+    let bs = Infinity;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= r.cols || ny >= r.rows || (!dx && !dy)) continue;
+      const j = ny * r.cols + nx, d = Math.hypot(nx + 0.5 - u.x, ny + 0.5 - u.y) + Math.hypot(dx, dy) * 2;
+      if (!r.pile[j] && r.depthAt(j) >= 0.9 && d < bs) { bs = d; gx = nx + 0.5; gy = ny + 0.5; }
+    }
+  }
+  return { pile: true, remove, cell: best, col: x, c0: Math.max(0, x - 2), px: gx, py: gy, y: gy, cls: g.level.classes[0], depth: 0, tool: 'pump', rock: false };
 }
 function pileWork(g, u, dt) {
   const s = u.site, i = s.cell, F = g.fleet;
+  if (s.remove) { // Rückbau: Pfahl herausrammen (halbe Bauzeit), ein Teil des Betons kommt zurück
+    if (!g.river.pile[i]) { F.pileRemove = (F.pileRemove ?? []).filter((c) => c !== i); u.state = 'idle'; u.site = null; u.idle = 0; return; }
+    u.pileT = (u.pileT ?? 0) + dt; const tt = g.stats.pileTime * 0.5; u.note = `baut Pfahl zurück bei Spalte ${s.col + 1} (${Math.round((u.pileT / tt) * 100)} %)`;
+    if (u.pileT >= tt) {
+      const back = pileConcrete(g, i) * PILE_REFUND; g.river.setPile(i, false, PILE.top); F.pileRemove = (F.pileRemove ?? []).filter((c) => c !== i);
+      g.concrete = Math.min(CONFIG.concrete.stockCap, g.concrete + back); g.totals.pilesRemoved = (g.totals.pilesRemoved ?? 0) + 1;
+      g.flash.push({ x: s.px, y: s.py, text: `+${Math.round(back)} m³`, color: '#cfd3da' }); u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl zurückgebaut'; g.fairClock = 0;
+    }
+    return;
+  }
   if (pileBlock(g, i)) { F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i); u.state = 'idle'; u.site = null; u.idle = 0; return; }
   const need = pileConcrete(g, i);
   if (g.concrete < need) { u.note = `Kein Beton für den Pfahl (${Math.ceil(need)} m³ nötig)`; if (u.workT > 25) { u.skip[`C${i}`] = g.time + 40; u.state = 'idle'; u.site = null; u.idle = CONFIG.fleet.idleRetry; } return; }
@@ -530,7 +563,7 @@ function stepUnit(g, u, dt) {
       const dx = aim.x - sim.x, dy = aim.y - sim.y, dist = Math.hypot(dx, dy);
       if (!blocked && (Math.hypot(goal.x - sim.x, goal.y - sim.y) < 0.5 || u.travelT > 90)) { // angekommen (oder zu lange unterwegs): ankern, Automatik an
         u.travelT = 0;
-        if (s.pile) { sim.x = goal.x; sim.y = goal.y; u.state = 'work'; u.workT = 0; u.pileT = 0; u.note = `setzt Pfahl bei Spalte ${s.col + 1}`; }
+        if (s.pile) { sim.x = goal.x; sim.y = goal.y; u.state = 'work'; u.workT = 0; u.pileT = 0; u.note = `${s.remove ? 'baut Pfahl zurück' : 'setzt Pfahl'} bei Spalte ${s.col + 1}`; }
         else if (!sim.canFloat(goal.x, goal.y)) { u.skip[skipKey(s)] = g.time + 60; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         else {
           sim.x = goal.x; sim.y = goal.y; // ganzzahlig: der Kasten beginnt dann genau bei c0

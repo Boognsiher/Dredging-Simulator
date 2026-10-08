@@ -5,7 +5,7 @@ import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, ship
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
-import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, planPile, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
+import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
@@ -444,7 +444,12 @@ function pileClick(px, py) {
     fleetSig = null; return;
   }
   const i = y * r.cols + x;
-  if (r.pile[i]) { toast('Hier steht schon ein Pfahl', 'info', true); return; }
+  if (pileTool === 'remove') { // Rückbau: gesetzten Pfahl vormerken bzw. Vormerkung aufheben
+    if (!r.pile[i]) { toast('Hier steht kein Pfahl', 'info', true); return; }
+    const on = !(game.fleet.pileRemove ?? []).includes(i); planRemoval(game, [i], on);
+    toast(on ? `Pfahl zum Rückbau vorgemerkt (${(game.fleet.pileRemove ?? []).length} insgesamt, ca. 40 % des Betons kommen zurück)` : 'Vormerkung aufgehoben', 'info', true); fleetSig = null; return;
+  }
+  if (r.pile[i]) { toast('Hier steht schon ein Pfahl: Werkzeug «Rückbau» wählen, um ihn zu entfernen', 'info', true); return; }
   const on = !plan.has(i), n = planPile(game, [i], on);
   if (!n) { toast(`Hier nicht möglich: ${(function () { const why = pileBlockText(i); return why; })()}`, 'bad', true); return; }
   note(n, on); fleetSig = null;

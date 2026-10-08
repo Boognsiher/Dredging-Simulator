@@ -257,7 +257,7 @@ export class River {
   // gesichert: sie rutscht nicht nach und darf nicht tiefer als die Oberkante abgetragen werden. Spalten ohne Pfahl bleiben unverändert (Teilstrecken möglich).
   setPile(i, on, pileTop = 0.5) {
     if (on) { this.pile[i] = 1; this.top[i] = Math.max(this.top[i], this.wl - pileTop); this.rock[i] = Math.min(this.rock[i], this.top[i]); this.cap[i] = this.top[i]; this.armor[i] = 0; }
-    else this.pile[i] = 0;
+    else { this.pile[i] = 0; this.cap[i] = this.top[i] + CONFIG.sediment.maxAbove; } // Rückbau: die Zelle ist wieder normales Flachwasser
     this.updateLims(pileTop);
   }
   updateLims(pileTop = 0.5) {

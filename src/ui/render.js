@@ -258,6 +258,7 @@ function drawPiles(ctx, game, ui) {
       ctx.fillStyle = '#3d4249'; ctx.fillRect(x + 4, y + 4, 2.5, 2.5); ctx.fillRect(x + CELL - 7, y + CELL - 7, 2.5, 2.5);
     }
   }
+  for (const i of game.fleet?.pileRemove ?? []) { const x = OX + (i % cols) * CELL, y = ((i / cols) | 0) * CELL; ctx.strokeStyle = '#ff7a6b'; ctx.lineWidth = 2; ctx.setLineDash([3, 2]); ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2); ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(x + 3, y + 3); ctx.lineTo(x + CELL - 3, y + CELL - 3); ctx.moveTo(x + CELL - 3, y + 3); ctx.lineTo(x + 3, y + CELL - 3); ctx.stroke(); } // Rückbau vorgemerkt
   for (const i of plan) { const x = OX + (i % cols) * CELL, y = ((i / cols) | 0) * CELL; ctx.fillStyle = 'rgba(120,200,255,.28)'; ctx.fillRect(x, y, CELL, CELL); ctx.strokeStyle = '#7fd0ff'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 2]); ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2); ctx.setLineDash([]); }
   if (!ui.pileMode) return;
   ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1; ctx.beginPath();
