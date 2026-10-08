@@ -5241,7 +5241,9 @@ function updateTraffic(g, dt) {
         const ramp = Math.max(0, Math.min(1, 1 - (Math.abs(raw.x - z.x) - (z.w / 2 + 0.3)) / 2)), a = zoneLaneStart(g, z, ship.cls, ship.dir);
         if (ramp > 0 && a >= 0) target = ramp * (a + cls.beam / 2 - raw.y);
       }
-      ship.lat = (ship.lat ?? 0) + (target - (ship.lat ?? 0)) * Math.min(1, dt * 4);
+      const lat0 = ship.lat ?? 0, lat1 = lat0 + (target - lat0) * Math.min(1, dt * 4), ahead = pointOnPath(ship.path, Math.max(0, Math.min(ship.path.length, (ship.dir > 0 ? ship.s : ship.path.length - ship.s) + ship.dir * 1.2))), okAt = (l) => minDepthAt(g.river, g.wl, raw.x, raw.y + l, cls.beam) >= cls.draught - C.groundMargin + 0.05 && minDepthAt(g.river, g.wl, ahead.x, ahead.y + l, cls.beam) >= cls.draught - C.groundMargin + 0.05; // auch einen Schritt voraus
+      // seitlich nur dorthin, wo der Grund für den Tiefgang reicht (Auffahrt und Zwischenzeilen sind nicht ausgebaggert): sonst läuft das Schiff beim Spurwechsel auf
+      ship.lat = okAt(lat1) ? lat1 : okAt(lat0) ? lat0 : lat0 * (1 - Math.min(1, dt * 8)); // sonst zurück zur (tiefen) Hauptrinne
     }
     const p0 = shipPos(ship);
     if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow + (1 - C.siteSlow) * (g.stats.siteRelief ?? 0);
