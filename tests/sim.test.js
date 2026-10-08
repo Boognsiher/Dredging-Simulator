@@ -296,8 +296,8 @@ import { setAvoid, cellAllowed } from '../src/sim/fleet.js';
 import { lendPonton, recallPonton, lendBlock, lentUnit, nextHireCost } from '../src/sim/fleet.js';
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
-import { harborAccepts } from '../src/sim/harbor.js';
-import { reserveBerth, dockShip, waitsOf, cycleWaitCargo, berthJobs, isDocked, berthsOf, bayDepth, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
+import { harborAccepts, HARBOR } from '../src/sim/harbor.js';
+import { machineOf, reserveBerth, dockShip, waitsOf, cycleWaitCargo, berthJobs, isDocked, berthsOf, bayDepth, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
   assert.ok(openBlock(g), 'ohne Motorschiff gesperrt');
@@ -1743,8 +1743,8 @@ test('Hafenkarte: eigenes Becken, Pontons lassen sich zuteilen und baggern es au
   assert.ok(!harborAccepts(g.port, g.wl, 1, 'kahn'), 'zu flach');
   hireUnit(g); const u = g.fleet.units[0];
   assert.ok(setUnitLoc(g, u.id, 'harbor')); assert.equal(u.loc, 'harbor');
-  for (let t = 0; t < 1500 && bayDepth(g) < 1.5; t += 0.1) g.update(0.1);
-  assert.ok(bayDepth(g) >= 1.5, 'Pontons baggern das Becken: ' + bayDepth(g));
+  for (let t = 0; t < 4000 && bayDepth(g) < 2.0; t += 0.1) g.update(0.1);
+  assert.ok(bayDepth(g) >= 2.0, 'Pontons baggern das Becken: ' + bayDepth(g));
   assert.ok(harborAccepts(g.port, g.wl, 1, 'kahn'), 'Lastkahn passt jetzt');
   assert.ok(!harborAccepts(g.port, g.wl, 1, 'motor'), 'Kai Stufe 1: nur die einfachste Klasse');
   assert.equal(fleetSites(g).length, 0, 'Pontons im Hafen bremsen den Fluss nicht');
@@ -1781,4 +1781,20 @@ test('Warteräume: Zuweisung der Fracht, Warteschiff rückt nach, Vorrang-Fracht
   assert.equal(j3.state, 'waiting'); assert.equal(berthJobs(g).length, 2);
   j1.done = j1.tons; updatePort(g, 0.1); // Liegeplatz 1 wird frei: das Warteschiff rückt nach
   assert.equal(j3.state, 'docked'); assert.equal(j3.wait, false); assert.equal(a.state, 'sail');
+});
+
+test('Containerbrücke: Containerschiffe brauchen sie, Container werden schneller umgeschlagen; neue Beckentiefen', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.money = 1e8; g.unlocked.motor = true;
+  openPort(g); for (const s of g.port.sites) s.ready = true; build(g, 0, 'kai'); upgrade(g, 0); upgrade(g, 0); build(g, 1, 'container');
+  for (const i of g.port.harbor.cells) g.port.harbor.river.top[i] = g.wl - 5.2;
+  assert.equal(berthsOf(g), 5); assert.ok(harborAccepts(g.port, g.wl, 3, 'container'), 'Becken tief genug (5,0 m)');
+  assert.ok(!harborAccepts(g.port, g.wl, 1, 'motor'), 'Kai Stufe 1 nimmt nur den Lastkahn');
+  const ship = { id: 501, cls: 'container', cargo: 'container', tons: 2000, state: 'sail' }; g.traffic.ships.push(ship);
+  assert.equal(reserveBerth(g, ship), null, 'ohne Brücke kein Containerschiff');
+  assert.ok(build(g, 2, 'cbruecke')); assert.equal(machineOf(g, 'container'), 'bruecke'); assert.equal(machineOf(g, 'kies'), 'radlader');
+  const job = reserveBerth(g, ship); assert.ok(job && job.cargo === 'container'); assert.ok(dockShip(g, ship));
+  g.market.dev.container = -0.4; const d0 = job.done; updatePort(g, 10); const withBridge = job.done - d0;
+  const job2 = { ...job, done: 0 }; assert.ok(withBridge >= PORT.jobs.crewRate.container * 10 * 2.9, 'mindestens 3× schneller: ' + withBridge);
+  assert.ok(job2.done === 0);
+  assert.ok(HARBOR.need.motor >= 3 && HARBOR.need.container >= 5, 'grössere Tiefen für grosse Schiffe');
 });

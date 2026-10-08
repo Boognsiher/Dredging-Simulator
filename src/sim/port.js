@@ -14,7 +14,7 @@ export const PORT = {
   jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3, container: 2.5 }, fee: { kies: 5, oel: 6, container: 9 }, lateFactor: 0.5, bonusMax: 2 },
   // Baugrund: Jeder Bauplatz ist unebenes Gelände (Höhen relativ zur Sollhöhe) und muss mit der Baumaschine planiert werden, bevor gebaut werden darf
   site: { w: 5, h: 4, maxCarry: 4, fillCost: 35, autoCost: 70, act: 0.3, travel: 0.1 },
-  machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 } },
+  machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 }, bruecke: { name: 'Containerbrücke', icon: '🏗', speed: 2.6, zone: 0.12, bucket: 60 } },
   buildings: {
     kai: { name: 'Kai & Verladestation', icon: '🏗', cost: 12000, max: 1, up: [16000, 40000], berths: [2, 3, 5], text: 'Pflicht: Hier laden und entladen die Schiffe. Jede Stufe schafft mehr Liegeplätze: Schiffe legen nur an, wenn ein Platz frei ist (er wird für sie reserviert), und stehen nicht im Fahrwasser.' },
     kies: { name: 'Kieslager', icon: '⛰', commodity: 'kies', cost: 9000, up: [14000, 30000], cap: [600, 1600, 3600], text: 'Lager für Kies und Sand. Billig im Einkauf, wenig Marge pro Tonne, dafür viel Menge.' },
@@ -22,6 +22,7 @@ export const PORT = {
     kran: { name: 'Portalkran', icon: '🏗', cost: 14000, max: 1, text: 'Grosse Greifer: im Verlade-Minispiel 32 t pro Treffer statt 14 t (aber schnelleres Pendel).' },
     container: { name: 'Containerterminal', icon: '📦', commodity: 'container', cost: 32000, up: [45000, 90000], cap: [300, 800, 1800], text: 'Umschlag und Lager für Container (Stückgut). Hoher Wert pro Tonne, braucht tiefe Hafenbecken für die grossen Containerschiffe.' },
     werk: { name: 'Aufbereitungshalle', icon: '🏭', cost: 24000, up: [45000, 90000], max: 1, text: 'Erweitert die Anlage an Land: Jede Stufe schaltet zwei weitere Ausbaustufen der Aufbereitungsanlage frei (über Stufe 6 hinaus).' },
+    cbruecke: { name: 'Containerbrücke', icon: '🏗', cost: 38000, max: 1, up: [65000], text: 'Spezialkran für Container: Containerschiffe legen nur mit Brücke an, Container werden 3× (Stufe 2: 5×) schneller umgeschlagen, im Minispiel 60 t pro Treffer.' },
     sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
   },
   commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' }, container: { name: 'Container', lot: 40, icon: '📦' } },
@@ -72,7 +73,7 @@ export function bayDepth(g) {
 }
 export const kaiLevel = (g) => slotsOf(g.port, 'kai')[0]?.level ?? 0;
 export const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g))) : PORT.bay.target);
-export const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.05;
+export const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.12;
 
 export function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
@@ -236,12 +237,15 @@ export function sell(g, id, tons) {
 
 // Ein Schiff hat die Rinne durchfahren: bei passender Fracht entsteht ein Umschlagauftrag (Kai). Ladet die Mannschaft allein, dauert es;
 // im Minispiel (Radlader/Kran) geht es schneller, und es gibt einen Zeitbonus.
-export const machineOf = (g) => (slotsOf(g.port, 'kran').length ? 'kran' : 'radlader');
+export const bridgeLevel = (g) => slotsOf(g.port, 'cbruecke')[0]?.level ?? 0;
+// Gerät für einen Umschlag: Containerbrücke für Container, sonst Portalkran bzw. Radlader (ohne Angabe: Fracht des ersten angelegten Auftrags)
+export const machineOf = (g, cargo) => { cargo ??= (g.port.jobs ?? []).find(isDocked)?.cargo; return cargo === 'container' && bridgeLevel(g) ? 'bruecke' : slotsOf(g.port, 'kran').length ? 'kran' : 'radlader'; };
 // Reservierung: nur ein Schiff, für das ein Liegeplatz frei ist, steuert den Hafen an (der Platz gehört ihm ab der Einfahrt in die Rinne)
 export function reserveBerth(g, ship) {
   const p = g.port, J = PORT.jobs; p.jobs ??= []; if (!hasKai(g) || !PORT.commodities[ship.cargo] || capacity(g, ship.cargo) <= 0) return null;
   ensureHarbor(p, g.wl);
   if (ship.cls && (p.harbor ? !harborAccepts(p, g.wl, kaiLevel(g), ship.cls) : bayDepth(g) < minNeedDepth(shipById(ship.cls)))) return null; // Becken zu flach oder Klasse vom Kai nicht angenommen
+  if (ship.cls === 'container' && !bridgeLevel(g)) return null; // Containerschiffe brauchen die Containerbrücke
   let wait = false, slot = null;
   if (berthJobs(g).length >= berthsOf(g)) { // alle Liegeplätze belegt oder reserviert: freien Warteplatz suchen, sonst fährt das Schiff vorbei (kein Stau)
     slot = freeWaitSlot(g, ship.cargo); if (slot < 0) return null; wait = true;
@@ -292,7 +296,7 @@ function finishJob(g, job) {
 // Minispiel-Treffer: quality 0..1 (0 = Fehlwurf). Lädt den ersten Auftrag.
 export function loadHit(g, quality) {
   const job = g.port.jobs.find(isDocked); if (!job || quality <= 0) return 0;
-  const M = PORT.machines[machineOf(g)];
+  const M = PORT.machines[machineOf(g, job.cargo)];
   return moveGoods(g, job, M.bucket * (0.5 + 0.5 * quality) * (quality > 0.85 ? 1.3 : 1));
 }
 // Zeit vergeht: Mannschaft lädt den ersten Auftrag, die Frist läuft für alle
@@ -305,7 +309,7 @@ export function updatePort(g, dt) {
     if (!s || (s.state !== 'sail' && s.state !== 'queue')) p.jobs.splice(k, 1);
   }
   for (const j of p.jobs) if (isDocked(j)) j.left -= dt;
-  for (const j of p.jobs) if (isDocked(j)) moveGoods(g, j, PORT.jobs.crewRate[j.cargo] * dt * roadFactor(g)); // jeder Liegeplatz hat seine Mannschaft; Strassenanbindung beschleunigt
+  for (const j of p.jobs) if (isDocked(j)) moveGoods(g, j, PORT.jobs.crewRate[j.cargo] * (j.cargo === 'container' && bridgeLevel(g) ? [3, 5][bridgeLevel(g) - 1] : 1) * dt * roadFactor(g)); // jeder Liegeplatz hat seine Mannschaft; Strassenanbindung beschleunigt
   for (let k = p.jobs.length - 1; k >= 0; k--) if (isDocked(p.jobs[k]) && p.jobs[k].done >= p.jobs[k].tons - 1e-6) {
     const j = p.jobs[k]; finishJob(g, j); p.jobs.splice(k, 1);
     const s = j.shipId != null ? (g.traffic?.ships ?? []).find((q) => q.id === j.shipId) : null;

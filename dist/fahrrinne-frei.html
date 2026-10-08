@@ -2617,7 +2617,7 @@ const PORT = {
   jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3, container: 2.5 }, fee: { kies: 5, oel: 6, container: 9 }, lateFactor: 0.5, bonusMax: 2 },
   // Baugrund: Jeder Bauplatz ist unebenes Gelände (Höhen relativ zur Sollhöhe) und muss mit der Baumaschine planiert werden, bevor gebaut werden darf
   site: { w: 5, h: 4, maxCarry: 4, fillCost: 35, autoCost: 70, act: 0.3, travel: 0.1 },
-  machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 } },
+  machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 }, bruecke: { name: 'Containerbrücke', icon: '🏗', speed: 2.6, zone: 0.12, bucket: 60 } },
   buildings: {
     kai: { name: 'Kai & Verladestation', icon: '🏗', cost: 12000, max: 1, up: [16000, 40000], berths: [2, 3, 5], text: 'Pflicht: Hier laden und entladen die Schiffe. Jede Stufe schafft mehr Liegeplätze: Schiffe legen nur an, wenn ein Platz frei ist (er wird für sie reserviert), und stehen nicht im Fahrwasser.' },
     kies: { name: 'Kieslager', icon: '⛰', commodity: 'kies', cost: 9000, up: [14000, 30000], cap: [600, 1600, 3600], text: 'Lager für Kies und Sand. Billig im Einkauf, wenig Marge pro Tonne, dafür viel Menge.' },
@@ -2625,6 +2625,7 @@ const PORT = {
     kran: { name: 'Portalkran', icon: '🏗', cost: 14000, max: 1, text: 'Grosse Greifer: im Verlade-Minispiel 32 t pro Treffer statt 14 t (aber schnelleres Pendel).' },
     container: { name: 'Containerterminal', icon: '📦', commodity: 'container', cost: 32000, up: [45000, 90000], cap: [300, 800, 1800], text: 'Umschlag und Lager für Container (Stückgut). Hoher Wert pro Tonne, braucht tiefe Hafenbecken für die grossen Containerschiffe.' },
     werk: { name: 'Aufbereitungshalle', icon: '🏭', cost: 24000, up: [45000, 90000], max: 1, text: 'Erweitert die Anlage an Land: Jede Stufe schaltet zwei weitere Ausbaustufen der Aufbereitungsanlage frei (über Stufe 6 hinaus).' },
+    cbruecke: { name: 'Containerbrücke', icon: '🏗', cost: 38000, max: 1, up: [65000], text: 'Spezialkran für Container: Containerschiffe legen nur mit Brücke an, Container werden 3× (Stufe 2: 5×) schneller umgeschlagen, im Minispiel 60 t pro Treffer.' },
     sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
   },
   commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' }, container: { name: 'Container', lot: 40, icon: '📦' } },
@@ -2675,7 +2676,7 @@ function bayDepth(g) {
 }
 const kaiLevel = (g) => slotsOf(g.port, 'kai')[0]?.level ?? 0;
 const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g))) : PORT.bay.target);
-const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.05;
+const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.12;
 
 function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
@@ -2839,12 +2840,15 @@ function sell(g, id, tons) {
 
 // Ein Schiff hat die Rinne durchfahren: bei passender Fracht entsteht ein Umschlagauftrag (Kai). Ladet die Mannschaft allein, dauert es;
 // im Minispiel (Radlader/Kran) geht es schneller, und es gibt einen Zeitbonus.
-const machineOf = (g) => (slotsOf(g.port, 'kran').length ? 'kran' : 'radlader');
+const bridgeLevel = (g) => slotsOf(g.port, 'cbruecke')[0]?.level ?? 0;
+// Gerät für einen Umschlag: Containerbrücke für Container, sonst Portalkran bzw. Radlader (ohne Angabe: Fracht des ersten angelegten Auftrags)
+const machineOf = (g, cargo) => { cargo ??= (g.port.jobs ?? []).find(isDocked)?.cargo; return cargo === 'container' && bridgeLevel(g) ? 'bruecke' : slotsOf(g.port, 'kran').length ? 'kran' : 'radlader'; };
 // Reservierung: nur ein Schiff, für das ein Liegeplatz frei ist, steuert den Hafen an (der Platz gehört ihm ab der Einfahrt in die Rinne)
 function reserveBerth(g, ship) {
   const p = g.port, J = PORT.jobs; p.jobs ??= []; if (!hasKai(g) || !PORT.commodities[ship.cargo] || capacity(g, ship.cargo) <= 0) return null;
   ensureHarbor(p, g.wl);
   if (ship.cls && (p.harbor ? !harborAccepts(p, g.wl, kaiLevel(g), ship.cls) : bayDepth(g) < minNeedDepth(shipById(ship.cls)))) return null; // Becken zu flach oder Klasse vom Kai nicht angenommen
+  if (ship.cls === 'container' && !bridgeLevel(g)) return null; // Containerschiffe brauchen die Containerbrücke
   let wait = false, slot = null;
   if (berthJobs(g).length >= berthsOf(g)) { // alle Liegeplätze belegt oder reserviert: freien Warteplatz suchen, sonst fährt das Schiff vorbei (kein Stau)
     slot = freeWaitSlot(g, ship.cargo); if (slot < 0) return null; wait = true;
@@ -2895,7 +2899,7 @@ function finishJob(g, job) {
 // Minispiel-Treffer: quality 0..1 (0 = Fehlwurf). Lädt den ersten Auftrag.
 function loadHit(g, quality) {
   const job = g.port.jobs.find(isDocked); if (!job || quality <= 0) return 0;
-  const M = PORT.machines[machineOf(g)];
+  const M = PORT.machines[machineOf(g, job.cargo)];
   return moveGoods(g, job, M.bucket * (0.5 + 0.5 * quality) * (quality > 0.85 ? 1.3 : 1));
 }
 // Zeit vergeht: Mannschaft lädt den ersten Auftrag, die Frist läuft für alle
@@ -2908,7 +2912,7 @@ function updatePort(g, dt) {
     if (!s || (s.state !== 'sail' && s.state !== 'queue')) p.jobs.splice(k, 1);
   }
   for (const j of p.jobs) if (isDocked(j)) j.left -= dt;
-  for (const j of p.jobs) if (isDocked(j)) moveGoods(g, j, PORT.jobs.crewRate[j.cargo] * dt * roadFactor(g)); // jeder Liegeplatz hat seine Mannschaft; Strassenanbindung beschleunigt
+  for (const j of p.jobs) if (isDocked(j)) moveGoods(g, j, PORT.jobs.crewRate[j.cargo] * (j.cargo === 'container' && bridgeLevel(g) ? [3, 5][bridgeLevel(g) - 1] : 1) * dt * roadFactor(g)); // jeder Liegeplatz hat seine Mannschaft; Strassenanbindung beschleunigt
   for (let k = p.jobs.length - 1; k >= 0; k--) if (isDocked(p.jobs[k]) && p.jobs[k].done >= p.jobs[k].tons - 1e-6) {
     const j = p.jobs[k]; finishJob(g, j); p.jobs.splice(k, 1);
     const s = j.shipId != null ? (g.traffic?.ships ?? []).find((q) => q.id === j.shipId) : null;
@@ -2939,7 +2943,7 @@ function portDay(g) {
   }
 }
 
-return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, bridgeLevel: bridgeLevel, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 
@@ -3148,6 +3152,7 @@ const HARBOR = {
   entrance: { x0: 0, x1: 13, y0: 16, y1: 19 }, // Zufahrt vom Fluss
   startDepth: 1.0, siltTo: 1.3, // das Becken verlandet wieder bis zu dieser Tiefe, wenn nicht gebaggert wird
   entranceDepth: 2.8,
+  need: { kahn: 2.0, motor: 3.0, tank: 4.0, container: 5.0, schub: 6.0 }, // Beckentiefe (m), die die Klasse zum Anlegen braucht (tiefer als der Fluss: Kaimauer, grosse Schiffe)
   kaiClasses: [1, 2, 4], // so viele Schiffsklassen (der Reihe nach: Lastkahn, Motorschiff, Tankschiff, Containerschiff) nimmt der Kai je Stufe an
   waits: [1, 2, 4], // Warteräume je Kai-Stufe: dort warten Schiffe, wenn alle Liegeplätze belegt sind
   waitX: [17, 21, 25, 29], waitY: 21.2, // Warteplätze im südlichen Becken
@@ -3185,12 +3190,12 @@ function harborDepth(p, wl) {
 // Nimmt der Hafen diese Klasse an? Der Kai bestimmt, wie viele Klassen (Stufe 1: nur die einfachste), das Becken muss tief genug sein
 function harborAccepts(p, wl, kaiLevel, clsId) {
   const k = SHIPS.findIndex((s) => s.id === clsId); if (k < 0 || k >= HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)]) return false;
-  const d = harborDepth(p, wl); return d !== null && d >= minNeedDepth(shipById(clsId)) - 0.02;
+  const d = harborDepth(p, wl); return d !== null && d >= HARBOR.need[clsId] - 0.02;
 }
 // Solltiefe für die Pontons im Becken: tief genug für die tiefste Klasse, die der Kai annimmt
 function harborTarget(kaiLevel) {
   const k = HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)];
-  return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => minNeedDepth(s))) + 0.15);
+  return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => HARBOR.need[s.id])) + 0.1);
 }
 const waitPos = (i) => ({ x: HARBOR.waitX[Math.min(i, HARBOR.waitX.length - 1)], y: HARBOR.waitY, angle: 0 });
 // Liegeplatz i (Mitte des Schiffs, an der Nordkaimauer)
@@ -6242,7 +6247,7 @@ function setupPort(root, getGame, onChange) {
         h += `<div class="port-card"><b>🛣 Landseite</b> <small>${L.roads.length} Strassenzellen (${conn.size} angebunden) · Umschlag ×${roadFactor(g).toFixed(2)} · Bau auf der Karte (L): Strassen ans Hafenbecken, Lagerhallen für Container und Kies</small>` +
           (L.halls.length ? L.halls.map((hl) => { const ok = hallConnected(g, hl, conn), up = hl.level <= LAND.hall.up.length; return `<div class="row"><span>🏭 ${hl.id} · Stufe ${hl.level} · ${ok ? `+${LAND.hall.cap.container[hl.level - 1]} t Container, +${LAND.hall.cap.kies[hl.level - 1]} t Kies` : '<span class="warn">nicht angebunden</span>'}</span>${up ? `<button data-act="hallup" data-hall="${hl.id}" ${hallUpgradeBlock(g, hl.id) ? 'disabled' : ''}>Ausbauen · ${chf(LAND.hall.up[hl.level - 1])}</button>` : ''}</div>`; }).join('') : '<small>Noch keine Lagerhalle.</small>') + `</div>`; }
       { const d = bayDepth(g), T = bayTarget(g), ok = d >= T - 0.05, kl = kaiLevel(g) || 1, kc = HARBOR.kaiClasses[kl - 1], names = SHIPS.slice(0, kc).map((c) => c.name).join(', ');
-        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>Becken ${ok ? `tief genug (${d.toFixed(1)} m)` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: noch ausbaggern`}. Der Kai (Stufe ${kl}) nimmt an: <b>${names}</b>${kc < SHIPS.length ? ' (weitere Klassen mit dem Kai-Ausbau)' : ''}; sie legen nur an, wenn das Becken tief genug ist (Lastkahn ab ${minNeedDepth(shipById('kahn')).toFixed(1)} m). Das Becken liegt auf der eigenen <b>Hafenkarte</b> (Knopf «⚓ Hafenkarte», Y): dort selbst ankern und ausbaggern oder Pontons im Panel «Flotte» dem Hafen zuteilen.</small></div>`; }
+        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>Becken ${ok ? `tief genug (${d.toFixed(1)} m)` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: noch ausbaggern`}. Der Kai (Stufe ${kl}) nimmt an: <b>${names}</b>${kc < SHIPS.length ? ' (weitere Klassen mit dem Kai-Ausbau)' : ''}; sie legen nur an, wenn das Becken tief genug ist: ${SHIPS.slice(0, kc).map((c) => `${c.name.split(' ')[0]} ${HARBOR.need[c.id].toFixed(1)} m`).join(', ')}${kc >= 4 ? '; Containerschiffe brauchen zusätzlich die Containerbrücke' : ''}. Das Becken liegt auf der eigenen <b>Hafenkarte</b> (Knopf «⚓ Hafenkarte», Y): dort selbst ankern und ausbaggern oder Pontons im Panel «Flotte» dem Hafen zuteilen.</small></div>`; }
       { const nw = waitsOf(g), cg = (c) => (c ? `${PORT.commodities[c].icon} ${PORT.commodities[c].name.split(' ')[0]}` : 'alle');
         h += `<div class="port-card"><b>⏳ Warteräume</b> <small>Ist kein Liegeplatz frei, wartet das Schiff in einem Warteraum im Becken (nicht im Fahrwasser) und rückt nach, sobald ein Platz frei wird; nach ${PORT.waitMax} s gibt es auf. Räume: <b>${nw}</b> (Kai ausbauen für mehr). Jedem Raum lässt sich eine Fracht zuweisen, dann warten dort nur Schiffe dieser Fracht.</small>` +
           (nw ? `<div class="row">${Array.from({ length: nw }, (_, k) => `<button data-act="waitcargo" data-slot="${k}">Raum ${k + 1}: ${cg(p.waitCargo?.[k])}</button>`).join('')}</div><div class="row"><button data-act="prio">Vorrang beim Nachrücken: ${p.priority ? cg(p.priority) : 'keiner (längste Wartezeit)'}</button></div>` : '<small> Noch keine Warteräume: Kai bauen.</small>') + '</div>'; }
@@ -6486,7 +6491,7 @@ const { SLICE } = __m(10);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
 const { shipPos, queuePos, bayCapacity } = __m(15);
 const { needDepth, minNeedDepth } = __m(3);
-const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel } = __m(4);
+const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(4);
 const { HARBOR, berthPos, waitPos } = __m(7);
 const { areaWork } = __m(17);
 const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(5);
@@ -6974,7 +6979,13 @@ function drawHarborScene(ctx, game, ui = {}) {
       const x = d < len1 ? sx : sx + Math.sign(bx - sx) * (d - len1), y = d < len1 ? sy + (pierY - sy) * (d / len1) : pierY;
       ctx.fillStyle = col; ctx.strokeStyle = '#10202c'; ctx.lineWidth = 1; ctx.fillRect(x - 5, y - 5, 10, 10); ctx.strokeRect(x - 5, y - 5, 10, 10);
     }
-    ctx.font = font(18); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(M.icon, bx, pierY - 3); ctx.textAlign = 'start'; // Gerät am Liegeplatz
+    if (j.cargo === 'container' && bridgeLevel(g)) { // Containerbrücke: Portal über dem Liegeplatz, Laufkatze mit Container fährt zwischen Kai und Deck
+      const w = 2.7 * CELL, topY = pierY - 0.9 * CELL, deckY = (B.y0 + 1.1) * CELL, f = 0.5 + 0.5 * Math.sin(t * 1.6 + k), ty = pierY + (deckY - pierY) * f;
+      ctx.fillStyle = '#e9a23b'; ctx.strokeStyle = '#6b4a14'; ctx.lineWidth = 2; ctx.fillRect(bx - w, topY - 3, 2 * w, 6); ctx.strokeRect(bx - w, topY - 3, 2 * w, 6);
+      ctx.fillRect(bx - w, topY, 5, pierY - topY + 4); ctx.fillRect(bx + w - 5, topY, 5, pierY - topY + 4);
+      ctx.strokeStyle = '#222'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(bx, topY + 3); ctx.lineTo(bx, ty); ctx.stroke();
+      ctx.fillStyle = ['#e0803a', '#3a7ae0', '#d94a4a', '#e0c33a'][(k + Math.floor(t)) % 4]; ctx.fillRect(bx - 7, ty - 4, 14, 9); ctx.strokeStyle = '#10202c'; ctx.strokeRect(bx - 7, ty - 4, 14, 9);
+    } else { ctx.font = font(18); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(M.icon, bx, pierY - 3); ctx.textAlign = 'start'; } // Gerät am Liegeplatz
   });
   const res = (p.jobs ?? []).filter((j) => j.state === 'reserved').length;
   tag(`Liegeplätze ${(p.jobs ?? []).filter((q) => !q.wait).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');

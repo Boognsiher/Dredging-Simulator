@@ -10,6 +10,7 @@ export const HARBOR = {
   entrance: { x0: 0, x1: 13, y0: 16, y1: 19 }, // Zufahrt vom Fluss
   startDepth: 1.0, siltTo: 1.3, // das Becken verlandet wieder bis zu dieser Tiefe, wenn nicht gebaggert wird
   entranceDepth: 2.8,
+  need: { kahn: 2.0, motor: 3.0, tank: 4.0, container: 5.0, schub: 6.0 }, // Beckentiefe (m), die die Klasse zum Anlegen braucht (tiefer als der Fluss: Kaimauer, grosse Schiffe)
   kaiClasses: [1, 2, 4], // so viele Schiffsklassen (der Reihe nach: Lastkahn, Motorschiff, Tankschiff, Containerschiff) nimmt der Kai je Stufe an
   waits: [1, 2, 4], // Warteräume je Kai-Stufe: dort warten Schiffe, wenn alle Liegeplätze belegt sind
   waitX: [17, 21, 25, 29], waitY: 21.2, // Warteplätze im südlichen Becken
@@ -47,12 +48,12 @@ export function harborDepth(p, wl) {
 // Nimmt der Hafen diese Klasse an? Der Kai bestimmt, wie viele Klassen (Stufe 1: nur die einfachste), das Becken muss tief genug sein
 export function harborAccepts(p, wl, kaiLevel, clsId) {
   const k = SHIPS.findIndex((s) => s.id === clsId); if (k < 0 || k >= HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)]) return false;
-  const d = harborDepth(p, wl); return d !== null && d >= minNeedDepth(shipById(clsId)) - 0.02;
+  const d = harborDepth(p, wl); return d !== null && d >= HARBOR.need[clsId] - 0.02;
 }
 // Solltiefe für die Pontons im Becken: tief genug für die tiefste Klasse, die der Kai annimmt
 export function harborTarget(kaiLevel) {
   const k = HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)];
-  return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => minNeedDepth(s))) + 0.15);
+  return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => HARBOR.need[s.id])) + 0.1);
 }
 export const waitPos = (i) => ({ x: HARBOR.waitX[Math.min(i, HARBOR.waitX.length - 1)], y: HARBOR.waitY, angle: 0 });
 // Liegeplatz i (Mitte des Schiffs, an der Nordkaimauer)

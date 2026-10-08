@@ -3,7 +3,7 @@ import { SLICE } from '../sim/slice.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
 import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
-import { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel } from '../sim/port.js';
+import { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } from '../sim/port.js';
 import { HARBOR, berthPos, waitPos } from '../sim/harbor.js';
 import { areaWork } from '../sim/fleet.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } from '../sim/land.js';
@@ -480,7 +480,13 @@ export function drawHarborScene(ctx, game, ui = {}) {
       const x = d < len1 ? sx : sx + Math.sign(bx - sx) * (d - len1), y = d < len1 ? sy + (pierY - sy) * (d / len1) : pierY;
       ctx.fillStyle = col; ctx.strokeStyle = '#10202c'; ctx.lineWidth = 1; ctx.fillRect(x - 5, y - 5, 10, 10); ctx.strokeRect(x - 5, y - 5, 10, 10);
     }
-    ctx.font = font(18); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(M.icon, bx, pierY - 3); ctx.textAlign = 'start'; // Gerät am Liegeplatz
+    if (j.cargo === 'container' && bridgeLevel(g)) { // Containerbrücke: Portal über dem Liegeplatz, Laufkatze mit Container fährt zwischen Kai und Deck
+      const w = 2.7 * CELL, topY = pierY - 0.9 * CELL, deckY = (B.y0 + 1.1) * CELL, f = 0.5 + 0.5 * Math.sin(t * 1.6 + k), ty = pierY + (deckY - pierY) * f;
+      ctx.fillStyle = '#e9a23b'; ctx.strokeStyle = '#6b4a14'; ctx.lineWidth = 2; ctx.fillRect(bx - w, topY - 3, 2 * w, 6); ctx.strokeRect(bx - w, topY - 3, 2 * w, 6);
+      ctx.fillRect(bx - w, topY, 5, pierY - topY + 4); ctx.fillRect(bx + w - 5, topY, 5, pierY - topY + 4);
+      ctx.strokeStyle = '#222'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(bx, topY + 3); ctx.lineTo(bx, ty); ctx.stroke();
+      ctx.fillStyle = ['#e0803a', '#3a7ae0', '#d94a4a', '#e0c33a'][(k + Math.floor(t)) % 4]; ctx.fillRect(bx - 7, ty - 4, 14, 9); ctx.strokeStyle = '#10202c'; ctx.strokeRect(bx - 7, ty - 4, 14, 9);
+    } else { ctx.font = font(18); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(M.icon, bx, pierY - 3); ctx.textAlign = 'start'; } // Gerät am Liegeplatz
   });
   const res = (p.jobs ?? []).filter((j) => j.state === 'reserved').length;
   tag(`Liegeplätze ${(p.jobs ?? []).filter((q) => !q.wait).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
