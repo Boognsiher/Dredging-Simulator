@@ -498,3 +498,8 @@ body.mode-map #tool-row { position: absolute; left: 50%; transform: translateX(-
 body.mode-map #tool-row button { min-height: 0; padding: 5px 10px; background: #12283bd9; backdrop-filter: blur(3px); }
 body.mode-map #tool-row button.on { background: var(--accent); color: #04222b; }
 body.mode-slice #tool-row, body.harbor-view #tool-row { display: none !important; }
+/* Handy quer: Werkzeugzeile zwischen Joystick und Anker-Knopf, über der Knopfleiste */
+@media (max-width: 860px) and (orientation: landscape) and (max-height: 560px) {
+  body.mode-map #tool-row { bottom: 38px; max-width: calc(100vw - 310px); }
+  body.mode-map #tool-row button { padding: 3px 8px; font-size: 12px; }
+}

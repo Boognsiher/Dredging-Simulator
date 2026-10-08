@@ -649,6 +649,15 @@ export function drawSlice(ctx, game, sim, ui = {}) {
   const dark = ctx.createLinearGradient(0, SURF, 0, H); dark.addColorStop(0, 'rgba(0,0,0,0)'); dark.addColorStop(1, 'rgba(0,0,0,.4)');
   ctx.fillStyle = dark; ctx.fillRect(0, SURF, W, H - SURF);
   ctx.restore();
+  for (let c = 0; c < n; c++) { // Pfahlwand: Betonpfahl vom Wasserspiegel bis auf den Fels; gesicherte Strecke dahinter bläulich getönt
+    const i = r.idx(sl.centerCol, sl.x0 + c);
+    if (r.pile?.[i]) {
+      const g = ctx.createLinearGradient(c * U, 0, (c + 1) * U, 0); g.addColorStop(0, '#7d848c'); g.addColorStop(0.5, '#b4bac2'); g.addColorStop(1, '#6f767e');
+      ctx.fillStyle = g; ctx.fillRect(c * U + 2, SURF - 14, U - 4, H - SURF + 14);
+      ctx.strokeStyle = '#3d4249'; ctx.lineWidth = 2; ctx.strokeRect(c * U + 2, SURF - 14, U - 4, H - SURF + 14);
+      ctx.fillStyle = '#3d4249'; for (let yy = SURF + 18; yy < H; yy += 46) { ctx.fillRect(c * U + 8, yy, 4, 4); ctx.fillRect(c * U + U - 12, yy + 18, 4, 4); }
+    } else if (r.lim?.[i] > -90) { const top = Y(hi[c]); ctx.fillStyle = 'rgba(110,150,200,.25)'; ctx.fillRect(c * U, top, U, Math.max(0, H - top)); }
+  }
   for (let c = 0; c < n; c++) { // Rohstoffvorkommen: goldene Tönung und Kennzeichnung
     const dep = r.deposits?.[(r.dep[r.idx(sl.centerCol, sl.x0 + c)] || 0) - 1];
     if (dep?.known) { const top = Y(hi[c]); ctx.fillStyle = dep.owned ? 'rgba(255,215,80,.30)' : 'rgba(255,215,80,.14)'; ctx.fillRect(c * U, top, U, Math.max(0, Y(Math.min(hi[c], Math.max(r.rock[r.idx(sl.centerCol, sl.x0 + c)], wl - 20))) - top)); ctx.fillStyle = '#ffe9a0'; ctx.fillRect(c * U + 2, top + 2, U - 4, 3); }
