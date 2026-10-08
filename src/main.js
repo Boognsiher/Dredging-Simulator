@@ -171,7 +171,7 @@ function updateUpgrades() {
     r.btn.textContent = rankLock ? `🔒 Level ${upgradeRank(id)}` : game.upgradeLocked(id) ? '🔒 Hafen' : cost === null ? 'Max' : chf(cost);
     r.btn.disabled = cost === null || game.money < cost || game.status !== 'playing';
     if (rankLock) r.small.textContent += ` · gesperrt: braucht Level ${upgradeRank(id)} (${rankName(upgradeRank(id))} fährt)`;
-    else if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: Aufbereitungshalle im Hafen bauen/ausbauen (jede Karte mit Halle zählt)';
+    else if (game.upgradeLocked(id)) r.small.textContent += ' · gesperrt: nächstes Level (grössere Schiffsklasse) oder Aufbereitungshalle im Hafen bauen/ausbauen';
     const refund = game.refundFor(id);
     if (!r.armed()) r.sell.textContent = '↩';
     if (refund !== null) r.small.textContent += ` · Rückbau +${chf(refund)}`;
