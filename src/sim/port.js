@@ -2,7 +2,7 @@ import { CONFIG, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
 import { hallCapacity, roadFactor } from './land.js';
 import { priceOf, ratioOf } from './market.js';
-import { ensureHarbor, harborDepth, harborAccepts, harborTarget } from './harbor.js';
+import { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } from './harbor.js';
 
 // Hafen an Land: Kai mit Verladestation plus Lager (Kies, Tanklager) und Sanierungsanlage (Altlasten). Reine Daten und Logik, speicherbar.
 // Der Hafen handelt mit Waren: Schiffe der passenden Fracht laden bei hohen Preisen aus deinem Lager (du verkaufst) und entladen bei tiefen
@@ -10,6 +10,7 @@ import { ensureHarbor, harborDepth, harborAccepts, harborTarget } from './harbor
 export const PORT = {
   openCost: 30000, slots: 6, spread: 0.05, reserve: 5000, shipShare: 0.15,
   // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
+  waitMax: 90, // s: so lange wartet ein Schiff im Warteraum, dann gibt es auf
   jobs: { max: 4, deadline: 40, crewRate: { kies: 6, oel: 3, container: 2.5 }, fee: { kies: 5, oel: 6, container: 9 }, lateFactor: 0.5, bonusMax: 2 },
   // Baugrund: Jeder Bauplatz ist unebenes Gelände (Höhen relativ zur Sollhöhe) und muss mit der Baumaschine planiert werden, bevor gebaut werden darf
   site: { w: 5, h: 4, maxCarry: 4, fillCost: 35, autoCost: 70, act: 0.3, travel: 0.1 },
@@ -77,16 +78,24 @@ export function createPort() {
   const auto = () => ({ on: false, buyBelow: 0.85, sellAbove: 1.2 });
   return {
     open: false, slots: Array(PORT.slots).fill(null), stock: { kies: 0, oel: 0, container: 0 }, cost: { kies: 0, oel: 0, container: 0 }, // cost = Einstandspreis je t (Durchschnitt)
-    auto: { kies: auto(), oel: auto(), container: auto() }, jobs: [], sites: Array(PORT.slots).fill(null), jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
+    auto: { kies: auto(), oel: auto(), container: auto() }, waitCargo: [null, null, null, null], priority: null, jobs: [], sites: Array(PORT.slots).fill(null), jobSeq: 0, jobsDone: 0, jobsLate: 0, bonus: 0, earned: 0, spent: 0, ships: 0, handled: 0, fees: 0,
   };
 }
 
 const slotsOf = (p, type) => p.slots.filter((s) => s?.type === type);
 // ältere Spielstände: neue Waren nachrüsten
-export function ensurePort(p) { for (const id of Object.keys(PORT.commodities)) { p.stock[id] ??= 0; p.cost[id] ??= 0; p.auto[id] ??= { on: false, buyBelow: 0.85, sellAbove: 1.2 }; } return p; }
+export function ensurePort(p) { for (const id of Object.keys(PORT.commodities)) { p.stock[id] ??= 0; p.cost[id] ??= 0; p.auto[id] ??= { on: false, buyBelow: 0.85, sellAbove: 1.2 }; } p.waitCargo ??= [null, null, null, null]; p.priority ??= null; return p; }
 // Liegeplätze am Kai (Stufe des Kais); Schiffe laufen den Hafen nur an, wenn ein Platz frei ist
 export const berthsOf = (g) => { const s = slotsOf(g.port, 'kai')[0]; return g.port.open && s ? PORT.buildings.kai.berths[s.level - 1] : 0; };
-export const isDocked = (j) => j.state !== 'reserved'; // alte Spielstände: Aufträge ohne Zustand gelten als angelegt
+export const isDocked = (j) => j.state !== 'reserved' && j.state !== 'waiting'; // alte Spielstände: Aufträge ohne Zustand gelten als angelegt
+// Warteräume (Kai-Stufe): Schiffe ohne freien Liegeplatz warten dort im Becken und rücken nach; je Raum lässt sich eine Fracht zuweisen
+export const waitsOf = (g) => { const k = kaiLevel(g); return g.port.open && k ? HARBOR.waits[k - 1] : 0; };
+export const berthJobs = (g) => (g.port.jobs ?? []).filter((j) => !j.wait); // Aufträge, die einen Liegeplatz belegen oder für einen reserviert haben
+export const waitJobs = (g) => (g.port.jobs ?? []).filter((j) => j.wait || j.state === 'waiting');
+const CARGO_CYCLE = [null, 'kies', 'oel', 'container'];
+export function cycleWaitCargo(g, i) { const p = g.port; p.waitCargo ??= [null, null, null, null]; if (i < 0 || i >= waitsOf(g)) return false; p.waitCargo[i] = CARGO_CYCLE[(CARGO_CYCLE.indexOf(p.waitCargo[i] ?? null) + 1) % CARGO_CYCLE.length]; return true; }
+export function cyclePriority(g) { const p = g.port; p.priority = CARGO_CYCLE[(CARGO_CYCLE.indexOf(p.priority ?? null) + 1) % CARGO_CYCLE.length]; return true; }
+const freeWaitSlot = (g, cargo) => { const used = new Set(waitJobs(g).map((j) => j.slot)); for (let i = 0; i < waitsOf(g); i++) if (!used.has(i) && (g.port.waitCargo?.[i] == null || g.port.waitCargo[i] === cargo)) return i; return -1; };
 export const hasKai = (g) => g.port.open && slotsOf(g.port, 'kai').length > 0;
 export const capacity = (g, id) => slotsOf(g.port, PORT.storage[id]).reduce((a, s) => a + PORT.buildings[s.type].cap[s.level - 1], 0) + hallCapacity(g, id); // plus angebundene Lagerhallen (Landseite)
 export const refundFrac = (g) => Math.max(0, ...(g.maps ?? [{ port: g.port }]).map((m) => { const s = slotsOf(m.port, 'sanierung')[0]; return s ? PORT.buildings.sanierung.refund[s.level - 1] : 0; })); // beste Sanierungsanlage aller Karten
@@ -233,9 +242,12 @@ export function reserveBerth(g, ship) {
   const p = g.port, J = PORT.jobs; p.jobs ??= []; if (!hasKai(g) || !PORT.commodities[ship.cargo] || capacity(g, ship.cargo) <= 0) return null;
   ensureHarbor(p, g.wl);
   if (ship.cls && (p.harbor ? !harborAccepts(p, g.wl, kaiLevel(g), ship.cls) : bayDepth(g) < minNeedDepth(shipById(ship.cls)))) return null; // Becken zu flach oder Klasse vom Kai nicht angenommen
-  if (p.jobs.length >= berthsOf(g)) return null; // alle Liegeplätze belegt oder reserviert: Schiff fährt vorbei, kein Stau
+  let wait = false, slot = null;
+  if (berthJobs(g).length >= berthsOf(g)) { // alle Liegeplätze belegt oder reserviert: freien Warteplatz suchen, sonst fährt das Schiff vorbei (kein Stau)
+    slot = freeWaitSlot(g, ship.cargo); if (slot < 0) return null; wait = true;
+  }
   const id = ship.cargo, price = priceOf(g.market, id), out = ratioOf(g.market, id) >= 1;
-  const job = { id: ++p.jobSeq, cargo: id, tons: Math.max(10, Math.round(ship.tons * PORT.shipShare)), done: 0, out, price, left: J.deadline, fee: 0, ship: shipLabel(ship), shipId: ship.id ?? null, state: 'reserved' };
+  const job = { id: ++p.jobSeq, cargo: id, tons: Math.max(10, Math.round(ship.tons * PORT.shipShare)), done: 0, out, price, left: J.deadline, fee: 0, ship: shipLabel(ship), shipId: ship.id ?? null, state: 'reserved', wait, slot, waited: 0 };
   job.fee = job.tons * J.fee[id];
   p.jobs.push(job); p.ships++;
   return job;
@@ -245,13 +257,14 @@ export function portShip(g, ship) { const j = reserveBerth(g, { ...ship, id: nul
 // Schiff erreicht das Becken: legt an (verlässt das Fahrwasser), die Frist des Auftrags läuft
 export function dockShip(g, ship) {
   const j = (g.port.jobs ?? []).find((q) => q.shipId === ship.id && q.state === 'reserved'); if (!j) return false;
-  j.state = 'docked'; j.left = PORT.jobs.deadline; ship.state = 'dock';
+  j.left = PORT.jobs.deadline; ship.state = 'dock';
+  j.state = j.wait ? 'waiting' : 'docked'; if (j.wait) j.waited = 0;
   return true;
 }
 // Position eines angelegten Schiffs im Hafenbecken (Liegeplatz nach Reihenfolge)
 export function dockPos(g, ship) {
   const bay = g.port.bay; if (!bay?.cells?.length) return null;
-  const docked = (g.port.jobs ?? []).filter((q) => isDocked(q) && q.shipId != null), k = Math.max(0, docked.findIndex((q) => q.shipId === ship.id));
+  const docked = (g.port.jobs ?? []).filter((q) => q.state !== 'reserved' && q.shipId != null), k = Math.max(0, docked.findIndex((q) => q.shipId === ship.id)); // angelegte und wartende Schiffe im Becken der Hauptkarte
   const col = k % 2, row = Math.floor(k / 2), w = bay.x1 - bay.x0 + 1, h = bay.y1 - bay.y0 + 1;
   return { x: bay.x0 + w * (0.28 + 0.44 * col), y: bay.y0 + h * Math.min(0.85, 0.2 + 0.3 * row) + 0.2, angle: 0 };
 }
@@ -297,6 +310,18 @@ export function updatePort(g, dt) {
     const j = p.jobs[k]; finishJob(g, j); p.jobs.splice(k, 1);
     const s = j.shipId != null ? (g.traffic?.ships ?? []).find((q) => q.id === j.shipId) : null;
     if (s && s.state === 'dock') { s.state = 'sail'; s.berth = null; s.lat = 0; s.safeT = 3; } // Schiff legt ab und fährt weiter (kurz geschützt beim Einfädeln)
+  }
+  // Warteräume: wer zu lange wartet, gibt auf und fährt weiter; sonst rückt das Schiff nach, sobald ein Liegeplatz frei ist (Vorrang-Fracht zuerst, dann am längsten Wartende)
+  const releaseShip = (j) => { const s = (g.traffic?.ships ?? []).find((q) => q.id === j.shipId); if (s && s.state === 'dock') { s.state = 'sail'; s.berth = null; s.lat = 0; s.safeT = 3; } };
+  for (let k = p.jobs.length - 1; k >= 0; k--) {
+    const j = p.jobs[k]; if (j.state !== 'waiting') continue;
+    j.waited = (j.waited ?? 0) + dt;
+    if (j.waited > PORT.waitMax || !(g.traffic?.ships ?? []).some((q) => q.id === j.shipId)) { releaseShip(j); p.jobs.splice(k, 1); g.totals.waitGaveUp = (g.totals.waitGaveUp ?? 0) + 1; }
+  }
+  while (berthJobs(g).length < berthsOf(g)) {
+    const w = waitJobs(g).filter((j) => j.state === 'waiting').sort((a, b) => (b.cargo === p.priority) - (a.cargo === p.priority) || b.waited - a.waited)[0];
+    if (!w) break;
+    w.wait = false; w.state = 'docked'; w.left = PORT.jobs.deadline; w.slot = null;
   }
 }
 

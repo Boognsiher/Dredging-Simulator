@@ -3,8 +3,8 @@ import { SLICE } from '../sim/slice.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
 import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
-import { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, isDocked, kaiLevel } from '../sim/port.js';
-import { HARBOR, berthPos } from '../sim/harbor.js';
+import { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel } from '../sim/port.js';
+import { HARBOR, berthPos, waitPos } from '../sim/harbor.js';
 import { areaWork } from '../sim/fleet.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } from '../sim/land.js';
 import { Chain, drawChain } from './chain.js';
@@ -435,6 +435,20 @@ export function drawHarborScene(ctx, game, ui = {}) {
       ctx.fillStyle = on ? '#ffe9a0' : '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(on ? `${k + 1}` : '🔒', x + 2 * CELL, y - CELL * 0.35); ctx.textAlign = 'start';
     }
   }
+  // Warteräume im südlichen Becken: Rahmen je Raum mit zugewiesener Fracht, wartende Schiffe mit Sanduhr
+  const nw = waitsOf(g);
+  for (let k = 0; k < HARBOR.waitX.length; k++) {
+    const wp = waitPos(k), x = OX + (wp.x - 2) * CELL, y = (wp.y - 1.5) * CELL, on = k < nw, cg = p.waitCargo?.[k];
+    ctx.strokeStyle = on ? '#9be0ff' : '#ffffff33'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [5, 4] : [3, 5]); ctx.strokeRect(x + 1, y + 1, 4 * CELL - 2, 3 * CELL - 2); ctx.setLineDash([]);
+    ctx.fillStyle = on ? '#bfeaff' : '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center';
+    ctx.fillText(on ? `⏳ Warteraum ${k + 1}: ${cg ? PORT.commodities[cg].icon + ' ' + PORT.commodities[cg].name.split(' ')[0] : 'alle'}` : '🔒', x + 2 * CELL, y + 3 * CELL + 13); ctx.textAlign = 'start';
+  }
+  for (const j of (p.jobs ?? []).filter((q) => q.state === 'waiting')) {
+    const ship = g.maps[g.mapIdx].traffic.ships.find((s) => s.id === j.shipId); if (!ship) continue;
+    drawShip(ctx, shipById(ship.cls), { ...ship, state: 'harbor' }, waitPos(j.slot ?? 0), g, ui);
+    const q = mapPx(waitPos(j.slot ?? 0).x, waitPos(j.slot ?? 0).y), pct = Math.min(1, (j.waited ?? 0) / PORT.waitMax);
+    ctx.fillStyle = '#000b'; ctx.fillRect(q.x - 24, q.y + CELL * 1.1, 48, 5); ctx.fillStyle = pct > 0.7 ? '#ff7a6b' : '#ffd24d'; ctx.fillRect(q.x - 24, q.y + CELL * 1.1, 48 * (1 - pct), 5); // Geduld
+  }
   // Bauplätze und Gebäude
   (p.slots ?? []).forEach((sl, i) => {
     const pl = HARBOR.plots[i]; if (!pl) return; const q = L(pl[0], pl[1]), w = HARBOR.plotW * CELL, h = HARBOR.plotH * CELL;
@@ -468,8 +482,8 @@ export function drawHarborScene(ctx, game, ui = {}) {
     }
     ctx.font = font(18); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(M.icon, bx, pierY - 3); ctx.textAlign = 'start'; // Gerät am Liegeplatz
   });
-  const res = (p.jobs ?? []).filter((j) => !isDocked(j)).length;
-  tag(`Liegeplätze ${(p.jobs ?? []).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
+  const res = (p.jobs ?? []).filter((j) => j.state === 'reserved').length;
+  tag(`Liegeplätze ${(p.jobs ?? []).filter((q) => !q.wait).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
 }
 
 function drawFleet(ctx, game) {

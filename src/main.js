@@ -1,5 +1,5 @@
 import { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } from './sim/shipping.js';
-import { PORT, buyPrice, sellPrice, machineOf, isDocked, loadHit as portLoadHit } from './sim/port.js';
+import { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit as portLoadHit } from './sim/port.js';
 import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } from './sim/land.js';
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
 import { Game } from './sim/game.js';
@@ -9,7 +9,7 @@ import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dis
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
-import { makeHarborView, HARBOR } from './sim/harbor.js';
+import { makeHarborView, HARBOR, waitPos } from './sim/harbor.js';
 import { toolName } from './sim/dredge.js';
 import { priceOf, trend } from './sim/market.js';
 import { needDepth, minNeedDepth } from './sim/fairway.js';
@@ -1046,6 +1046,10 @@ readInput.onTap((px, py) => {
   if (landMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { landClick(px, py); return; }
   if (areaMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { areaClick(px, py); return; }
   if (zoneMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { zoneClick(px, py); return; }
+  if (harborView && !paused && !sheetOpen && !overlayOpen()) { // Klick auf einen Warteraum: Fracht zuweisen (alle → Kies → Öl → Container)
+    const cx = (px - OX) / CELL, cy = py / CELL;
+    for (let k = 0; k < HARBOR.waitX.length; k++) { const wp = waitPos(k); if (cx >= wp.x - 2 && cx <= wp.x + 2 && cy >= wp.y - 1.5 && cy <= wp.y + 1.5 + 1) { if (cycleWaitCargo(game, k)) { const c = game.port.waitCargo[k]; toast(`Warteraum ${k + 1}: ${c ? PORT.commodities[c].name : 'alle Frachten'}`, 'info', true); return; } } }
+  }
   if (sim.mode !== 'map' || paused || sheetOpen || overlayOpen()) return;
   mapTarget = { x: Math.min(game.river.cols, Math.max(0, (px - OX) / CELL)), y: Math.min(game.river.rows, Math.max(0, py / CELL)) };
 });

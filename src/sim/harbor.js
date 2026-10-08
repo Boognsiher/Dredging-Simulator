@@ -11,6 +11,8 @@ export const HARBOR = {
   startDepth: 1.0, siltTo: 1.3, // das Becken verlandet wieder bis zu dieser Tiefe, wenn nicht gebaggert wird
   entranceDepth: 2.8,
   kaiClasses: [1, 2, 4], // so viele Schiffsklassen (der Reihe nach: Lastkahn, Motorschiff, Tankschiff, Containerschiff) nimmt der Kai je Stufe an
+  waits: [1, 2, 4], // Warteräume je Kai-Stufe: dort warten Schiffe, wenn alle Liegeplätze belegt sind
+  waitX: [17, 21, 25, 29], waitY: 21.2, // Warteplätze im südlichen Becken
   quayY: 10.5, berthX: [16, 20, 24, 28, 32], // Liegeplätze an der Nordkaimauer
   plots: [[3, 3], [12, 3], [21, 3], [30, 3], [8, 27], [27, 27]], // Bauplätze (Zelle links oben) für die 6 Hafenplätze, Grösse 8×5
   plotW: 8, plotH: 5,
@@ -52,6 +54,7 @@ export function harborTarget(kaiLevel) {
   const k = HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)];
   return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => minNeedDepth(s))) + 0.15);
 }
+export const waitPos = (i) => ({ x: HARBOR.waitX[Math.min(i, HARBOR.waitX.length - 1)], y: HARBOR.waitY, angle: 0 });
 // Liegeplatz i (Mitte des Schiffs, an der Nordkaimauer)
 export const berthPos = (i) => ({ x: HARBOR.berthX[Math.min(i, HARBOR.berthX.length - 1)], y: HARBOR.basin.y0 + 1.1, angle: 0 });
 

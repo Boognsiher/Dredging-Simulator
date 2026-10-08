@@ -297,7 +297,7 @@ import { lendPonton, recallPonton, lendBlock, lentUnit, nextHireCost } from '../
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
 import { harborAccepts } from '../src/sim/harbor.js';
-import { isDocked, berthsOf, bayDepth, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
+import { reserveBerth, dockShip, waitsOf, cycleWaitCargo, berthJobs, isDocked, berthsOf, bayDepth, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
   assert.ok(openBlock(g), 'ohne Motorschiff gesperrt');
@@ -1708,13 +1708,14 @@ test('Hafen: Liegeplätze werden reserviert, Schiffe legen an und fahren nach de
   const mk = () => { let s = null; for (let k = 0; k < 60 && !s; k++) s = spawnShip(g); s.cls = cid; s.dir = 1; s.cargo = 'kies'; s.tons = 400; return s; };
   g.market.dev.kies = -0.4; // billig: Schiffe entladen, das dauert
   const ships = [mk(), mk(), mk()];
-  let docked = 0, maxJobs = 0;
-  for (let t = 0; t < 120; t += 0.1) {
+  let docked = 0, maxJobs = 0, waited = false;
+  for (let t = 0; t < 400; t += 0.1) {
     g.time += 0.1; updateTraffic(g, 0.1); updatePort(g, 0.1);
-    docked = Math.max(docked, ships.filter((s) => s.state === 'dock').length); maxJobs = Math.max(maxJobs, g.port.jobs.length);
+    docked = Math.max(docked, ships.filter((s) => s.state === 'dock').length); maxJobs = Math.max(maxJobs, g.port.jobs.filter((j) => !j.wait).length); waited = waited || g.port.jobs.some((j) => j.state === 'waiting');
   }
   assert.ok(docked >= 1, 'mindestens ein Schiff legt an');
   assert.ok(maxJobs <= 2, 'nie mehr Aufträge als Liegeplätze');
+  assert.ok(waited, 'das dritte Schiff wartet im Warteraum');
   assert.ok(ships.every((s) => s.state !== 'dock'), 'alle haben wieder abgelegt');
   assert.ok(g.port.jobsDone >= 1 || g.port.ships >= 1);
   assert.equal(g.port.jobs.length, 0);
@@ -1761,4 +1762,23 @@ test('Alter Spielstand mit geöffnetem Hafen (ohne Hafenkarte, Aufträge ohne Zu
   assert.ok(rt, 'lädt'); assert.ok(rt.port.harbor?.river?.top instanceof Float32Array, 'Hafenkarte nachgerüstet');
   assert.ok(isDocked(rt.port.jobs[0]));
   updatePort(rt, 1); rt.update(0.5); assert.ok(bayDepth(rt) > 0);
+});
+
+test('Warteräume: Zuweisung der Fracht, Warteschiff rückt nach, Vorrang-Fracht zuerst', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.money = 1e7; g.unlocked.motor = true;
+  openPort(g); for (const s of g.port.sites) s.ready = true; build(g, 0, 'kai'); build(g, 1, 'kies'); build(g, 2, 'tank');
+  for (const i of g.port.harbor.cells) g.port.harbor.river.top[i] = g.wl - 3;
+  assert.equal(waitsOf(g), 1); assert.ok(cycleWaitCargo(g, 0)); assert.equal(g.port.waitCargo[0], 'kies');
+  const cid = Object.keys(g.fair).find((id) => g.fair[id].passable);
+  const ship = (cargo) => ({ id: g.traffic.seq + 1000 + Math.floor(g.rng() * 1e6), cls: cid, cargo, tons: 600 });
+  const a = ship('kies'), b = ship('kies'), c = ship('kies'), d = ship('oel');
+  for (const s of [a, b, c, d]) { s.state = 'sail'; g.traffic.ships.push(s); }
+  const j1 = reserveBerth(g, a), j2 = reserveBerth(g, b);
+  assert.ok(j1 && j2 && !j1.wait && !j2.wait, 'zwei Liegeplätze');
+  const j3 = reserveBerth(g, c); assert.ok(j3?.wait && j3.slot === 0, 'drittes Schiff wartet');
+  assert.equal(reserveBerth(g, d), null, 'Öl darf nicht in den Kies-Warteraum: fährt vorbei');
+  for (const s of [a, b, c]) { assert.ok(dockShip(g, s)); }
+  assert.equal(j3.state, 'waiting'); assert.equal(berthJobs(g).length, 2);
+  j1.done = j1.tons; updatePort(g, 0.1); // Liegeplatz 1 wird frei: das Warteschiff rückt nach
+  assert.equal(j3.state, 'docked'); assert.equal(j3.wait, false); assert.equal(a.state, 'sail');
 });

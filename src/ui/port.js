@@ -1,7 +1,7 @@
 import { CONFIG, SHIPS, shipById } from '../config.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } from '../sim/land.js';
-import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel } from '../sim/port.js';
+import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel, waitsOf, cycleWaitCargo, cyclePriority } from '../sim/port.js';
 import { priceOf, ratioOf } from '../sim/market.js';
 import { HARBOR } from '../sim/harbor.js';
 
@@ -78,6 +78,9 @@ export function setupPort(root, getGame, onChange) {
           (L.halls.length ? L.halls.map((hl) => { const ok = hallConnected(g, hl, conn), up = hl.level <= LAND.hall.up.length; return `<div class="row"><span>🏭 ${hl.id} · Stufe ${hl.level} · ${ok ? `+${LAND.hall.cap.container[hl.level - 1]} t Container, +${LAND.hall.cap.kies[hl.level - 1]} t Kies` : '<span class="warn">nicht angebunden</span>'}</span>${up ? `<button data-act="hallup" data-hall="${hl.id}" ${hallUpgradeBlock(g, hl.id) ? 'disabled' : ''}>Ausbauen · ${chf(LAND.hall.up[hl.level - 1])}</button>` : ''}</div>`; }).join('') : '<small>Noch keine Lagerhalle.</small>') + `</div>`; }
       { const d = bayDepth(g), T = bayTarget(g), ok = d >= T - 0.05, kl = kaiLevel(g) || 1, kc = HARBOR.kaiClasses[kl - 1], names = SHIPS.slice(0, kc).map((c) => c.name).join(', ');
         h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>Becken ${ok ? `tief genug (${d.toFixed(1)} m)` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: noch ausbaggern`}. Der Kai (Stufe ${kl}) nimmt an: <b>${names}</b>${kc < SHIPS.length ? ' (weitere Klassen mit dem Kai-Ausbau)' : ''}; sie legen nur an, wenn das Becken tief genug ist (Lastkahn ab ${minNeedDepth(shipById('kahn')).toFixed(1)} m). Das Becken liegt auf der eigenen <b>Hafenkarte</b> (Knopf «⚓ Hafenkarte», Y): dort selbst ankern und ausbaggern oder Pontons im Panel «Flotte» dem Hafen zuteilen.</small></div>`; }
+      { const nw = waitsOf(g), cg = (c) => (c ? `${PORT.commodities[c].icon} ${PORT.commodities[c].name.split(' ')[0]}` : 'alle');
+        h += `<div class="port-card"><b>⏳ Warteräume</b> <small>Ist kein Liegeplatz frei, wartet das Schiff in einem Warteraum im Becken (nicht im Fahrwasser) und rückt nach, sobald ein Platz frei wird; nach ${PORT.waitMax} s gibt es auf. Räume: <b>${nw}</b> (Kai ausbauen für mehr). Jedem Raum lässt sich eine Fracht zuweisen, dann warten dort nur Schiffe dieser Fracht.</small>` +
+          (nw ? `<div class="row">${Array.from({ length: nw }, (_, k) => `<button data-act="waitcargo" data-slot="${k}">Raum ${k + 1}: ${cg(p.waitCargo?.[k])}</button>`).join('')}</div><div class="row"><button data-act="prio">Vorrang beim Nachrücken: ${p.priority ? cg(p.priority) : 'keiner (längste Wartezeit)'}</button></div>` : '<small> Noch keine Warteräume: Kai bauen.</small>') + '</div>'; }
       if (!hasKai(g)) h += `<div class="port-card"><b>Ohne Kai kein Handel.</b> Baue zuerst einen Kai mit Verladestation.</div>`;
       else {
         const jobs = (p.jobs ?? []).slice().sort((a, b) => (isDocked(b) ? 1 : 0) - (isDocked(a) ? 1 : 0)), M = PORT.machines[machineOf(g)], docked = jobs.filter(isDocked).length;
@@ -112,7 +115,9 @@ export function setupPort(root, getGame, onChange) {
     const was = siteOpen;
     if (a === 'hit') { hit(); return; }
     if (a === 'hallup') { upgradeHall(g, b.dataset.hall); render(true); onChange?.(); return; }
-    if (a === 'site') siteOpen = slot;
+    if (a === 'waitcargo') cycleWaitCargo(g, slot);
+    else if (a === 'prio') cyclePriority(g);
+    else if (a === 'site') siteOpen = slot;
     else if (a === 'siteclose') siteOpen = null;
     else if (a === 'autolevel') { autoLevel(g, slot); siteOpen = null; }
     else if (a === 'cell') { siteAct(g, siteOpen, +b.dataset.x, +b.dataset.y); }
