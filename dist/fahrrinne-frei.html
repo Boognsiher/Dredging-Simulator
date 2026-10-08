@@ -1286,11 +1286,20 @@ function focusY(lh, h) {
 // Kartenvollbild nur auf Rechner und Handy quer; Handy hochkant behält das bisherige Layout (Karte oben, Bedienung unten)
 function applyLayoutMode() {
   const want = curMode() !== 'slice' && !(narrow() && matchMedia('(orientation: portrait)').matches);
-  if (document.body.classList.contains('mode-map') !== want) { document.body.classList.toggle('mode-map', want); if (!want) setMenu(false); layoutSig = ''; }
+  if (document.body.classList.contains('mode-map') !== want) { document.body.classList.toggle('mode-map', want); if (!want) setMenu(false); resetBars(); }
+}
+// Leisten (Aktionen, Klassen, Kopfzeile) wachsen nur: wechselt ihr Inhalt (Knopf erscheint, Text bricht um), springt die Karte sonst kurz kleiner und wieder grösser
+const barMax = {};
+function resetBars() { for (const id of Object.keys(barMax)) { $(id).style.minHeight = ''; delete barMax[id]; } layoutSig = ''; }
+function stableBar(id) {
+  const el = $(id), h = el.offsetHeight;
+  if (document.body.classList.contains('mode-map')) return h; // Kartenvollbild: Leisten schweben über der Karte
+  if (h > (barMax[id] ?? 0)) { barMax[id] = h; el.style.minHeight = `${h}px`; }
+  return barMax[id] ?? h;
 }
 function panCanvas(dt) {
   applyLayoutMode();
-  const sig = `${$('shift-actions').offsetHeight}/${$('touch-ui').offsetHeight}/${$('topbar').offsetHeight}/${$('header-bar').offsetHeight}/${innerHeight}/${innerWidth}`;
+  const sig = `${stableBar('shift-actions')}/${$('touch-ui').offsetHeight}/${stableBar('topbar')}/${stableBar('header-bar')}/${innerHeight}/${innerWidth}`;
   if (sig !== layoutSig) { layoutSig = sig; fitCanvas(); }
   const stageW = $('stage').clientWidth, cw = parseFloat(canvas.style.width) || stageW, ch = parseFloat(canvas.style.height) || 0;
   if (mapFull) {
@@ -1599,8 +1608,9 @@ $('chk-fritz').onchange = (e) => setFritz(e.target.checked);
 $('btn-sound').onclick = toggleSound; $('btn-sound2').onclick = toggleSound;
 for (const id of ['btn-sound', 'btn-sound2']) $(id).textContent = audio.muted ? '🔇 Ton aus (M)' : '🔊 Ton an (M)';
 $('btn-pause').onclick = togglePause;
-addEventListener('resize', () => { fitCanvas(); placeToast(); });
-addEventListener('orientationchange', () => setTimeout(fitCanvas, 200));
+let resizeT = 0;
+addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { resetBars(); fitCanvas(); placeToast(); }, 120); }); // gebündelt: Adressleisten und Tastatur lösen viele Resize-Ereignisse aus
+addEventListener('orientationchange', () => setTimeout(() => { resetBars(); fitCanvas(); }, 250));
 $('btn-pause2').onclick = togglePause;
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
