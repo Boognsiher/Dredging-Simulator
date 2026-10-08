@@ -193,3 +193,5 @@ Das Spiel ist eine **Progressive Web App**: Manifest (`manifest.webmanifest`), S
 **Schleppen im Hochformat:** Das Bild wird grösser, der Joystick entfällt und «Ziehen» ist eine flache Leiste. **Hafenkarte:** Ein fester Knopf «↩ Hauptkarte (Esc)» führt immer zurück.
 
 **Pfahlwand planen, dann ausführen:** Geplante Pfähle und Rückbau bleiben nur ein Plan, bis du «▶ Ausführen» drückst (nochmals: «⏸ Pausieren»); ein Verklicken betoniert also nichts. Auf dem Handy verschiebst du die Karte im Planungsmodus mit dem Finger (Wischen) oder dem Joystick; der Zoom springt direkt auf die neue Stufe. Karte im Hochformat füllt die freie Höhe und folgt dem Ponton.
+
+**Planungsansicht Pfahlwand:** Im Planungsmodus (Taste O) verschwinden die normalen Knöpfe unter der Karte; es bleibt eine Leiste mit «↩ Zurück», Zelle, Linie, Rückbau, Zoom, «▶ Ausführen» und «Löschen».

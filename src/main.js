@@ -806,7 +806,7 @@ function fitCanvas() {
   } else { canvas.style.position = ''; canvas.style.left = ''; canvas.style.top = ''; }
   if (mapFull) { /* oben berechnet */ }
   else if (portrait && pileMode) { // Pfahlwand planen im Hochformat: auf die Planungsstelle zoomen, Joystick verschiebt
-    const visAvail = Math.max(60, innerHeight - docTop - below - 12);
+    const visAvail = Math.max(60, innerHeight - docTop - below - 64);
     zoom = pileZoom; w = stageW * zoom; h = w * (lh / lw); if (h > visAvail + 1) cropVis = visAvail;
   }
   else if (portrait && tow) { // Schleppen im Hochformat: so gross wie die Höhe erlaubt, seitlich mittig (Aufläufer und Ponton bleiben im Bild)

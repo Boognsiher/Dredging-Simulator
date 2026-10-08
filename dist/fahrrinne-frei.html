@@ -522,6 +522,16 @@ body.mode-slice #tool-row, body.harbor-view #tool-row { display: none !important
 body:not(.mode-map):not(.mode-slice) #shift-actions { align-items: flex-start; align-content: flex-start; }
 
 body.pile-mode #stage canvas { touch-action: none; }
+/* Pfahl-Planung im Hochformat: eine Zeile, seitlich scrollbar (verdeckt die Karte kaum) */
+@media (max-width: 860px) and (orientation: portrait) { #pile-bar { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; left: 6px; right: 6px; transform: none; max-width: none; scrollbar-width: none; } }
+
+/* Pfahl-Planung als eigene Kartenansicht: normale Knöpfe weg, nur Planungsleiste mit «Zurück» */
+body.pile-mode :is(#shift-actions, #tool-row, #touch-ui) { display: none !important; }
+body.mode-map.pile-mode #pile-bar { bottom: 8px; }
+@media (max-width: 860px) and (orientation: portrait) {
+  body.pile-mode #pile-bar { position: static; transform: none; flex-wrap: wrap; justify-content: center; overflow: visible; left: auto; right: auto; max-width: none; padding: 8px 8px 12px; }
+  body.pile-mode #pile-bar button { min-height: 38px; padding: 6px 10px; } body.pile-mode #pile-bar { gap: 5px; padding-bottom: 4px; }
+}
 
 </style>
 </head>
@@ -578,7 +588,7 @@ body.pile-mode #stage canvas { touch-action: none; }
         <button id="btn-land" class="tool-btn" hidden>🛣 Land (L)</button>
         <button id="btn-fleetlend" class="tool-btn" hidden>🧑‍✈️ Zur Flotte (J)</button>
       </div>
-      <div id="pile-bar" hidden><button data-ptool="cell" class="on">✏ Zelle</button><button data-ptool="line">📏 Linie</button><button data-ptool="remove">🗑 Rückbau</button><button id="pile-zin">＋ Zoom</button><button id="pile-zout">− Zoom</button><button id="pile-go" class="primary">▶ Ausführen</button><button id="pile-clear">🧹 Plan löschen</button><button id="pile-done" class="primary">Fertig</button></div>
+      <div id="pile-bar" hidden><button id="pile-done" class="primary">↩ Zurück</button><button data-ptool="cell" class="on">✏ Zelle</button><button data-ptool="line">📏 Linie</button><button data-ptool="remove">🗑 Rückbau</button><button id="pile-zin">🔍＋</button><button id="pile-zout">🔍−</button><button id="pile-go" class="primary">▶ Ausführen</button><button id="pile-clear">🧹 Löschen</button></div>
       <div id="land-bar" hidden><button data-tool="road" class="on">🛣 Strasse</button><button data-tool="hall">🏭 Lagerhalle</button><button data-tool="auto">➜ Strasse automatisch</button><button data-tool="demo">✖ Abriss</button><button id="land-done" class="primary">Fertig</button></div>
       <button id="harbor-back" hidden>↩ Hauptkarte (Esc)</button>
       <div id="toast"></div>
@@ -1508,7 +1518,7 @@ function fitCanvas() {
   } else { canvas.style.position = ''; canvas.style.left = ''; canvas.style.top = ''; }
   if (mapFull) { /* oben berechnet */ }
   else if (portrait && pileMode) { // Pfahlwand planen im Hochformat: auf die Planungsstelle zoomen, Joystick verschiebt
-    const visAvail = Math.max(60, innerHeight - docTop - below - 12);
+    const visAvail = Math.max(60, innerHeight - docTop - below - 64);
     zoom = pileZoom; w = stageW * zoom; h = w * (lh / lw); if (h > visAvail + 1) cropVis = visAvail;
   }
   else if (portrait && tow) { // Schleppen im Hochformat: so gross wie die Höhe erlaubt, seitlich mittig (Aufläufer und Ponton bleiben im Bild)

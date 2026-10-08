@@ -510,3 +510,11 @@ body:not(.mode-map):not(.mode-slice) #shift-actions { align-items: flex-start; a
 body.pile-mode #stage canvas { touch-action: none; }
 /* Pfahl-Planung im Hochformat: eine Zeile, seitlich scrollbar (verdeckt die Karte kaum) */
 @media (max-width: 860px) and (orientation: portrait) { #pile-bar { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; left: 6px; right: 6px; transform: none; max-width: none; scrollbar-width: none; } }
+
+/* Pfahl-Planung als eigene Kartenansicht: normale Knöpfe weg, nur Planungsleiste mit «Zurück» */
+body.pile-mode :is(#shift-actions, #tool-row, #touch-ui) { display: none !important; }
+body.mode-map.pile-mode #pile-bar { bottom: 8px; }
+@media (max-width: 860px) and (orientation: portrait) {
+  body.pile-mode #pile-bar { position: static; transform: none; flex-wrap: wrap; justify-content: center; overflow: visible; left: auto; right: auto; max-width: none; padding: 8px 8px 12px; }
+  body.pile-mode #pile-bar button { min-height: 38px; padding: 6px 10px; } body.pile-mode #pile-bar { gap: 5px; padding-bottom: 4px; }
+}
