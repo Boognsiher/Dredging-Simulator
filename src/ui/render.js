@@ -806,7 +806,7 @@ function drawPump(ctx, game, sim, ui) {
     ctx.lineTo(m.x - 34, m.y + 46); ctx.lineTo(m.x + 34, m.y + 46); ctx.closePath(); ctx.fill();
   }
   // Saugradius als schwache Kontur
-  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sl.toolParams().radius * U, sl.toolParams().radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
+  
   // Hubhöhe
   if (sl.setH - sl.h < -0.05 || sl.h - sl.setH > 0.05) { const sy = sliceY(sl.setH, wl); ctx.strokeStyle = '#ffa94d'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(pumpX - 22, sy); ctx.lineTo(pumpX + 22, sy); ctx.stroke(); ctx.setLineDash([]); }
   if (sl.auto.on) { ctx.font = font(13); ctx.fillStyle = '#7fe3ff'; ctx.fillText(sl.auto.error ? '🤖 Fehler! (R)' : '🤖 Automatik', pumpX + 20, py - PH - 4); }
@@ -831,7 +831,7 @@ function drawBucket(ctx, game, sim, ui) {
   if (pour) { // Schüttrohr: Düse und fallender Beton
     ctx.fillStyle = '#5c6168'; ctx.fillRect(tx - 9, ty - 4, 18, 22); ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2; ctx.strokeRect(tx - 9, ty - 4, 18, 22);
     if (sl.suctioning) { ctx.fillStyle = 'rgba(190,194,200,.85)'; for (let k = 0; k < 7; k++) { const f = ((ui.t ?? 0) * 3 + k / 7) % 1; ctx.fillRect(tx - 5 + Math.sin(k * 5) * 6, ty + 18 + f * 46, 6, 8); } }
-    ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sl.toolParams().radius * U, sl.toolParams().radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
+    
     ctx.font = font(13); ctx.fillStyle = (sim.concreteAvail ?? 0) > 0.05 ? '#dfe3e8' : '#ff9d8f'; ctx.fillText(`Beton ${(sim.concreteAvail ?? 0).toFixed(0)} m³`, bx + 22, by - 14);
     return;
   }
@@ -841,7 +841,7 @@ function drawBucket(ctx, game, sim, ui) {
   ctx.beginPath(); ctx.moveTo(-14, -2); ctx.lineTo(16, -6); ctx.lineTo(20, 14); ctx.lineTo(-10, 18); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#c9c9c9'; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(-8 + k * 8, 17); ctx.lineTo(-4 + k * 8, 17); ctx.lineTo(-6 + k * 8, 24); ctx.closePath(); ctx.fill(); }
   ctx.restore();
-  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(m.x, m.y, sl.toolParams().radius * U, sl.toolParams().radius * PPM, 0, 0, Math.PI * 2); ctx.stroke();
+  
   if (sl.auto.on) { ctx.font = font(13); ctx.fillStyle = '#7fe3ff'; ctx.fillText(sl.auto.error ? '🤖 Fehler! (R)' : '🤖 Automatik', bx + 22, by - 14); }
 }
 
