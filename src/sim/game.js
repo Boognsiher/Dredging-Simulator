@@ -335,7 +335,7 @@ export class Game {
   rescueShip(id) {
     const ship = this.traffic.ships.find((s) => s.id === id);
     if (!ship || ship.state !== 'grounded') return false;
-    ship.state = 'sail'; ship.ground = 0;
+    ship.state = 'sail'; ship.ground = 0; ship.safeT = CONFIG.traffic.tugFreeSeconds; // ein paar Sekunden Fahrt, bevor es wieder auflaufen kann
     const refund = Math.round(((ship.salvage ?? 0) * CONFIG.tow.refund) / 10) * 10;
     this.money += refund; this.totals.rescued++; this.totals.rescueRefund += refund; this.totals.salvage -= refund;
     this.say(`Schiff freigeschleppt! Bergungskosten −${refund} CHF gespart.`, 'good');

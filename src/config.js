@@ -83,7 +83,7 @@ export const CONFIG = {
     gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
     enterGap: 3.0,
     groundMargin: 0.2, // m: so viel darf die Sohle über dem Tiefgang liegen, ohne dass das Schiff aufläuft (Kielfreiheit von 0,3 m ist ein Puffer)
-    groundSeconds: 40, tugFreeSeconds: 8, // Schlepper auf Maximalstufe befreien aufgelaufene Schiffe 
+    groundSeconds: 40, tugFreeSeconds: 5, // Schlepper auf Maximalstufe befreien aufgelaufene Schiffe 
     salvageFactor: 2.0, // Havarie: Schlepper-Zeit; Bergungskosten = Faktor * Gebühr
     siteRadius: 3.5, siteSlow: 0.5, // Ponton in der Rinne: langsame Fahrt, Wechselverkehr
     switchAfter: 10, // Sekunden Wartezeit auf der Gegenseite, ab der in einer Einbahnrinne die Richtung gewechselt wird

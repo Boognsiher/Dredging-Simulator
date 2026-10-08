@@ -499,6 +499,7 @@ body.mode-map #ptabs { top: 0; }
         <button id="btn-auto">🤖 Auto (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
         <button id="btn-area" hidden>▭ Gebiet (G)</button>
+        <button id="btn-fleetlend" hidden>🧑‍✈️ Zur Flotte (J)</button>
         <button id="btn-route" hidden>〰 Route (N)</button>
         <button id="btn-land" hidden>🛣 Land (L)</button>
         <button id="btn-zone">↔ Kreuzung (K)</button>
@@ -1424,7 +1425,18 @@ function groundedAll() {
   game.maps.forEach((m, k) => { for (const s of m.traffic.ships) if (s.state === 'grounded' && s.path) out.push({ map: k, ship: s.id, name: m.name, x: Math.floor(shipPos(s).x) + 1 }); });
   return out.sort((a, b) => (a.map === game.mapIdx ? 0 : 1) - (b.map === game.mapIdx ? 0 : 1));
 }
+// Schnellknopf: eigenen Ponton der Flotte zuteilen bzw. wieder herausnehmen
+function toggleLend() {
+  if (tow) return;
+  if (lentUnit(game)) { const pos = recallPonton(game); if (pos) { sim.x = pos.x; sim.y = pos.y; } fleetSig = null; updateFleet(); syncMode(); updateTowButton(); toast('Dein Ponton ist zurück: du steuerst ihn wieder selbst', 'info', true); return; }
+  const why = lendBlock(game); if (why) { toast(why, 'bad', true); return; }
+  if (sim.mode === 'slice') sim.leave();
+  if (lendPonton(game, sim.x, sim.y)) { fleetSig = null; updateFleet(); syncMode(); updateTowButton(); toast('Dein Ponton arbeitet für die Flotte (nochmals tippen: zurücknehmen)', 'good', true); }
+}
 function updateTowButton() {
+  const lb = $('btn-fleetlend'), lent = !!lentUnit(game);
+  lb.hidden = !!tow || (!lent && game.stats.autoLevel < 1);
+  lb.textContent = lent ? '↩ Aus Flotte nehmen (J)' : '🧑‍✈️ Zur Flotte (J)'; lb.classList.toggle('primary', lent);
   const gb = $('btn-goto'), all = groundedAll(), first = all[0];
   gb.hidden = !first || !!tow || (first.map === game.mapIdx && sim.mode === 'map' && !!groundedNear(game, sim.x, sim.y));
   if (!gb.hidden) { gb.textContent = `📍 Zum Aufläufer${game.maps.length > 1 ? ` (${first.name}, Spalte ${first.x})` : ` (Spalte ${first.x})`}${all.length > 1 ? ` · ${all.length}` : ''}`; gb.onclick = () => gotoShip(first); }
@@ -1627,7 +1639,7 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
-$('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
+$('btn-fleetlend').onclick = toggleLend; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
 for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
 $('land-done').onclick = toggleLandMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
@@ -1718,6 +1730,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyK')) toggleZoneMode();
       if (!tow && readInput.tap('KeyG')) toggleAreaMode();
       if (!tow && readInput.tap('KeyN')) toggleRouteMode();
+      if (!tow && readInput.tap('KeyJ')) toggleLend();
       if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
@@ -2096,7 +2109,7 @@ const CONFIG = {
     gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
     enterGap: 3.0,
     groundMargin: 0.2, // m: so viel darf die Sohle über dem Tiefgang liegen, ohne dass das Schiff aufläuft (Kielfreiheit von 0,3 m ist ein Puffer)
-    groundSeconds: 40, tugFreeSeconds: 8, // Schlepper auf Maximalstufe befreien aufgelaufene Schiffe 
+    groundSeconds: 40, tugFreeSeconds: 5, // Schlepper auf Maximalstufe befreien aufgelaufene Schiffe 
     salvageFactor: 2.0, // Havarie: Schlepper-Zeit; Bergungskosten = Faktor * Gebühr
     siteRadius: 3.5, siteSlow: 0.5, // Ponton in der Rinne: langsame Fahrt, Wechselverkehr
     switchAfter: 10, // Sekunden Wartezeit auf der Gegenseite, ab der in einer Einbahnrinne die Richtung gewechselt wird
@@ -3341,7 +3354,7 @@ class Game {
   rescueShip(id) {
     const ship = this.traffic.ships.find((s) => s.id === id);
     if (!ship || ship.state !== 'grounded') return false;
-    ship.state = 'sail'; ship.ground = 0;
+    ship.state = 'sail'; ship.ground = 0; ship.safeT = CONFIG.traffic.tugFreeSeconds; // ein paar Sekunden Fahrt, bevor es wieder auflaufen kann
     const refund = Math.round(((ship.salvage ?? 0) * CONFIG.tow.refund) / 10) * 10;
     this.money += refund; this.totals.rescued++; this.totals.rescueRefund += refund; this.totals.salvage -= refund;
     this.say(`Schiff freigeschleppt! Bergungskosten −${refund} CHF gespart.`, 'good');

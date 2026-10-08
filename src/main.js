@@ -795,7 +795,18 @@ function groundedAll() {
   game.maps.forEach((m, k) => { for (const s of m.traffic.ships) if (s.state === 'grounded' && s.path) out.push({ map: k, ship: s.id, name: m.name, x: Math.floor(shipPos(s).x) + 1 }); });
   return out.sort((a, b) => (a.map === game.mapIdx ? 0 : 1) - (b.map === game.mapIdx ? 0 : 1));
 }
+// Schnellknopf: eigenen Ponton der Flotte zuteilen bzw. wieder herausnehmen
+function toggleLend() {
+  if (tow) return;
+  if (lentUnit(game)) { const pos = recallPonton(game); if (pos) { sim.x = pos.x; sim.y = pos.y; } fleetSig = null; updateFleet(); syncMode(); updateTowButton(); toast('Dein Ponton ist zurück: du steuerst ihn wieder selbst', 'info', true); return; }
+  const why = lendBlock(game); if (why) { toast(why, 'bad', true); return; }
+  if (sim.mode === 'slice') sim.leave();
+  if (lendPonton(game, sim.x, sim.y)) { fleetSig = null; updateFleet(); syncMode(); updateTowButton(); toast('Dein Ponton arbeitet für die Flotte (nochmals tippen: zurücknehmen)', 'good', true); }
+}
 function updateTowButton() {
+  const lb = $('btn-fleetlend'), lent = !!lentUnit(game);
+  lb.hidden = !!tow || (!lent && game.stats.autoLevel < 1);
+  lb.textContent = lent ? '↩ Aus Flotte nehmen (J)' : '🧑‍✈️ Zur Flotte (J)'; lb.classList.toggle('primary', lent);
   const gb = $('btn-goto'), all = groundedAll(), first = all[0];
   gb.hidden = !first || !!tow || (first.map === game.mapIdx && sim.mode === 'map' && !!groundedNear(game, sim.x, sim.y));
   if (!gb.hidden) { gb.textContent = `📍 Zum Aufläufer${game.maps.length > 1 ? ` (${first.name}, Spalte ${first.x})` : ` (Spalte ${first.x})`}${all.length > 1 ? ` · ${all.length}` : ''}`; gb.onclick = () => gotoShip(first); }
@@ -998,7 +1009,7 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
-$('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
+$('btn-fleetlend').onclick = toggleLend; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
 for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
 $('land-done').onclick = toggleLandMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
@@ -1089,6 +1100,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyK')) toggleZoneMode();
       if (!tow && readInput.tap('KeyG')) toggleAreaMode();
       if (!tow && readInput.tap('KeyN')) toggleRouteMode();
+      if (!tow && readInput.tap('KeyJ')) toggleLend();
       if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
