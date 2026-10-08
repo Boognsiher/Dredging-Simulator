@@ -542,9 +542,6 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
 #slice-legend i { flex: none; width: 24px; min-height: 14px; border-radius: 3px; font-style: normal; text-align: center; }
 #slice-legend i.tx { color: #ff7a6b; font-weight: 700; font-size: 12px; }
 
-#dpad .ul { grid-column: 1; grid-row: 1; } #dpad .ur { grid-column: 3; grid-row: 1; } #dpad .dl { grid-column: 1; grid-row: 3; } #dpad .dr { grid-column: 3; grid-row: 3; }
-#dpad .ul, #dpad .ur, #dpad .dl, #dpad .dr { font-size: 22px; background: #1d3650; }
-
 </style>
 </head>
 <body>
@@ -614,14 +611,10 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
       <div id="touch-ui" hidden>
         <div id="stick" aria-label="Steuerkreuz"><div id="knob"></div></div>
         <div id="dpad" hidden aria-label="Pfeiltasten für die Pumpe">
-          <button class="dp ul" data-dir="ul" aria-label="Pumpe schräg links hoch">↖</button>
           <button class="dp up" data-dir="up" aria-label="Pumpe hoch">↑</button>
-          <button class="dp ur" data-dir="ur" aria-label="Pumpe schräg rechts hoch">↗</button>
           <button class="dp left" data-dir="left" aria-label="Pumpe links">←</button>
           <button class="dp right" data-dir="right" aria-label="Pumpe rechts">→</button>
-          <button class="dp dl" data-dir="dl" aria-label="Pumpe schräg links runter">↙</button>
           <button class="dp down" data-dir="down" aria-label="Pumpe runter">↓</button>
-          <button class="dp dr" data-dir="dr" aria-label="Pumpe schräg rechts runter">↘</button>
         </div>
         <button id="act" class="primary">⚓ Anker</button>
       </div>
@@ -4720,8 +4713,8 @@ class SliceSim {
     }
 
     let dx = ctl.dx || 0, dy = ctl.dy || 0;
-    dx = clamp(dx, -1, 1); dy = clamp(dy, -1, 1); // Schrägfahrt: Kopf darf quer und hoch/runter zugleich fahren
-    { const len = Math.hypot(dx, dy); if (len > 1) { dx /= len; dy /= len; } }
+    if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0;
+    dx = clamp(dx, -1, 1); dy = clamp(dy, -1, 1);
     this.moving = Math.abs(dx) + Math.abs(dy) > 0.01;
 
     const pumpOk = !a.on || input.pumpOn !== false;
@@ -6606,7 +6599,7 @@ function setupTouch(input, hooks) {
   stick.addEventListener('pointercancel', endStick);
 
   const pressed = new Map();
-  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0], ul: [-1, -1], ur: [1, -1], dl: [-1, 1], dr: [1, 1] };
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
   const applyDpad = () => {
     let dx = 0, dy = 0;
     for (const dir of pressed.values()) { dx += DIRS[dir][0]; dy += DIRS[dir][1]; }

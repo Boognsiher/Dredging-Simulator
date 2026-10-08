@@ -30,7 +30,7 @@ export function setupTouch(input, hooks) {
   stick.addEventListener('pointercancel', endStick);
 
   const pressed = new Map();
-  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0], ul: [-1, -1], ur: [1, -1], dl: [-1, 1], dr: [1, 1] };
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
   const applyDpad = () => {
     let dx = 0, dy = 0;
     for (const dir of pressed.values()) { dx += DIRS[dir][0]; dy += DIRS[dir][1]; }

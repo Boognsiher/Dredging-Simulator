@@ -248,8 +248,8 @@ export class SliceSim {
     }
 
     let dx = ctl.dx || 0, dy = ctl.dy || 0;
-    dx = clamp(dx, -1, 1); dy = clamp(dy, -1, 1); // Schrägfahrt: Kopf darf quer und hoch/runter zugleich fahren
-    { const len = Math.hypot(dx, dy); if (len > 1) { dx /= len; dy /= len; } }
+    if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0;
+    dx = clamp(dx, -1, 1); dy = clamp(dy, -1, 1);
     this.moving = Math.abs(dx) + Math.abs(dy) > 0.01;
 
     const pumpOk = !a.on || input.pumpOn !== false;

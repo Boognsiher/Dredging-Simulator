@@ -213,5 +213,3 @@ Das Level ist die höchste Klasse, deren Rinne schon einmal befahrbar war (auf i
 Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Bestehende Spielstände bekommen das Level passend zu den schon befahrbaren Klassen.
 
 **Pumpe in beide Richtungen:** Die Pumpe saugt von Hand und in der Automatik in beide Richtungen (keine Leerfahrt); beide Richtungen haben dasselbe Tempo. Im Querschnitt zeigt der Knopf «ⓘ» eine Legende der Farben und Markierungen.
-
-**Schrägfahrt im Querschnitt:** Der Saugkopf fährt quer und hoch/runter zugleich (Tastatur: zwei Tasten, Handy: Diagonaltasten im Steuerkreuz).
