@@ -457,3 +457,11 @@ body.mode-map #ptabs { top: 0; }
 
 /* Hafenkarte: Aktionen der Hauptkarte ausblenden */
 body.harbor-view :is(#btn-area, #btn-route, #btn-zone, #btn-land, #btn-fleetlend, #btn-tow, #btn-goto) { display: none !important; }
+
+/* Verladen auf der Hafenkarte */
+#load-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 118px; width: min(92vw, 440px); z-index: 14; background: #0b1c2ccc; border-radius: 10px; padding: 8px 12px 10px; text-align: center; box-shadow: 0 2px 12px #000a; display: flex; flex-direction: column; gap: 6px; }
+#load-bar[hidden] { display: none; }
+#load-bar .lb-track { position: relative; height: 22px; background: #34495e; border-radius: 6px; overflow: hidden; }
+#lb-zone { position: absolute; top: 0; bottom: 0; background: #4bd16a; }
+#lb-mark { position: absolute; top: -2px; bottom: -2px; width: 6px; margin-left: -3px; background: #fff; border-radius: 3px; }
+#load-bar button { margin: 0; padding: 8px; }

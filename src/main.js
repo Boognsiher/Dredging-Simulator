@@ -1,5 +1,5 @@
 import { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } from './sim/shipping.js';
-import { PORT, buyPrice, sellPrice } from './sim/port.js';
+import { PORT, buyPrice, sellPrice, machineOf, isDocked, loadHit as portLoadHit } from './sim/port.js';
 import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } from './sim/land.js';
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
 import { Game } from './sim/game.js';
@@ -778,10 +778,10 @@ function leave() { if (tow) { tow = null; syncMode(); return; } if (sim.leave())
 function enterHarbor() {
   if (harborView || tow) return;
   if (!game.port.harbor) { toast('Der Hafen muss erst eröffnet sein (Hafen, H)', 'bad', true); return; }
-  if (lentUnit(game)) { toast('Dein Ponton arbeitet für die Flotte: erst zurücknehmen', 'bad', true); return; }
   if (sim.mode === 'slice') sim.leave();
   mainSim = sim;
   if (!harborSim || harborSim.river !== game.port.harbor.river) { harborSim = game.createSession(game.port.harbor.river); harborSim.x = 1.5; harborSim.y = (HARBOR.entrance.y0 + HARBOR.entrance.y1 + 1) / 2; }
+  if (lentUnit(game)) { harborSim.x = (HARBOR.basin.x0 + HARBOR.basin.x1) / 2; harborSim.y = (HARBOR.basin.y0 + HARBOR.basin.y1) / 2; } // dein Ponton arbeitet für die Flotte: nur zuschauen
   sim = harborSim; sim.setStats(game.stats); harborView = true; ui.harborView = true; document.body.classList.add('harbor-view');
   mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; landMode = false; ui.landMode = false;
   syncMode(); updateTowButton(); fitCanvas(); toast('Hafenkarte: Becken ausbaggern, Pontons im Panel «Flotte» zuteilen', 'info', true);
@@ -793,6 +793,21 @@ function leaveHarbor(silent = false) {
   if (sim) sim.setStats(game.stats);
   syncMode(); updateTowButton(); fitCanvas(); if (!silent) toast('Zurück auf der Hauptkarte', 'info', true);
 }
+// Verladen auf der Hafenkarte: Zeiger im grünen Bereich auslösen (Taste L oder Knopf); lädt den ersten angelegten Auftrag, Kran/Radlader zeigen den Umschlag
+const lb = { phase: 0, zone: 0.5, msg: '', msgT: 0 };
+function harborLoadHit() {
+  const g = game, M = PORT.machines[machineOf(g)], pos = 0.5 + 0.5 * Math.sin(lb.phase), d = Math.abs(pos - lb.zone) / (M.zone / 2), q = d <= 1 ? 1 - d * 0.5 : 0, got = portLoadHit(g, q);
+  lb.msg = q <= 0 ? 'Daneben!' : q > 0.85 ? `Voltreffer! +${Math.round(got)} t` : `+${Math.round(got)} t`; lb.msgT = 1.2; lb.zone = 0.2 + Math.random() * 0.6;
+}
+function updateLoadBar(dt) {
+  const bar = $('load-bar'), job = harborView ? game.port.jobs?.find(isDocked) : null;
+  bar.hidden = !job; if (!job) return;
+  const M = PORT.machines[machineOf(game)];
+  lb.phase += dt * M.speed * 2.2; lb.msgT = Math.max(0, lb.msgT - dt);
+  $('lb-mark').style.left = `${(0.5 + 0.5 * Math.sin(lb.phase)) * 100}%`; $('lb-zone').style.left = `${(lb.zone - M.zone / 2) * 100}%`; $('lb-zone').style.width = `${M.zone * 100}%`;
+  $('lb-text').textContent = lb.msgT > 0 ? lb.msg : `${PORT.commodities[job.cargo].icon} ${job.out ? 'Laden' : 'Entladen'} ${Math.round(job.done)}/${job.tons} t · ${M.icon} ${M.name}`;
+}
+$('lb-hit').onclick = harborLoadHit;
 function toggleHarborView() { if (harborView) leaveHarbor(); else enterHarbor(); }
 // Zum aufgelaufenen Schiff springen: Karte wechseln, Ponton neben das Schiff setzen
 function gotoShip({ map, ship: id }) {
@@ -829,7 +844,7 @@ function toggleLend() {
   if (lendPonton(game, sim.x, sim.y)) { fleetSig = null; updateFleet(); syncMode(); updateTowButton(); toast('Dein Ponton arbeitet für die Flotte (nochmals tippen: zurücknehmen)', 'good', true); }
 }
 function updateTowButton() {
-  const hb = $('btn-harborview'); hb.hidden = !game.port.open || !game.port.harbor || !!tow || (!harborView && sim.mode !== 'map'); hb.textContent = harborView ? '↩ Hauptkarte (Y)' : '⚓ Hafenkarte (Y)'; hb.classList.toggle('primary', harborView);
+  const hb = $('btn-harborview'); hb.hidden = !game.port.open || !game.port.harbor || !!tow; hb.textContent = harborView ? '↩ Hauptkarte (Y)' : '⚓ Hafenkarte (Y)'; hb.classList.toggle('primary', harborView);
   const lb = $('btn-fleetlend'), lent = !!lentUnit(game);
   lb.hidden = !!tow || (!lent && game.stats.autoLevel < 1);
   lb.textContent = lent ? '↩ Aus Flotte nehmen (J)' : '🧑‍✈️ Zur Flotte (J)'; lb.classList.toggle('primary', lent);
@@ -1129,6 +1144,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyN')) toggleRouteMode();
       if (!tow && readInput.tap('KeyJ')) toggleLend();
       if (!tow && readInput.tap('KeyY')) toggleHarborView();
+      if (harborView && readInput.tap('KeyL')) harborLoadHit();
       if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
@@ -1143,6 +1159,7 @@ function frame(now) {
       if (readInput.tap('KeyF')) setDepthValue(sim.targetDepth - 0.1);
       if (readInput.tap('KeyG')) setDepthValue(sim.targetDepth + 0.1);
     }
+    updateLoadBar(dt);
     game.site = sim.mode === 'slice' && !harborView ? { x: sim.x, y: sim.y } : null;
     sim.bufferRoom = game.bufferRoom;
     sim.concreteAvail = game.concrete;
@@ -1225,7 +1242,7 @@ function frame(now) {
   else if (sim.mode === 'slice') {
     const o = fx.offset();
     ctx.save(); ctx.translate(o.x, o.y); drawSlice(ctx, harborView ? makeHarborView(game) : game, sim, ui); fx.draw(ctx); ctx.restore();
-  } else if (harborView) { const hv = makeHarborView(game); drawMap(ctx, hv, sim, ui); drawHarborScene(ctx, hv, ui); } else drawMap(ctx, game, sim, ui);
+  } else if (harborView) { const hv = makeHarborView(game); drawMap(ctx, hv, lentUnit(game) ? null : sim, ui); drawHarborScene(ctx, hv, ui); } else drawMap(ctx, game, sim, ui);
   panCanvas(1 / 60);
   requestAnimationFrame(frame);
 }

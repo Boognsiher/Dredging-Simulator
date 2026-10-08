@@ -472,6 +472,14 @@ body.mode-map #ptabs { top: 0; }
 /* Hafenkarte: Aktionen der Hauptkarte ausblenden */
 body.harbor-view :is(#btn-area, #btn-route, #btn-zone, #btn-land, #btn-fleetlend, #btn-tow, #btn-goto) { display: none !important; }
 
+/* Verladen auf der Hafenkarte */
+#load-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 118px; width: min(92vw, 440px); z-index: 14; background: #0b1c2ccc; border-radius: 10px; padding: 8px 12px 10px; text-align: center; box-shadow: 0 2px 12px #000a; display: flex; flex-direction: column; gap: 6px; }
+#load-bar[hidden] { display: none; }
+#load-bar .lb-track { position: relative; height: 22px; background: #34495e; border-radius: 6px; overflow: hidden; }
+#lb-zone { position: absolute; top: 0; bottom: 0; background: #4bd16a; }
+#lb-mark { position: absolute; top: -2px; bottom: -2px; width: 6px; margin-left: -3px; background: #fff; border-radius: 3px; }
+#load-bar button { margin: 0; padding: 8px; }
+
 </style>
 </head>
 <body>
@@ -525,6 +533,7 @@ body.harbor-view :is(#btn-area, #btn-route, #btn-zone, #btn-land, #btn-fleetlend
       <div id="land-bar" hidden><button data-tool="road" class="on">🛣 Strasse</button><button data-tool="hall">🏭 Lagerhalle</button><button data-tool="auto">➜ Strasse automatisch</button><button data-tool="demo">✖ Abriss</button><button id="land-done" class="primary">Fertig</button></div>
       <div id="toast"></div>
       <div id="port-page" hidden></div>
+      <div id="load-bar" hidden><small id="lb-text"></small><div class="lb-track"><div id="lb-zone"></div><div id="lb-mark"></div></div><button id="lb-hit" class="primary">🏗 Laden! (L)</button></div>
       <div id="overlay"></div>
       <div id="bruno" hidden></div>
       <div id="touch-ui" hidden>
@@ -616,7 +625,7 @@ body.harbor-view :is(#btn-area, #btn-route, #btn-zone, #btn-land, #btn-fleetlend
 const __defs = [
 function(){
 const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } = __m(1);
-const { PORT, buyPrice, sellPrice } = __m(4);
+const { PORT, buyPrice, sellPrice, machineOf, isDocked, loadHit: portLoadHit } = __m(4);
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(5);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
 const { Game } = __m(9);
@@ -1421,10 +1430,10 @@ function leave() { if (tow) { tow = null; syncMode(); return; } if (sim.leave())
 function enterHarbor() {
   if (harborView || tow) return;
   if (!game.port.harbor) { toast('Der Hafen muss erst eröffnet sein (Hafen, H)', 'bad', true); return; }
-  if (lentUnit(game)) { toast('Dein Ponton arbeitet für die Flotte: erst zurücknehmen', 'bad', true); return; }
   if (sim.mode === 'slice') sim.leave();
   mainSim = sim;
   if (!harborSim || harborSim.river !== game.port.harbor.river) { harborSim = game.createSession(game.port.harbor.river); harborSim.x = 1.5; harborSim.y = (HARBOR.entrance.y0 + HARBOR.entrance.y1 + 1) / 2; }
+  if (lentUnit(game)) { harborSim.x = (HARBOR.basin.x0 + HARBOR.basin.x1) / 2; harborSim.y = (HARBOR.basin.y0 + HARBOR.basin.y1) / 2; } // dein Ponton arbeitet für die Flotte: nur zuschauen
   sim = harborSim; sim.setStats(game.stats); harborView = true; ui.harborView = true; document.body.classList.add('harbor-view');
   mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; landMode = false; ui.landMode = false;
   syncMode(); updateTowButton(); fitCanvas(); toast('Hafenkarte: Becken ausbaggern, Pontons im Panel «Flotte» zuteilen', 'info', true);
@@ -1436,6 +1445,21 @@ function leaveHarbor(silent = false) {
   if (sim) sim.setStats(game.stats);
   syncMode(); updateTowButton(); fitCanvas(); if (!silent) toast('Zurück auf der Hauptkarte', 'info', true);
 }
+// Verladen auf der Hafenkarte: Zeiger im grünen Bereich auslösen (Taste L oder Knopf); lädt den ersten angelegten Auftrag, Kran/Radlader zeigen den Umschlag
+const lb = { phase: 0, zone: 0.5, msg: '', msgT: 0 };
+function harborLoadHit() {
+  const g = game, M = PORT.machines[machineOf(g)], pos = 0.5 + 0.5 * Math.sin(lb.phase), d = Math.abs(pos - lb.zone) / (M.zone / 2), q = d <= 1 ? 1 - d * 0.5 : 0, got = portLoadHit(g, q);
+  lb.msg = q <= 0 ? 'Daneben!' : q > 0.85 ? `Voltreffer! +${Math.round(got)} t` : `+${Math.round(got)} t`; lb.msgT = 1.2; lb.zone = 0.2 + Math.random() * 0.6;
+}
+function updateLoadBar(dt) {
+  const bar = $('load-bar'), job = harborView ? game.port.jobs?.find(isDocked) : null;
+  bar.hidden = !job; if (!job) return;
+  const M = PORT.machines[machineOf(game)];
+  lb.phase += dt * M.speed * 2.2; lb.msgT = Math.max(0, lb.msgT - dt);
+  $('lb-mark').style.left = `${(0.5 + 0.5 * Math.sin(lb.phase)) * 100}%`; $('lb-zone').style.left = `${(lb.zone - M.zone / 2) * 100}%`; $('lb-zone').style.width = `${M.zone * 100}%`;
+  $('lb-text').textContent = lb.msgT > 0 ? lb.msg : `${PORT.commodities[job.cargo].icon} ${job.out ? 'Laden' : 'Entladen'} ${Math.round(job.done)}/${job.tons} t · ${M.icon} ${M.name}`;
+}
+$('lb-hit').onclick = harborLoadHit;
 function toggleHarborView() { if (harborView) leaveHarbor(); else enterHarbor(); }
 // Zum aufgelaufenen Schiff springen: Karte wechseln, Ponton neben das Schiff setzen
 function gotoShip({ map, ship: id }) {
@@ -1472,7 +1496,7 @@ function toggleLend() {
   if (lendPonton(game, sim.x, sim.y)) { fleetSig = null; updateFleet(); syncMode(); updateTowButton(); toast('Dein Ponton arbeitet für die Flotte (nochmals tippen: zurücknehmen)', 'good', true); }
 }
 function updateTowButton() {
-  const hb = $('btn-harborview'); hb.hidden = !game.port.open || !game.port.harbor || !!tow || (!harborView && sim.mode !== 'map'); hb.textContent = harborView ? '↩ Hauptkarte (Y)' : '⚓ Hafenkarte (Y)'; hb.classList.toggle('primary', harborView);
+  const hb = $('btn-harborview'); hb.hidden = !game.port.open || !game.port.harbor || !!tow; hb.textContent = harborView ? '↩ Hauptkarte (Y)' : '⚓ Hafenkarte (Y)'; hb.classList.toggle('primary', harborView);
   const lb = $('btn-fleetlend'), lent = !!lentUnit(game);
   lb.hidden = !!tow || (!lent && game.stats.autoLevel < 1);
   lb.textContent = lent ? '↩ Aus Flotte nehmen (J)' : '🧑‍✈️ Zur Flotte (J)'; lb.classList.toggle('primary', lent);
@@ -1772,6 +1796,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyN')) toggleRouteMode();
       if (!tow && readInput.tap('KeyJ')) toggleLend();
       if (!tow && readInput.tap('KeyY')) toggleHarborView();
+      if (harborView && readInput.tap('KeyL')) harborLoadHit();
       if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
     } else {
@@ -1786,6 +1811,7 @@ function frame(now) {
       if (readInput.tap('KeyF')) setDepthValue(sim.targetDepth - 0.1);
       if (readInput.tap('KeyG')) setDepthValue(sim.targetDepth + 0.1);
     }
+    updateLoadBar(dt);
     game.site = sim.mode === 'slice' && !harborView ? { x: sim.x, y: sim.y } : null;
     sim.bufferRoom = game.bufferRoom;
     sim.concreteAvail = game.concrete;
@@ -1868,7 +1894,7 @@ function frame(now) {
   else if (sim.mode === 'slice') {
     const o = fx.offset();
     ctx.save(); ctx.translate(o.x, o.y); drawSlice(ctx, harborView ? makeHarborView(game) : game, sim, ui); fx.draw(ctx); ctx.restore();
-  } else if (harborView) { const hv = makeHarborView(game); drawMap(ctx, hv, sim, ui); drawHarborScene(ctx, hv, ui); } else drawMap(ctx, game, sim, ui);
+  } else if (harborView) { const hv = makeHarborView(game); drawMap(ctx, hv, lentUnit(game) ? null : sim, ui); drawHarborScene(ctx, hv, ui); } else drawMap(ctx, game, sim, ui);
   panCanvas(1 / 60);
   requestAnimationFrame(frame);
 }
@@ -6885,12 +6911,27 @@ function drawHarborScene(ctx, game, ui = {}) {
     ctx.fillStyle = '#000b'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar, 5); ctx.fillStyle = '#7bd88f'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar * Math.min(1, j.done / j.tons), 5);
     ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(`${PORT.commodities[j.cargo].icon} ${j.out ? 'lädt' : 'entlädt'}`, q.x, q.y + CELL * 1.2 + 16); ctx.textAlign = 'start';
   });
+  // Umschlag: Kran bzw. Radlader fährt zwischen Lager und Schiff, Ladung wandert über den Kai (laden: Lager → Schiff, entladen: Schiff → Lager)
+  const t = ui.t ?? 0, M = PORT.machines[(p.slots ?? []).some((s) => s?.type === 'kran') ? 'kran' : 'radlader'], pierY = (B.y0 - 0.7) * CELL;
+  docked.forEach((j, k) => {
+    const si = (p.slots ?? []).findIndex((s) => s?.type === PORT.storage[j.cargo]); if (si < 0) return;
+    const pl = HARBOR.plots[si], sx = OX + (pl[0] + HARBOR.plotW / 2) * CELL, sy = (pl[1] + HARBOR.plotH) * CELL, bx = OX + berthPos(k).x * CELL, col = cargoById(j.cargo === 'oel' ? 'oel' : j.cargo === 'container' ? 'container' : 'kies')?.color ?? '#c9b27a';
+    ctx.strokeStyle = '#ffffff55'; ctx.lineWidth = 2; ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, pierY); ctx.lineTo(bx, pierY); ctx.stroke(); ctx.setLineDash([]);
+    const len1 = Math.abs(pierY - sy), len2 = Math.abs(bx - sx), tot = len1 + len2;
+    for (let n = 0; n < 3; n++) { // drei Pakete unterwegs
+      let f = ((t * 0.35 + k * 0.31 + n / 3) % 1); if (!j.out) f = 1 - f; const d = f * tot;
+      const x = d < len1 ? sx : sx + Math.sign(bx - sx) * (d - len1), y = d < len1 ? sy + (pierY - sy) * (d / len1) : pierY;
+      ctx.fillStyle = col; ctx.strokeStyle = '#10202c'; ctx.lineWidth = 1; ctx.fillRect(x - 5, y - 5, 10, 10); ctx.strokeRect(x - 5, y - 5, 10, 10);
+    }
+    ctx.font = font(18); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(M.icon, bx, pierY - 3); ctx.textAlign = 'start'; // Gerät am Liegeplatz
+  });
   const res = (p.jobs ?? []).filter((j) => !isDocked(j)).length;
   tag(`Liegeplätze ${(p.jobs ?? []).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
 }
 
 function drawFleet(ctx, game) {
   for (const u of game.fleet?.units ?? []) {
+    if ((u.loc ?? 'main') !== (game.isHarborView ? 'harbor' : 'main')) continue; // Pontons im Hafen erscheinen nur auf der Hafenkarte
     const px = OX + u.x * CELL, py = u.y * CELL, sim = u.sim;
     if (sim?.mode === 'slice') {
       const sl = sim.slice, B = CONFIG.box.cols;

@@ -454,12 +454,27 @@ export function drawHarborScene(ctx, game, ui = {}) {
     ctx.fillStyle = '#000b'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar, 5); ctx.fillStyle = '#7bd88f'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar * Math.min(1, j.done / j.tons), 5);
     ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(`${PORT.commodities[j.cargo].icon} ${j.out ? 'lädt' : 'entlädt'}`, q.x, q.y + CELL * 1.2 + 16); ctx.textAlign = 'start';
   });
+  // Umschlag: Kran bzw. Radlader fährt zwischen Lager und Schiff, Ladung wandert über den Kai (laden: Lager → Schiff, entladen: Schiff → Lager)
+  const t = ui.t ?? 0, M = PORT.machines[(p.slots ?? []).some((s) => s?.type === 'kran') ? 'kran' : 'radlader'], pierY = (B.y0 - 0.7) * CELL;
+  docked.forEach((j, k) => {
+    const si = (p.slots ?? []).findIndex((s) => s?.type === PORT.storage[j.cargo]); if (si < 0) return;
+    const pl = HARBOR.plots[si], sx = OX + (pl[0] + HARBOR.plotW / 2) * CELL, sy = (pl[1] + HARBOR.plotH) * CELL, bx = OX + berthPos(k).x * CELL, col = cargoById(j.cargo === 'oel' ? 'oel' : j.cargo === 'container' ? 'container' : 'kies')?.color ?? '#c9b27a';
+    ctx.strokeStyle = '#ffffff55'; ctx.lineWidth = 2; ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, pierY); ctx.lineTo(bx, pierY); ctx.stroke(); ctx.setLineDash([]);
+    const len1 = Math.abs(pierY - sy), len2 = Math.abs(bx - sx), tot = len1 + len2;
+    for (let n = 0; n < 3; n++) { // drei Pakete unterwegs
+      let f = ((t * 0.35 + k * 0.31 + n / 3) % 1); if (!j.out) f = 1 - f; const d = f * tot;
+      const x = d < len1 ? sx : sx + Math.sign(bx - sx) * (d - len1), y = d < len1 ? sy + (pierY - sy) * (d / len1) : pierY;
+      ctx.fillStyle = col; ctx.strokeStyle = '#10202c'; ctx.lineWidth = 1; ctx.fillRect(x - 5, y - 5, 10, 10); ctx.strokeRect(x - 5, y - 5, 10, 10);
+    }
+    ctx.font = font(18); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(M.icon, bx, pierY - 3); ctx.textAlign = 'start'; // Gerät am Liegeplatz
+  });
   const res = (p.jobs ?? []).filter((j) => !isDocked(j)).length;
   tag(`Liegeplätze ${(p.jobs ?? []).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
 }
 
 function drawFleet(ctx, game) {
   for (const u of game.fleet?.units ?? []) {
+    if ((u.loc ?? 'main') !== (game.isHarborView ? 'harbor' : 'main')) continue; // Pontons im Hafen erscheinen nur auf der Hafenkarte
     const px = OX + u.x * CELL, py = u.y * CELL, sim = u.sim;
     if (sim?.mode === 'slice') {
       const sl = sim.slice, B = CONFIG.box.cols;
