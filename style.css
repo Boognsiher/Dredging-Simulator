@@ -527,3 +527,6 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
 #slice-legend div { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; }
 #slice-legend i { flex: none; width: 24px; min-height: 14px; border-radius: 3px; font-style: normal; text-align: center; }
 #slice-legend i.tx { color: #ff7a6b; font-weight: 700; font-size: 12px; }
+
+#dpad .ul { grid-column: 1; grid-row: 1; } #dpad .ur { grid-column: 3; grid-row: 1; } #dpad .dl { grid-column: 1; grid-row: 3; } #dpad .dr { grid-column: 3; grid-row: 3; }
+#dpad .ul, #dpad .ur, #dpad .dl, #dpad .dr { font-size: 22px; background: #1d3650; }
