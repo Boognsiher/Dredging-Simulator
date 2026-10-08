@@ -9,7 +9,7 @@ import { kaiLevel } from './port.js';
 // Sie nutzen dieselbe Physik wie dein eigener Ponton (DredgeSim/SliceSim), nur ohne Anzeige. Das Ausbauziel ist eine Schiffsklasse
 // (Standard: die kleinste Klasse, die noch nicht fährt). Pontons ohne Arbeit warten und melden, was fehlt.
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
-export const createFleet = () => ({ pilePlan: [], pileRemove: [], units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false });
+export const createFleet = () => ({ pilePlan: [], pileRemove: [], units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false, focus: false });
 
 const hiredCount = (g) => g.fleet.units.filter((u) => !u.self).length; // dein eigener Ponton (self) zählt nicht zu den gemieteten
 export const nextHireCost = (g) => CONFIG.fleet.costs[hiredCount(g)] ?? null;
@@ -141,10 +141,13 @@ function secondClass(g, cls) {
   if (cls && ok(cls)) return cls;
   return [...SHIPS].reverse().find((c) => g.level.classes.includes(c.id) && ok(c)) ?? null;
 }
+export function setFocus(g, on) { g.fleet.focus = !!on; bump(g); }
+// Fokus auf die festgelegte Rinne: Pontons bauen nur noch Pfähle (Wand) und die Trasse aus, nichts sonst
+export const focusActive = (g) => !!g.fleet.focus && !!g.river.trasse?.[0];
 export function setSecond(g, on) { g.fleet.second = !!on; bump(g); }
 function pickLane(g, u) {
   let cls = targetClass(g), lane2 = false, open = cls ? openColumns(g, cls) : [];
-  if ((!cls || !open.length) && g.fleet.second) { // Hauptrinne fertig: zweite Rinne (Gegenverkehr ohne Warten, mehr Durchsatz) mit ausbauen
+  if ((!cls || !open.length) && (g.fleet.second || (g.fleet.focus && g.river.trasse?.[1]))) { // Hauptrinne fertig: zweite Rinne (Gegenverkehr ohne Warten, mehr Durchsatz) mit ausbauen
     const c2 = secondClass(g, cls), o2 = c2 ? openColumns(g, c2, 'secondNodes') : [];
     if (o2.length) { cls = c2; open = o2; lane2 = true; }
   }
@@ -525,6 +528,10 @@ function pickSite(g, u) {
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
   const mine = g.zones.filter((z) => z.unit === u.id && !zoneSupports(g, z, z.cls ?? g.zoneClassId));
   if (mine.length) { const s = pickZone(g, u); return s.none ? { none: `Kreuzungsstelle (Vorrang): ${s.none}` } : s; } // zugeteilte Kreuzung hat Vorrang: sonst nichts anderes bauen
+  if (focusActive(g)) { // Fokus: nur die festgelegte Rinne (und Pfähle dafür)
+    for (const f of [pickPile, pickLane]) { const s = f(g, u); if (!s.none) return s; }
+    return { none: 'Fokus auf die festgelegte Rinne: sie ist frei' };
+  }
   const order = [pickPile, pickArea, ...(landRole ? [pickZone, pickLand, pickLane] : [pickLane, pickZone, pickLand]), pickMine, pickPour];
   const msgs = [];
   for (const f of order) { const s = f(g, u); if (!s.none) return s; msgs.push(s); }

@@ -187,3 +187,7 @@ Das Spiel ist eine **Progressive Web App**: Manifest (`manifest.webmanifest`), S
 - **Container:** Containerschiff jetzt 220 000 CHF, 800 t, 700 CHF Unterhalt je Tag; Tankschiff 220 000 / 800.
 
 **Wie die Fahrrinne entschieden wird:** Je Schiffsklasse wählt das Spiel automatisch den Weg mit dem geringsten fehlenden Baggervolumen (Breite = Schiffsbreite) und berechnet ihn laufend neu. Die zweite Rinne ist der beste Weg, der die erste um mind. eine Zelle meidet. Ist sie noch nicht tief genug, zeigt die Karte sie blass gestrichelt mit «2. Rinne möglich: fehlt … m³». Im Flotten-Menü baut die Option «Zweite Rinne mit ausbauen» sie aus, sobald die Hauptrinne fertig ist; danach gilt sie als Gegenverkehrsrinne (Schiffe talwärts nutzen sie).
+
+**Fahrrinne selbst festlegen (🧭 Rinne, Taste R):** Wegpunkte von links nach rechts antippen, «Rinne: fertig» oder den letzten Punkt nochmals antippen. Danach sucht die Analyse für alle Klassen nur noch entlang deiner Linie (±1 Zelle, zur Feinanpassung an die Tiefe); liegt die Linie für eine Klasse nicht im Baggerkorridor, gilt für sie wieder die freie Suche. Im Panel «Flotte» lassen sich die Hauptrinne und eine 2. Rinne festlegen oder löschen. Die Option «Pontons konzentrieren sich nur auf die festgelegte Rinne» lässt die Flotte nur noch diese Rinne (und dafür nötige Pfähle) ausbaggern. Die Linie wird mit dem Spielstand gespeichert.
+
+**Schleppen im Hochformat:** Das Bild wird grösser, der Joystick entfällt und «Ziehen» ist eine flache Leiste. **Hafenkarte:** Ein fester Knopf «↩ Hauptkarte (Esc)» führt immer zurück.

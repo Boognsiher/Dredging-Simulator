@@ -7,6 +7,20 @@ import { CONFIG, SHIPS, KIND } from '../config.js';
 // path (geglättete Mittellinie in Zellkoordinaten, zum Fahren und Zeichnen), weakest (engste Stelle: Spalte, die am meisten fehlt).
 const EPS = 0.06; // m: so viel darf die Sohle über der nötigen Tiefe liegen (Verlandung im Zentimeterbereich sperrt die Rinne nicht)
 const INF = Infinity;
+export const TRASSE_TOL = 1.0; // Zellen: so weit darf die Rinne von der festgelegten Linie abweichen (Feinanpassung an die Tiefe)
+
+// Vom Spieler festgelegte Rinnenlinie (Wegpunkte in Zellkoordinaten, nach x sortiert) als Funktion x -> y (ausserhalb der Punkte: waagrecht fortgesetzt)
+export function trasseY(pts, x) {
+  if (!pts || pts.length < 2) return null;
+  const xc = x + 0.5;
+  if (xc <= pts[0].x) return pts[0].y;
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const a = pts[k], b = pts[k + 1];
+    if (xc <= b.x) return b.x > a.x ? a.y + ((b.y - a.y) * (xc - a.x)) / (b.x - a.x) : b.y;
+  }
+  return pts[pts.length - 1].y;
+}
+const trasseLimit = (pts) => (pts && pts.length >= 2 ? (x, yc) => Math.abs(yc - trasseY(pts, x)) <= TRASSE_TOL : null);
 
 class Heap {
   constructor() { this.k = []; this.v = []; }
@@ -49,7 +63,7 @@ function deficits(river, wl, need) {
 }
 
 // Günstigste Rinne; blocked = Zellen, die nicht benutzt werden dürfen (zweite Rinne neben der ersten)
-function bestPath(river, def, beam, flow, blocked) {
+function bestPath(river, def, beam, flow, blocked, limit) {
   const { cols, rows } = river, { lo, hi } = lanes(beam);
   const n = cols * rows, cost = new Float32Array(n).fill(INF);
   for (let x = 0; x < cols; x++) {
@@ -60,6 +74,7 @@ function bestPath(river, def, beam, flow, blocked) {
         if (def[i] < 0 || (blocked && blocked[i])) { ok = false; break; }
         s += def[i]; f += flow[i];
       }
+      if (ok && limit && !limit(x, y + (hi - lo) / 2 + 0.5)) ok = false; // vom Spieler festgelegte Trasse: nur Zellen in ihrer Nähe
       if (ok) cost[y * cols + x] = s * 10 + 0.05 + 0.12 * (1 - f / beam);
     }
   }
@@ -161,8 +176,11 @@ export function zonePlan(river, wl, cls, xc, w = 3) {
 
 export function analyzeClass(river, wl, cls) {
   const full = needDepth(cls), minN = minNeedDepth(cls), def = deficits(river, wl, minN), beam = cls.beam;
-  const nodes = bestPath(river, def, beam, river.flow, null);
+  const t0 = river.trasse?.[0], t1 = river.trasse?.[1];
+  let nodes = bestPath(river, def, beam, river.flow, null, trasseLimit(t0)), trasseBlocked = false;
+  if (!nodes && t0) { trasseBlocked = true; nodes = bestPath(river, def, beam, river.flow, null); } // Trasse liegt für dieses Schiff nicht im Baggerkorridor: freie Suche
   const res = { id: cls.id, need: minN, minNeed: minN, fullNeed: full, loadFrac: 0, loadFactor: 0, fullVolume: INF, beam, passable: false, twoWay: false, def, volume: INF, path: null, length: 0, weakest: null, cross: crossColumns(river, def, beam) };
+  res.trasseBlocked = trasseBlocked;
   if (!nodes) return res; // Baggerkorridor ist zu schmal für dieses Schiff
   const cov = covered(river, nodes, beam);
   let miss = 0, worst = 0, worstX = nodes[0].x, altlast = 0;
@@ -184,7 +202,8 @@ export function analyzeClass(river, wl, cls) {
   if (res.passable) { // zweite, getrennte Rinne daneben: Gegenverkehr ohne Wartezeit
     const blocked = new Uint8Array(river.cols * river.rows);
     for (const i of covered(river, nodes, beam, 1)) blocked[i] = 1;
-    const second = bestPath(river, def, beam, river.flow, blocked);
+    let second = t1 ? bestPath(river, def, beam, river.flow, blocked, trasseLimit(t1)) : null;
+    if (!second) second = bestPath(river, def, beam, river.flow, blocked);
     if (second) {
       let m2 = 0;
       for (const i of covered(river, second, beam)) m2 += def[i];

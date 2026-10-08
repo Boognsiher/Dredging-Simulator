@@ -226,6 +226,15 @@ export class Game {
     if (this.money < Z.cost) return `Braucht ${Z.cost.toLocaleString('de-CH')} CHF`;
     return null;
   }
+  // Rinne selbst festlegen: Wegpunkte (nach x aufsteigend) der Hauptrinne (slot 0) oder 2. Rinne (slot 1); null/leer löscht die Linie
+  setTrasse(slot, pts) {
+    const t = this.river.trasse ??= [null, null];
+    if (!pts || pts.length < 2) t[slot] = null;
+    else t[slot] = [...pts].sort((a, b) => a.x - b.x).map((p) => ({ x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 }));
+    this.analyze(true); this.fleet.rev = (this.fleet.rev ?? 0) + 1;
+    return t[slot];
+  }
+
   placeZone(x, clsId = this.zoneClassId) {
     if (this.zoneBlock(x, clsId)) return false;
     this.money -= CONFIG.zones.cost;

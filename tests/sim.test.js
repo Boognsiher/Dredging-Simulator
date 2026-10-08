@@ -1881,3 +1881,33 @@ test('Pfahlwand-Planung: zeigt je Abschnitt Breite zwischen den Wänden sowie fa
   assert.deepEqual(sp[0].pass, ['kahn', 'motor', 'tank', 'container', 'schub'].filter((id) => shipById(id).beam <= 6)); assert.deepEqual(sp[0].cross, ['kahn', 'motor'], 'kreuzen: 2 × Breite + 1 ≤ 6');
   planRemoval(g, [r.idx(x, c - 4)]); sp = wallSpans(g); assert.equal(sp.length, 1, 'zum Rückbau vorgemerkte Pfähle zählen nicht'); assert.equal(sp[0].x0, x + 1);
 });
+
+// ---------- Rinne selbst festlegen, Fokus der Flotte ----------
+import { setFocus, focusActive } from '../src/sim/fleet.js';
+test('Festgelegte Rinne: Analyse folgt der Linie (±1 Zelle); Löschen stellt die freie Suche wieder her', () => {
+  const g = new Game(6, 'hochrhein'); g.eventsOn = false; g.traffic.spawnIn = 1e9;
+  const free = g.fair.kahn.nodes.map((p) => p.y);
+  const y = Math.round(g.river.rows / 2);
+  g.setTrasse(0, [{ x: 0.5, y: y + 0.5 }, { x: g.river.cols - 0.5, y: y + 0.5 }]);
+  const f = g.fair.kahn;
+  if (!f.trasseBlocked) for (const p of f.nodes) assert.ok(Math.abs(p.y - y) <= 2.5, `y=${p.y}`);
+  g.setTrasse(0, null);
+  assert.deepEqual(g.fair.kahn.nodes.map((p) => p.y), free);
+});
+
+test('Fokus: ohne festgelegte Rinne wirkungslos, mit Rinne baut die Flotte nur dort', () => {
+  const g = new Game(6, 'hochrhein'); g.eventsOn = false;
+  setFocus(g, true); assert.equal(focusActive(g), false);
+  g.setTrasse(0, [{ x: 0.5, y: 10.5 }, { x: 40.5, y: 10.5 }]);
+  assert.equal(focusActive(g), true);
+});
+
+test('Spielstand: Trasse bleibt erhalten; fehlende Geräte-Stufen werden mit 0 ergänzt (kein NaN)', () => {
+  const g = new Game(6, 'hochrhein'); g.eventsOn = false;
+  g.setTrasse(0, [{ x: 0.5, y: 10.5 }, { x: 40.5, y: 12.5 }]);
+  delete g.levels.piler;
+  const g2 = restoreGame(serializeGame(g));
+  assert.equal(g2.river.trasse[0].length, 2);
+  assert.equal(g2.levels.piler, 0);
+  assert.ok(Number.isFinite(g2.nextUpgradeCost('piler')));
+});

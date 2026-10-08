@@ -2,7 +2,7 @@
 import { SLICE } from '../sim/slice.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
 import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
-import { needDepth, minNeedDepth } from '../sim/fairway.js';
+import { needDepth, minNeedDepth, trasseY } from '../sim/fairway.js';
 import { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } from '../sim/port.js';
 import { HARBOR, berthPos, waitPos } from '../sim/harbor.js';
 import { areaWork, wallSpans } from '../sim/fleet.js';
@@ -106,7 +106,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   if (sel) drawClassOverlay(ctx, game, sel);
   drawZones(ctx, game, ui);
   drawHarbor(ctx, game);
-  drawPiles(ctx, game, ui);
+  drawPiles(ctx, game, ui); drawTrasse(ctx, game);
   drawAreas(ctx, game, ui);
   drawLandSide(ctx, game, ui);
   drawShips(ctx, game, ui);
@@ -244,6 +244,23 @@ function drawPontoon(ctx, game, sim, ui) {
     ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
     ctx.moveTo(t.x - 14, t.y); ctx.lineTo(t.x + 14, t.y); ctx.moveTo(t.x, t.y - 14); ctx.lineTo(t.x, t.y + 14); ctx.stroke();
   }
+}
+
+// Vom Spieler festgelegte Rinnenlinien (Hauptrinne türkis, 2. Rinne orange) mit ±1-Zellen-Toleranzband
+function drawTrasse(ctx, game) {
+  const T = game.river.trasse ?? [];
+  T.forEach((pts, k) => {
+    if (!pts || pts.length < 2) return;
+    const col = k ? '#ffb347' : '#5ee6d6', x0 = -OX / CELL, x1 = game.river.cols;
+    const yAt = (x) => trasseY(pts, x - 0.5);
+    ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.setLineDash([2, 5]); ctx.lineCap = 'round'; ctx.beginPath();
+    for (let x = Math.max(0.5, x0); x <= x1 - 0.5; x += 0.5) (x <= 0.5 ? ctx.moveTo(OX + x * CELL, yAt(x) * CELL) : ctx.lineTo(OX + x * CELL, yAt(x) * CELL));
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = col; for (const p of pts) { ctx.beginPath(); ctx.arc(OX + p.x * CELL, p.y * CELL, 4, 0, Math.PI * 2); ctx.fill(); }
+    ctx.font = font(12); const t = k ? '🧭 2. Rinne (festgelegt)' : '🧭 Hauptrinne (festgelegt)', tw = ctx.measureText(t).width + 8, p0 = pts[0];
+    ctx.fillStyle = '#000b'; ctx.fillRect(OX + p0.x * CELL, Math.max(0, p0.y * CELL - fs(12) - 8), tw, fs(12) + 3); ctx.fillStyle = col; ctx.fillText(t, OX + p0.x * CELL + 4, Math.max(fs(12), p0.y * CELL - 8));
+    ctx.restore();
+  });
 }
 
 // Pfahlwand: gesetzte Pfähle (Beton mit Nieten), gesicherte Streifen zwischen Pfahl und Ufer (bläulich), geplante Pfähle (gestrichelt), im Planungsmodus Raster, Maus und Linienvorschau
@@ -387,12 +404,12 @@ function drawAreas(ctx, game, ui) {
     const t = `▭ ${a.id} · ${a.depth.toFixed(1)} m${left ? '' : ' ✓'}`, tw = ctx.measureText(t).width + 8;
     ctx.fillStyle = '#000b'; ctx.fillRect(x, y - fs(12) - 3 < 0 ? y : y - fs(12) - 3, tw, fs(12) + 3); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, x + 4, (y - fs(12) - 3 < 0 ? y : y - fs(12) - 3) + fs(12));
   }
-  if (ui.areaMode && ui.areaKind === 'route') { // Route im Entstehen: Punkte, Linie, Vorschau zur Maus
+  if (ui.areaMode && (ui.areaKind === 'route' || ui.areaKind === 'lane')) { // Route bzw. Rinne im Entstehen: Punkte, Linie, Vorschau zur Maus
     const P = ui.routePts ?? [], H = ui.hoverCell;
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.beginPath();
     P.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); if (P.length && H) ctx.lineTo(OX + (Math.floor(H.x) + 0.5) * CELL, (Math.floor(H.y) + 0.5) * CELL); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = '#fff'; for (const p of P) { ctx.beginPath(); ctx.arc(OX + p.x * CELL, p.y * CELL, 4, 0, Math.PI * 2); ctx.fill(); }
-    ctx.font = font(13); const t = P.length ? 'Nächsten Punkt antippen · letzten Punkt nochmals antippen oder «Route: fertig» (N)' : 'Baggerroute: ersten Punkt antippen (auch über Ufer und Land im Ausbaustreifen)';
+    ctx.font = font(13); const lane = ui.areaKind === 'lane', t = lane ? (P.length ? 'Nächsten Punkt weiter rechts antippen · letzten Punkt nochmals antippen oder «Rinne: fertig» (R)' : `${ui.laneSlot ? '2. Rinne' : 'Hauptrinne'}: ersten Punkt links antippen`) : P.length ? 'Nächsten Punkt antippen · letzten Punkt nochmals antippen oder «Route: fertig» (N)' : 'Baggerroute: ersten Punkt antippen (auch über Ufer und Land im Ausbaustreifen)';
     ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H0() - fs(13) - 14, Math.min(ctx.measureText(t).width + 18, W - OX - 12), fs(13) + 8); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, OX + 14, H0() - 12);
   } else if (ui.areaMode) {
     const A = ui.areaA, H = ui.hoverCell;

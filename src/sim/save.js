@@ -3,7 +3,7 @@ import { createRng } from './rng.js';
 import { createMarket } from './market.js';
 import { createPort, ensurePort } from './port.js';
 import { ensureHarbor } from './harbor.js';
-import { levelById } from '../config.js';
+import { levelById, UPGRADES } from '../config.js';
 import { River } from './river.js';
 
 // Spielstand: reine Umwandlung Game <-> JSON-Text (kein DOM, kein Speicher). Gespeichert wird der Management-Zustand (Geld, Zeit, Upgrades,
@@ -52,6 +52,7 @@ export function restoreGame(text) {
     const fresh = game.maps[0].river; // gleicher Seed: liefert die Anzeige-Hilfen (Mittellinie, Breite) der ersten Karte
     Object.assign(game, s.data);
     game._stats = null;
+    game.levels ??= {}; for (const k of Object.keys(UPGRADES)) game.levels[k] ??= 0; // neue Geräte in älteren Ständen (sonst NaN als Preis)
     game.notes = []; game.flash = []; game.mapIdx = Math.min(game.mapIdx ?? 0, game.maps.length - 1);
     const types = { Float32Array, Uint8Array };
     game.maps.forEach((m, i) => {

@@ -14,6 +14,7 @@ export class River {
     this.cols = cols;
     this.rows = rows;
     this.area = CONFIG.layer.cellArea;
+    this.trasse = [null, null]; // vom Spieler festgelegte Rinnenlinien: [Hauptrinne, 2. Rinne], je Liste von {x, y} (Zellkoordinaten)
     this.wl = CONFIG.water.base;
     this.top = new Float32Array(n);
     this.rock = new Float32Array(n);

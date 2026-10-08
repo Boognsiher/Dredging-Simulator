@@ -5,7 +5,7 @@ import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, ship
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
-import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
+import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
@@ -392,7 +392,7 @@ function landClick(px, py) {
 }
 function toggleAreaMode() {
   if (tow || sim.mode !== 'map') { toast('Arbeitsgebiete gibst du auf der Karte vor (Anker lichten mit Q)', 'info', true); return; }
-  if (areaMode && areaKind === 'route') { finishRoute(); return; }
+  if (areaMode && areaKind !== 'rect') { finishRoute(); return; }
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (pileMode) togglePileMode();
   areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null;
   areaMode = !areaMode; ui.areaMode = areaMode; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
@@ -401,19 +401,21 @@ function toggleAreaMode() {
 }
 function syncAreaButtons() {
   const rect = areaMode && areaKind === 'rect', route = areaMode && areaKind === 'route';
+  $('btn-lane').textContent = areaMode && areaKind === 'lane' ? `✔ Rinne: fertig (R)${ui.routePts?.length ? ` · ${ui.routePts.length} Punkte` : ''}` : (game.river.trasse?.[0] ? '🧭 Rinne ändern (R)' : '🧭 Rinne festlegen (R)');
   $('btn-area').textContent = rect ? '✔ Gebiet: fertig (G)' : '▭ Gebiet (G)';
   $('btn-route').textContent = route ? `✔ Route: fertig (N)${ui.routePts?.length ? ` · ${ui.routePts.length} Punkte` : ''}` : '〰 Route (N)';
 }
 // Baggerroute: Wegpunkte antippen, «fertig» legt die Route an; die Flotte baggert sie auf Tiefe aus (auch Ufer und Land im Ausbaustreifen mit Löffelbagger)
 function toggleRouteMode() {
   if (tow || sim.mode !== 'map') { toast('Routen zeichnest du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
-  if (areaMode && areaKind === 'route') { finishRoute(); return; }
+  if (areaMode && areaKind !== 'rect') { finishRoute(); return; }
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) toggleAreaMode(); if (pileMode) togglePileMode();
   areaKind = 'route'; ui.areaKind = 'route'; ui.routePts = []; areaMode = true; ui.areaMode = true; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
   syncAreaButtons();
   toast(`Wegpunkte der Route antippen, zuletzt «Route: fertig» (N) oder den letzten Punkt nochmals antippen (max. ${MAX_AREAS} Gebiete/Routen)`, 'info', true);
 }
 function finishRoute() {
+  if (areaKind === 'lane') { finishLane(); return; }
   const pts = ui.routePts ?? []; areaMode = false; ui.areaMode = false; areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null; ui.hoverCell = null;
   syncAreaButtons();
   if (pts.length < 2) { toast('Route abgebrochen: mindestens zwei Punkte nötig', 'info', true); return; }
@@ -422,11 +424,28 @@ function finishRoute() {
   toast(`Route ${a.id} angelegt: Breite ${a.w}, Tiefe ${a.depth.toFixed(1)} m${a.lost ? ` · ${a.lost} Zellen auf nicht abbaubarem Land bleiben stehen` : ''}${game.stats.loeffel > 0 ? '' : ' · Land braucht den Löffelbagger'}`, 'good', true);
   fleetSig = null; updateFleet();
 }
+// Fahrrinne selbst festlegen: Wegpunkte von links nach rechts antippen; die Analyse sucht dann nur noch entlang dieser Linie (±1 Zelle) und die Flotte kann sich darauf konzentrieren
+let laneSlot = 0;
+function toggleLaneMode(slot = 0) {
+  if (tow || sim.mode !== 'map' || harborView) { toast('Die Rinne legst du auf der Hauptkarte fest (Anker lichten mit Q)', 'info', true); return; }
+  if (areaMode && areaKind === 'lane') { finishLane(); return; }
+  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) toggleAreaMode(); if (pileMode) togglePileMode();
+  laneSlot = slot; ui.laneSlot = slot; areaKind = 'lane'; ui.areaKind = 'lane'; ui.routePts = []; areaMode = true; ui.areaMode = true; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
+  syncAreaButtons();
+  toast(`${slot ? '2. Rinne' : 'Hauptrinne'}: Wegpunkte von links nach rechts antippen, zuletzt «Rinne: fertig» (R) oder den letzten Punkt nochmals antippen`, 'info', true);
+}
+function finishLane() {
+  const pts = ui.routePts ?? []; areaMode = false; ui.areaMode = false; areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null; ui.hoverCell = null;
+  if (pts.length < 2) { toast('Rinne abgebrochen: mindestens zwei Punkte nötig', 'info', true); syncAreaButtons(); return; }
+  game.setTrasse(laneSlot, pts); syncAreaButtons();
+  toast(`${laneSlot ? '2. Rinne' : 'Hauptrinne'} festgelegt: Fahrrinne und Ausbau folgen jetzt dieser Linie${laneSlot ? '' : ' · im Panel «Flotte» konzentrieren sich die Pontons darauf'}`, 'good', true);
+  fleetSig = null; updateFleet();
+}
 // ---------- Pfahlwand planen ----------
 function togglePileMode() {
   if (tow || sim.mode !== 'map' || harborView) { toast('Die Pfahlwand planst du auf der Hauptkarte (Anker lichten mit Q)', 'info', true); return; }
   if (game.stats.piler <= 0 && !pileMode) toast('Pfähle setzen kann erst, wer das Pfahlgerät hat (Technik, Reiter Geräte)', 'info', true);
-  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) { if (areaKind === 'route') finishRoute(); else toggleAreaMode(); }
+  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) { if (areaKind !== 'rect') finishRoute(); else toggleAreaMode(); }
   pileMode = !pileMode; ui.pileMode = pileMode; ui.pileZoom = pileZoom; pileA = null; ui.pileA = null; ui.hoverCell = null; mapTarget = null;
   if (pileMode) { planFocus.x = sim.x; planFocus.y = sim.y; toast('Pfahlwand: Zellen antippen (Einzelzelle) oder zwei Punkte für eine Linie. Mit Joystick/Pfeiltasten verschieben, ± zoomt. Gebaut wird mit dem Betoniergerät aus dem Betonvorrat.', 'info', true); }
   document.body.classList.toggle('pile-mode', pileMode); $('pile-bar').hidden = !pileMode; syncPileButton(); layoutSig = ''; fitCanvas();
@@ -459,6 +478,12 @@ function pileZoomBy(f) { pileZoom = Math.min(4, Math.max(1.2, pileZoom * f)); ui
 function cellAt(px, py) { return { x: (px - OX) / CELL, y: py / CELL }; }
 function areaClick(px, py) {
   const c = cellAt(px, py);
+  if (areaKind === 'lane') {
+    const pts = ui.routePts ??= [], last = pts[pts.length - 1], p = { x: Math.floor(c.x) + 0.5, y: Math.floor(c.y) + 0.5 };
+    if (last && Math.hypot(last.x - p.x, last.y - p.y) < 0.6) { if (pts.length >= 2) finishLane(); return; }
+    if (last && p.x <= last.x) { toast('Die Rinne verläuft von links nach rechts: nächster Punkt weiter rechts', 'info', true); return; }
+    pts.push(p); syncAreaButtons(); return;
+  }
   if (areaKind === 'route') {
     const pts = ui.routePts ??= [], last = pts[pts.length - 1], p = { x: Math.floor(c.x) + 0.5, y: Math.floor(c.y) + 0.5 };
     if (last && Math.hypot(last.x - p.x, last.y - p.y) < 0.6) { if (pts.length >= 2) finishRoute(); return; } // letzten Punkt nochmals antippen = fertig
@@ -505,7 +530,7 @@ function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden;
   $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open;
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, F.second, game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, F.second, F.focus, JSON.stringify(game.river.trasse), game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
@@ -514,6 +539,9 @@ function updateFleet() {
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
     <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
+    <div class="fleet-lane"><b>Fahrrinne festlegen</b><small> Ohne Vorgabe sucht das Spiel selbst die günstigste Linie. Mit Vorgabe gilt nur noch dein Verlauf (±1 Zelle).</small>
+      <div class="row"><button id="lane-set0">🧭 Hauptrinne ${game.river.trasse?.[0] ? 'ändern' : 'festlegen'}</button><button id="lane-set1" ${game.river.trasse?.[0] ? '' : 'disabled'}>🧭 2. Rinne ${game.river.trasse?.[1] ? 'ändern' : 'festlegen'}</button><button id="lane-clr" ${game.river.trasse?.[0] || game.river.trasse?.[1] ? '' : 'disabled'}>🗑 Löschen</button></div>
+      <label class="fleet-widen"><input type="checkbox" id="fleet-focus" ${F.focus ? 'checked' : ''} ${game.river.trasse?.[0] ? '' : 'disabled'}> Pontons konzentrieren sich nur auf die festgelegte Rinne (sonst nichts)</label></div>
     <label class="fleet-widen"><input type="checkbox" id="fleet-second" ${F.second ? 'checked' : ''}> Zweite Rinne mit ausbauen, sobald die Hauptrinne fertig ist (Gegenverkehr ohne Warten, mehr Durchsatz; Vorschau: Klasse wählen)</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-mine" ${F.mine ? 'checked' : ''}> Rohstoffe abbauen: freie Pontons baggern Vorkommen mit Konzession (Preisaufschlag)</label>
     <label class="fleet-widen"><input type="checkbox" id="fleet-pour" ${F.pour ? 'checked' : ''} ${game.stats.betonrohr > 0 ? '' : 'disabled'}> Rinne betonieren (Betoniergerät und Beton nötig): freie Pontons verhärten Rinne und Böschung</label>
@@ -529,6 +557,9 @@ function updateFleet() {
     <button id="btn-hire" class="primary" ${block ? 'disabled' : ''}>${cost === null ? 'Flotte ist voll' : `Ponton mieten (${chf(cost)})`}</button>${block && cost !== null ? `<small class="warn">${block}</small>` : ''}`;
   $('fleet-nonat').onchange = (e) => { setAvoid(game, e.target.checked, F.noAltlast); fleetSig = null; updateFleet(); };
   $('fleet-noalt').onchange = (e) => { setAvoid(game, F.noNature, e.target.checked); fleetSig = null; updateFleet(); };
+  $('lane-set0').onclick = () => toggleLaneMode(0); $('lane-set1').onclick = () => toggleLaneMode(1);
+  $('lane-clr').onclick = () => { game.setTrasse(0, null); game.setTrasse(1, null); setFocus(game, false); syncAreaButtons(); fleetSig = null; updateFleet(); toast('Festgelegte Rinnen gelöscht: das Spiel sucht die günstigste Linie selbst', 'info', true); };
+  $('fleet-focus').onchange = (e) => { setFocus(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-second').onchange = (e) => { setSecond(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-mine').onchange = (e) => { setMine(game, e.target.checked); fleetSig = null; updateFleet(); };
   $('fleet-pour').onchange = (e) => { setPour(game, e.target.checked); fleetSig = null; updateFleet(); };
@@ -727,7 +758,8 @@ function panCanvas(dt) {
     canvas.style.marginLeft = canvas.style.marginTop = canvas.style.marginBottom = canvas.style.clipPath = '';
     return;
   }
-  if (zoom > 1 && pileMode) {
+  if (zoom > 1 && tow) canvas.style.marginLeft = `${-Math.max(0, cw - stageW) / 2}px`;
+  else if (zoom > 1 && pileMode) {
     const fxp = ((OX + planFocus.x * CELL) / canvas.logicalW) * cw, want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
     panX += (want - panX) * Math.min(1, dt * 6); canvas.style.marginLeft = `${-panX}px`;
   } else if (zoom > 1 && sim.mode === 'slice') {
@@ -772,6 +804,11 @@ function fitCanvas() {
     const visAvail = Math.max(60, innerHeight - docTop - below - 12);
     zoom = pileZoom; w = stageW * zoom; h = w * (lh / lw); if (h > visAvail + 1) cropVis = visAvail;
   }
+  else if (portrait && tow) { // Schleppen im Hochformat: so gross wie die Höhe erlaubt, seitlich mittig (Aufläufer und Ponton bleiben im Bild)
+    const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
+    zoom = Math.min(1.18, Math.max(1, visAvail / nat));
+    w = stageW * zoom; h = w * (lh / lw);
+  }
   else if (portrait && sim.mode === 'slice') {
     const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
     zoom = Math.min(MAX_ZOOM_SLICE, Math.max(1, visAvail / nat));
@@ -804,7 +841,7 @@ function syncMode() {
   const mode = curMode();
   fx.clear(); audio.hum(false, 0);
   $('shift-hud').hidden = false; $('shift-actions').hidden = false;
-  document.body.classList.toggle('mode-slice', mode === 'slice'); applyLayoutMode(); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
+  document.body.classList.toggle('mode-slice', mode === 'slice'); document.body.classList.toggle('mode-tow', mode === 'tow'); applyLayoutMode(); // Querschnitt: Anzeigen liegen im Bild, Leisten werden kompakt
   $('btn-anchor').hidden = mode !== 'map'; $('btn-leave').hidden = mode !== 'slice' && mode !== 'tow'; $('btn-pump').hidden = mode !== 'slice';
   $('btn-land').hidden = mode !== 'map' || !game.port.open; $('btn-zone').hidden = mode !== 'map'; $('btn-area').hidden = mode !== 'map' || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden; syncAreaButtons();
   $('btn-leave').textContent = mode === 'tow' ? '↩ Schleppen abbrechen (Q)' : '↩ Zurück zur Karte (Q)';
@@ -829,14 +866,14 @@ function enterHarbor() {
   mainSim = sim;
   if (!harborSim || harborSim.river !== game.port.harbor.river) { harborSim = game.createSession(game.port.harbor.river); harborSim.x = 1.5; harborSim.y = (HARBOR.entrance.y0 + HARBOR.entrance.y1 + 1) / 2; }
   if (lentUnit(game)) { harborSim.x = (HARBOR.basin.x0 + HARBOR.basin.x1) / 2; harborSim.y = (HARBOR.basin.y0 + HARBOR.basin.y1) / 2; } // dein Ponton arbeitet für die Flotte: nur zuschauen
-  sim = harborSim; sim.setStats(game.stats); harborView = true; ui.harborView = true; document.body.classList.add('harbor-view');
+  sim = harborSim; sim.setStats(game.stats); harborView = true; ui.harborView = true; document.body.classList.add('harbor-view'); $('harbor-back').hidden = false;
   mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; landMode = false; ui.landMode = false;
   syncMode(); updateTowButton(); fitCanvas(); toast('Hafenkarte: Becken ausbaggern, Pontons im Panel «Flotte» zuteilen', 'info', true);
 }
 function leaveHarbor(silent = false) {
   if (!harborView) return;
   if (sim.mode === 'slice') sim.leave();
-  sim = mainSim; mainSim = null; harborView = false; ui.harborView = false; document.body.classList.remove('harbor-view'); mapTarget = null;
+  sim = mainSim; mainSim = null; harborView = false; ui.harborView = false; document.body.classList.remove('harbor-view'); $('harbor-back').hidden = true; mapTarget = null;
   if (sim) sim.setStats(game.stats);
   syncMode(); updateTowButton(); fitCanvas(); if (!silent) toast('Zurück auf der Hauptkarte', 'info', true);
 }
@@ -894,9 +931,10 @@ function toggleLend() {
 let toolsOpen = false;
 function toggleTools(open = !toolsOpen) { toolsOpen = open; document.body.classList.toggle('tools-open', open); resetBars(); fitCanvas(); }
 function updateToolButtons() {
-  const act = { 'btn-area': areaMode && areaKind === 'rect', 'btn-route': areaMode && areaKind === 'route', 'btn-pile': pileMode, 'btn-zone': zoneMode, 'btn-land': landMode };
+  const act = { 'btn-lane': areaMode && areaKind === 'lane', 'btn-area': areaMode && areaKind === 'rect', 'btn-route': areaMode && areaKind === 'route', 'btn-pile': pileMode, 'btn-zone': zoneMode, 'btn-land': landMode };
   const tools = [...document.querySelectorAll('#shift-actions .tool-btn')];
   for (const b of tools) b.classList.toggle('on', !!act[b.id]);
+  $('btn-lane').hidden = sim.mode !== 'map' || !!tow || harborView;
   $('btn-pile').hidden = !(game.stats.piler > 0 || (game.fleet.pilePlan ?? []).length || pileMode) || sim.mode !== 'map' || !!tow;
   const fm = $('btn-fleetmenu'); fm.hidden = !tools.some((b) => !b.hidden) || sim.mode !== 'map' || !!tow;
   fm.classList.toggle('open', toolsOpen); fm.textContent = toolsOpen ? '🚤 Flotte ▴' : '🚤 Flotte ▾';
@@ -1045,7 +1083,7 @@ function showLevels(note = '') {
 }
 
 function restart(loaded = null) {
-  harborView = false; ui.harborView = false; mainSim = null; harborSim = null; document.body.classList.remove('harbor-view');
+  harborView = false; ui.harborView = false; mainSim = null; harborSim = null; document.body.classList.remove('harbor-view'); $('harbor-back').hidden = true;
   curTab = 'home'; newTabs = new Set(); unlockSilent = true; $('ptabs').dataset.sig = '';
   game = loaded instanceof Game ? loaded : loaded && typeof loaded === 'object' ? new Game(loaded.seed, loaded.levelId) : new Game(undefined, typeof loaded === 'string' ? loaded : game.levelId);
   sim = game.createSession(); sim.autoRange = game.autoRange ?? null; paused = false; endShown = false;
@@ -1116,7 +1154,7 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
-$('btn-harborview').onclick = toggleHarborView; $('btn-fleetlend').onclick = toggleLend; $('btn-pile').onclick = togglePileMode; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
+$('btn-lane').onclick = () => toggleLaneMode(0); $('btn-harborview').onclick = toggleHarborView; $('harbor-back').onclick = () => leaveHarbor(); $('btn-fleetlend').onclick = toggleLend; $('btn-pile').onclick = togglePileMode; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
 for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
 $('land-done').onclick = toggleLandMode;
 for (const b of $('pile-bar').querySelectorAll('[data-ptool]')) b.onclick = () => { pileTool = b.dataset.ptool; pileA = null; ui.pileA = null; syncPileButton(); };
@@ -1212,9 +1250,11 @@ function frame(now) {
       if (!tow && readInput.tap('KeyK')) toggleZoneMode();
       if (!tow && readInput.tap('KeyG')) toggleAreaMode();
       if (!tow && readInput.tap('KeyO')) togglePileMode();
+      if (!tow && readInput.tap('KeyR')) toggleLaneMode(0);
       if (!tow && readInput.tap('KeyN')) toggleRouteMode();
       if (!tow && readInput.tap('KeyJ')) toggleLend();
       if (!tow && readInput.tap('KeyY')) toggleHarborView();
+      if (harborView && sim.mode === 'map' && readInput.tap('Escape')) leaveHarbor();
       if (harborView && readInput.tap('KeyL')) harborLoadHit();
       if (!tow && readInput.tap('KeyL')) toggleLandMode();
       if (tow && readInput.tap('Escape', 'KeyQ')) leave();
