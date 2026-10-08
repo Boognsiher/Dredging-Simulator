@@ -1683,3 +1683,16 @@ test('Kreuzung: zugeteiltes Ponton hat Vorrang und stoppt alles andere', () => {
   assert.ok(u1.site?.zid === z.id || u1.state === 'idle', 'u1 arbeitet nur an der zugeteilten Kreuzung');
   assert.ok(!u2.site || u2.site.zid !== z.id, 'u2 lässt die Kreuzung in Ruhe');
 });
+
+test('Freigeschleppt: Schiff fährt mindestens 5 s und über die Untiefe, ohne wieder aufzulaufen', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false;
+  const cid = Object.keys(g.fair).find((id) => g.fair[id].passable);
+  let s = null; for (let k = 0; k < 40 && !s; k++) s = spawnShip(g); s.cls = cid; s.dir = 1;
+  for (let t = 0; t < 30; t += 0.1) { g.time += 0.1; updateTraffic(g, 0.1); if (s.state === 'sail' && s.s > 8) break; }
+  s.state = 'grounded'; s.ground = 30; s.salvage = 100; g.wl -= 6; // die ganze Strecke ist zu flach
+  assert.ok(g.rescueShip(s.id));
+  for (let t = 0; t < 20; t += 0.1) { g.time += 0.1; updateTraffic(g, 0.1); assert.notEqual(s.state, 'grounded', 'bei ' + t.toFixed(1) + ' s aufgelaufen'); if (s.state !== 'sail') break; }
+  const g0 = g.totals.groundings;
+  for (let t = 0; t < 12; t += 0.1) { g.time += 0.1; updateTraffic(g, 0.1); }
+  assert.ok(g.totals.groundings >= g0); // nach 25 s darf es wieder auflaufen (flache Strecke ohne Ende)
+});
