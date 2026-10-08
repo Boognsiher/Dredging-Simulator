@@ -217,7 +217,9 @@ export function setUnitLoc(g, id, loc) {
 export const unitsAt = (g, loc) => g.fleet.units.filter((u) => locOf(u) === loc);
 // ---------- Pfahlwand (Hauptkarte): Zellen im Wasser, in die Betonpfähle gesetzt werden. Pfahl = feste Zelle (nicht abtragbar, hält die Böschung); zwischen Pfahl und Ufer
 // ist die Sohle gesichert (Abtragsperre bis Oberkante). Gesetzt wird nur, was geplant ist: die Pontons mit Betoniergerät fahren hin und giessen den Pfahl. ----------
-export const PILE = { concrete: 10, time: 5, top: 0.5 }; // m³ Beton je Pfahl, Sekunden Bauzeit, Oberkante unter dem Wasserspiegel (m)
+export const PILE = { base: 4, perM: 2.2, top: 0.5 }; // Beton je Pfahl: Sockel + je Meter Länge (Pfahl reicht bis auf den Fels); Oberkante unter dem Wasserspiegel (m); Bauzeit: Stufe des Pfahlgeräts (g.stats.pileTime)
+export const pileLength = (g, i) => Math.max(0.5, g.river.wl - PILE.top - g.river.rock[i]); // Pfahllänge bis auf den Fels (m)
+export const pileConcrete = (g, i) => PILE.base + PILE.perM * pileLength(g, i);
 export function pileBlock(g, i) {
   const r = g.river; if (i < 0 || i >= r.top.length) return 'ausserhalb';
   if (r.pile[i]) return 'steht schon ein Pfahl'; if (r.bay[i]) return 'nicht im Hafenbecken';
@@ -242,8 +244,8 @@ export function lineCells(r, ax, ay, bx, by) {
 }
 function pickPile(g, u) {
   const plan = g.fleet.pilePlan ?? []; if (!plan.length) return { none: 'Kein Pfahl geplant' };
-  if (g.stats.betonrohr <= 0) return { none: 'Pfähle brauchen das Betoniergerät (Technik)' };
-  if (g.concrete < PILE.concrete) return { none: 'Kein Beton für Pfähle (Betonvorrat)' };
+  if (g.stats.piler <= 0) return { none: 'Pfähle brauchen das Pfahlgerät (Technik, Geräte)' };
+  if (g.concrete < PILE.base + PILE.perM * 1) return { none: 'Kein Beton für Pfähle (Betonvorrat)' };
   const r = g.river, taken = new Set(g.fleet.units.filter((q) => q !== u && q.site?.pile).map((q) => q.site.cell));
   let best = null, bd = Infinity;
   for (const i of plan) {
@@ -258,10 +260,11 @@ function pickPile(g, u) {
 function pileWork(g, u, dt) {
   const s = u.site, i = s.cell, F = g.fleet;
   if (pileBlock(g, i)) { F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i); u.state = 'idle'; u.site = null; u.idle = 0; return; }
-  if (g.concrete < PILE.concrete) { u.note = 'Kein Beton mehr für den Pfahl'; if (u.workT > 25) { u.skip[`C${i}`] = g.time + 40; u.state = 'idle'; u.site = null; u.idle = CONFIG.fleet.idleRetry; } return; }
-  u.pileT = (u.pileT ?? 0) + dt; u.note = `setzt Pfahl bei Spalte ${s.col + 1} (${Math.round((u.pileT / PILE.time) * 100)} %)`;
-  if (u.pileT >= PILE.time) {
-    g.concrete -= PILE.concrete; g.river.setPile(i, true, PILE.top); F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i);
+  const need = pileConcrete(g, i);
+  if (g.concrete < need) { u.note = `Kein Beton für den Pfahl (${Math.ceil(need)} m³ nötig)`; if (u.workT > 25) { u.skip[`C${i}`] = g.time + 40; u.state = 'idle'; u.site = null; u.idle = CONFIG.fleet.idleRetry; } return; }
+  u.pileT = (u.pileT ?? 0) + dt; u.note = `setzt Pfahl bei Spalte ${s.col + 1} (${Math.round((u.pileT / g.stats.pileTime) * 100)} %)`;
+  if (u.pileT >= g.stats.pileTime) {
+    g.concrete -= need; g.river.setPile(i, true, PILE.top); F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i);
     g.totals.piles = (g.totals.piles ?? 0) + 1; g.flash.push({ x: s.px, y: s.py, text: 'Pfahl', color: '#cfd3da' });
     u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl gesetzt'; g.fairClock = 0; // Fahrrinne neu auswerten
   }

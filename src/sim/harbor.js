@@ -10,8 +10,8 @@ export const HARBOR = {
   entrance: { x0: 0, x1: 13, y0: 16, y1: 19 }, // Zufahrt vom Fluss
   startDepth: 1.0, siltTo: 1.3, // das Becken verlandet wieder bis zu dieser Tiefe, wenn nicht gebaggert wird
   entranceDepth: 2.8,
-  need: { kahn: 2.0, motor: 3.0, tank: 4.0, container: 5.0, schub: 6.0 }, // Beckentiefe (m), die die Klasse zum Anlegen braucht (tiefer als der Fluss: Kaimauer, grosse Schiffe)
-  kaiClasses: [1, 2, 4], // so viele Schiffsklassen (der Reihe nach: Lastkahn, Motorschiff, Tankschiff, Containerschiff) nimmt der Kai je Stufe an
+  need: { kahn: 2.0, motor: 3.0, tank: 4.0, container: 5.0, schub: 6.2 }, // Beckentiefe (m), die die Klasse zum Anlegen braucht (tiefer als der Fluss: Kaimauer, grosse Schiffe)
+  kaiClasses: [1, 2, 5], // so viele Schiffsklassen (der Reihe nach: Lastkahn, Motorschiff, Tankschiff, Containerschiff) nimmt der Kai je Stufe an
   waits: [1, 2, 4], // Warteräume je Kai-Stufe: dort warten Schiffe, wenn alle Liegeplätze belegt sind
   waitX: [17, 21, 25, 29], waitY: 21.2, // Warteplätze im südlichen Becken
   quayY: 10.5, berthX: [16, 20, 24, 28, 32], // Liegeplätze an der Nordkaimauer

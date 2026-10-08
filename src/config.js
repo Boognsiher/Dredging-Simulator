@@ -69,7 +69,7 @@ export const CONFIG = {
     clogSeconds: [15, 15, 10, 5], // Wartezeit bei Verstopfung: Pumpe bleibt stehen, bis sie vorbei ist oder das Freispülen gelingt (bessere Automatik = kürzer)
   },
   // Echolot: lotet das Profil vor dem Abtrag aus. Ohne Echolot ist die Messung ungenau (±), die Automatik trifft die Solltiefe schlechter.
-  echolot: { noise: [0.35, 0.12, 0.04], doneEps: 0.03, defaultDepth: 2.8, minDepth: 1.0, maxDepth: 5.5 },
+  echolot: { noise: [0.35, 0.12, 0.04], doneEps: 0.03, defaultDepth: 2.8, minDepth: 1.0, maxDepth: 7.2 },
   pumpSpeed: { min: 0.2, max: 1, default: 1 },
   // Verkehr: Schiffe erscheinen an beiden Enden, fahren die Fahrrinne ab und zahlen beim Verlassen des Abschnitts
   traffic: {
@@ -138,7 +138,7 @@ export const BASE_STATS = {
   bufferCapacity: 160, // m³ Puffer vor der Anlage; ist er voll, muss das Saugen pausieren
   disposalFactor: 1, // Faktor auf Entsorgungskosten (Entwässerung senkt ihn)
   sortBonus: 1, // Faktor auf Verkaufserlöse (Sortieranlage hebt ihn)
-  rockFirmness: 0.04, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
+  rockFirmness: 0.10, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
   autoLevel: 0,
   echolot: 0,
   trafficMult: 1, // Betonnung & Leuchtfeuer: mehr Schiffe
@@ -146,6 +146,8 @@ export const BASE_STATS = {
   pilot: 0, // Lotsendienst: höhere Gebühren
   signals: 0, // Rotlichter: mehr Kreuzungsstellen und Warteplatz
   tugs: 0, // Schlepper: Warteplatz und schnellere grosse Schiffe
+  piler: 0, // Pfahlgerät-Stufe (0 = keine Pfähle möglich)
+  pileTime: 10, // Sekunden je Pfahl
   loeffel: 0, // Löffelbagger-Stufe (0 = nicht vorhanden)
   betonrohr: 0, // Betoniergerät-Stufe
   pourPower: 0, // m³/s Beton, die das Gerät ausbringt
@@ -164,6 +166,7 @@ export const UPGRADES = {
   winch: { group: 'ponton', name: 'Katze & Winde', desc: 'Pumpe fährt und taucht schneller (Höchsttempo)', maxLevel: 5, baseCost: 5000, growth: 1.5, apply: (s, l) => { s.headSpeed += l * 0.7; } },
   curtain: { group: 'ponton', name: 'Trübungsschutz', desc: 'Schlammvorhang: weniger Trübung, weniger Bussen', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.curtain = Math.min(0.8, l * 0.2); } },
   cutter: { group: 'ponton', name: 'Felsfräse', desc: 'Schneidkopf: Felsriegel lassen sich abtragen (ohne Fräse kaum)', maxLevel: 4, baseCost: 14000, growth: 1.7, apply: (s, l) => { s.rockFirmness += l * 0.14; } },
+  piler: { group: 'ponton', name: 'Pfahlgerät', desc: 'Rammt Betonpfähle bis auf den Fels (Pfahlwand an der Rinne). Ohne Gerät keine Pfähle; höhere Stufen bauen schneller', maxLevel: 4, baseCost: 18000, growth: 1.7, apply: (s, l) => { s.piler = l; s.pileTime = l > 0 ? [10, 6.5, 4.5, 3][l - 1] : 10; } },
   loeffel: { group: 'ponton', name: 'Löffelbagger', desc: 'Ausleger mit Schaufel (V = Gerät wechseln): verstopft nie, schafft Fels und harte Schicht, wenig Trübung, reicht über Wasser (Ufer abtragen). Höhere Stufen: mehr Leistung', maxLevel: 5, baseCost: 12000, growth: 1.6, apply: (s, l) => { s.loeffel = l; if (l > 0) { s.bucketPower = 2.4 + 1.3 * (l - 1); s.bucketRadius = 1.0 + 0.12 * l; s.bucketRock = 0.28 + 0.08 * l; } } },
   betonrohr: { group: 'ponton', name: 'Betoniergerät', desc: 'Verhärtet Boden und Ufer (V = Gerät wechseln): weniger Verlandung und Rutschung. Zum Tieferbaggern muss der Beton wieder aufgebrochen werden (Löffel)', maxLevel: 3, baseCost: 11000, growth: 1.6, apply: (s, l) => { s.betonrohr = l; s.pourPower = l > 0 ? 2 + 2 * (l - 1) : 0; } },
   mixer: { group: 'plant', name: 'Betonwerk', desc: 'Mischt Beton aus Kies und Sand des Flusses (plus Zement), viel billiger als Zukaufen', maxLevel: 3, baseCost: 16000, growth: 1.7, apply: (s, l) => { s.mixer = l; s.mixRate = 0.2 * l; } },
@@ -183,9 +186,9 @@ export const UPGRADES = {
 export const SHIPS = [
   { id: 'kahn', name: 'Lastkahn', icon: '🛶', draught: 1.4, beam: 2, len: 2.4, speed: 1.6, tons: 300, fee: 500, share: 0.34, cargo: ['kies', 'getreide'], color: '#a07a52' },
   { id: 'motor', name: 'Motorgüterschiff', icon: '🚤', draught: 2.0, beam: 2, len: 3.2, speed: 2.0, tons: 800, fee: 1100, share: 0.3, cargo: ['getreide', 'kohle', 'kies'], color: '#4f86b8' },
-  { id: 'tank', name: 'Tankschiff', icon: '🛢️', draught: 2.6, beam: 3, len: 3.8, speed: 1.9, tons: 1500, fee: 1800, share: 0.16, cargo: ['oel', 'chemie'], color: '#b5483a' },
-  { id: 'container', name: 'Containerschiff', icon: '🚢', draught: 3.2, beam: 3, len: 4.6, speed: 2.2, tons: 2500, fee: 2800, share: 0.13, cargo: ['container'], color: '#3b9a78' },
-  { id: 'schub', name: 'Schubverband', icon: '⛴️', draught: 4.0, beam: 4, len: 5.4, speed: 1.7, tons: 4500, fee: 4500, share: 0.07, cargo: ['kohle', 'erz'], color: '#7a69b8' },
+  { id: 'tank', name: 'Tankschiff', icon: '🛢️', draught: 2.9, beam: 3, len: 3.8, speed: 1.9, tons: 1500, fee: 1800, share: 0.16, cargo: ['oel', 'chemie'], color: '#b5483a' },
+  { id: 'container', name: 'Containerschiff', icon: '🚢', draught: 4.0, beam: 3, len: 4.6, speed: 2.2, tons: 2500, fee: 2800, share: 0.13, cargo: ['container'], color: '#3b9a78' },
+  { id: 'schub', name: 'Schubverband', icon: '⛴️', draught: 5.2, beam: 4, len: 5.4, speed: 1.7, tons: 4500, fee: 4500, share: 0.07, cargo: ['kohle', 'erz'], color: '#7a69b8' },
 ];
 export const shipById = (id) => SHIPS.find((s) => s.id === id);
 

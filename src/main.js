@@ -5,7 +5,7 @@ import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, ship
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
-import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, planPile, clearPilePlan, lineCells, PILE, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
+import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, planPile, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
@@ -117,7 +117,7 @@ const upRows = {};
 // Ausrüstung in Reitern (Übersicht): jeder Reiter listet seine Verbesserungen
 const UP_TABS = [
   { id: 'pump', label: '🌀 Pumpe', ids: ['power', 'radius', 'speed', 'winch', 'curtain'] },
-  { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr'], gate: 'up_gear' },
+  { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr', 'piler'], gate: 'up_gear' },
   { id: 'plant', label: '🏭 Anlage', ids: ['plant', 'dewater', 'sorter', 'mixer'], gate: 'up_plant' },
   { id: 'traffic', label: '🚢 Verkehr', ids: ['beacons', 'signals', 'tugs', 'vts', 'pilot'], gate: 'up_traffic' },
 ];
@@ -425,7 +425,7 @@ function finishRoute() {
 // ---------- Pfahlwand planen ----------
 function togglePileMode() {
   if (tow || sim.mode !== 'map' || harborView) { toast('Die Pfahlwand planst du auf der Hauptkarte (Anker lichten mit Q)', 'info', true); return; }
-  if (game.stats.betonrohr <= 0 && !pileMode) toast('Pfähle setzen kann erst, wer das Betoniergerät hat (Technik)', 'info', true);
+  if (game.stats.piler <= 0 && !pileMode) toast('Pfähle setzen kann erst, wer das Pfahlgerät hat (Technik, Reiter Geräte)', 'info', true);
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) { if (areaKind === 'route') finishRoute(); else toggleAreaMode(); }
   pileMode = !pileMode; ui.pileMode = pileMode; pileA = null; ui.pileA = null; ui.hoverCell = null; mapTarget = null;
   if (pileMode) { planFocus.x = sim.x; planFocus.y = sim.y; toast('Pfahlwand: Zellen antippen (Einzelzelle) oder zwei Punkte für eine Linie. Mit Joystick/Pfeiltasten verschieben, ± zoomt. Gebaut wird mit dem Betoniergerät aus dem Betonvorrat.', 'info', true); }
@@ -436,7 +436,7 @@ function pileClick(px, py) {
   const c = cellAt(px, py), x = Math.floor(c.x), y = Math.floor(c.y), r = game.river;
   if (x < 0 || y < 0 || x >= r.cols || y >= r.rows) return;
   const plan = new Set(game.fleet.pilePlan ?? []);
-  const note = (n, on) => toast(on ? `${n} Zelle${n === 1 ? '' : 'n'} geplant · Plan: ${(game.fleet.pilePlan ?? []).length} Pfähle, ${(game.fleet.pilePlan ?? []).length * PILE.concrete} m³ Beton` : `${n} Zelle${n === 1 ? '' : 'n'} aus dem Plan genommen`, on ? 'good' : 'info', true);
+  const note = (n, on) => toast(on ? `${n} Zelle${n === 1 ? '' : 'n'} geplant · Plan: ${(game.fleet.pilePlan ?? []).length} Pfähle, ${Math.round((game.fleet.pilePlan ?? []).reduce((a, c) => a + pileConcrete(game, c), 0))} m³ Beton` : `${n} Zelle${n === 1 ? '' : 'n'} aus dem Plan genommen`, on ? 'good' : 'info', true);
   if (pileTool === 'line') {
     if (!pileA) { pileA = { x, y }; ui.pileA = pileA; return; }
     const cells = lineCells(r, pileA.x, pileA.y, x, y), allIn = cells.every((i) => plan.has(i) || r.pile[i]); pileA = null; ui.pileA = null;
@@ -890,7 +890,7 @@ function updateToolButtons() {
   const act = { 'btn-area': areaMode && areaKind === 'rect', 'btn-route': areaMode && areaKind === 'route', 'btn-pile': pileMode, 'btn-zone': zoneMode, 'btn-land': landMode };
   const tools = [...document.querySelectorAll('#shift-actions .tool-btn')];
   for (const b of tools) b.classList.toggle('on', !!act[b.id]);
-  $('btn-pile').hidden = !(game.stats.betonrohr > 0 || (game.fleet.pilePlan ?? []).length || pileMode) || sim.mode !== 'map' || !!tow;
+  $('btn-pile').hidden = !(game.stats.piler > 0 || (game.fleet.pilePlan ?? []).length || pileMode) || sim.mode !== 'map' || !!tow;
   const fm = $('btn-fleetmenu'); fm.hidden = !tools.some((b) => !b.hidden) || sim.mode !== 'map' || !!tow;
   fm.classList.toggle('open', toolsOpen); fm.textContent = toolsOpen ? '🚤 Flotte ▴' : '🚤 Flotte ▾';
 }

@@ -1,6 +1,7 @@
 import { CONFIG, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
-import { PORT, hasKai, capacity, bayDepth, buy as portBuy, buyPrice, sellPrice, marketImpact } from './port.js';
+import { ensureHarbor, harborAccepts } from './harbor.js';
+import { PORT, hasKai, capacity, bayDepth, kaiLevel, bridgeLevel, buy as portBuy, buyPrice, sellPrice, marketImpact } from './port.js';
 
 // Eigene Reederei: Frachter fahren Ware zwischen den Häfen verschiedener Karten (Endlos-Modus). Jede Karte hat eigene Preise (Markt mit Bias),
 // der Gewinn ist der Preisunterschied minus Spread und Frachtkosten. Wie viel ein Schiff laden darf, hängt von der Tiefe der Fahrrinne auf beiden Karten ab
@@ -55,6 +56,8 @@ export function setRoute(g, id, r) {
 }
 
 // Was geht auf dieser Route gerade? ok/reason, erlaubte Ladung, Dauer, Frachtkosten je Tonne, erwartete Marge je Tonne
+// Nimmt der Hafen der aktuellen Karte diese Klasse an (Kai-Stufe und Beckentiefe der Hafenkarte)? Ohne Hafenkarte (alte Stände): Tiefe des alten Beckens
+function portTakes(g, cid) { const p = g.port; ensureHarbor(p, g.wl); return p.harbor ? harborAccepts(p, g.wl, kaiLevel(g), cid) : bayDepth(g) >= minNeedDepth(shipById(cid)); }
 export function routeInfo(g, s) {
   const T = SHIPPING.types[s.type], cid = s.type, out = { ok: false, reason: '', lf: 0, eff: 0, days: 0, perT: 0, priceFrom: 0, priceTo: 0, margin: 0 };
   if (s.from === s.to) { out.reason = 'Start und Ziel sind dieselbe Karte'; return out; }
@@ -62,7 +65,7 @@ export function routeInfo(g, s) {
   for (const i of ends) {
     const m = g.maps[i], f = m.fair?.[cid];
     if (!f?.passable) { out.reason = `Rinne ${m.name} gesperrt für ${T.name}`; return out; }
-    const why = withMap(g, i, () => (!hasKai(g) ? 'Kai fehlt' : capacity(g, s.cargo) <= 0 ? `Lager für ${PORT.label[s.cargo]} fehlt` : bayDepth(g) < minNeedDepth(shipById(cid)) ? 'Hafenbecken zu flach' : ''));
+    const why = withMap(g, i, () => (!hasKai(g) ? 'Kai fehlt' : capacity(g, s.cargo) <= 0 ? `Lager für ${PORT.label[s.cargo]} fehlt` : cid === 'container' && !bridgeLevel(g) ? 'Containerbrücke fehlt' : !portTakes(g, cid) ? 'Hafenbecken zu flach oder Klasse vom Kai nicht angenommen' : ''));
     if (why) { out.reason = `${why} (${m.name})`; return out; }
   }
   out.lf = Math.min(...ends.map((i) => g.maps[i].fair[cid].loadFactor));

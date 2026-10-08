@@ -296,7 +296,7 @@ import { setAvoid, cellAllowed } from '../src/sim/fleet.js';
 import { lendPonton, recallPonton, lendBlock, lentUnit, nextHireCost } from '../src/sim/fleet.js';
 import { addArea, removeArea, setAreaDepth, setAreaUnit, areaWork } from '../src/sim/fleet.js';
 import { pairFits, zoneLaneStart } from '../src/sim/traffic.js';
-import { harborAccepts, HARBOR } from '../src/sim/harbor.js';
+import { ensureHarbor, harborAccepts, HARBOR } from '../src/sim/harbor.js';
 import { machineOf, reserveBerth, dockShip, waitsOf, cycleWaitCargo, berthJobs, isDocked, berthsOf, bayDepth, openPort, build, upgrade, buy, sell, hasKai, capacity, portShip, portDay, openBlock, updatePort, loadHit, autoLevel, autoLevelCost, siteAct, siteWork, PORT } from '../src/sim/port.js';
 test('Hafen: eröffnen, Kai und Lager bauen, handeln, Schiffe und Automatik', () => {
   const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.money = 200000;
@@ -979,7 +979,7 @@ test('Freischaltung: nur befahrbare Klassen kommen, neue Klassen schalten sich m
   const cls = new Set();
   for (let i = 0; i < 150; i++) { const sh = spawnShip(g); if (sh) cls.add(sh.cls); g.traffic.ships.length = 0; }
   assert.deepEqual([...cls], ['kahn']);
-  const r = g.river; r.setFlat(3.6, 9); g.analyze();
+  const r = g.river; r.setFlat(4.6, 9); g.analyze();
   assert.ok(g.unlocked.tank && g.unlocked.container);
   assert.ok(g.log.some((e) => /freigeschaltet/.test(e.text)));
   const after = new Set();
@@ -1423,8 +1423,8 @@ test('Endlos: Seed bestimmt die Karte, weitere Karten erschliessen, alle laufen 
 function twoPorts() {
   const g = new Game(4242, 'endlos'); g.eventsOn = false; g.money = 2e6; g.addMap();
   for (let i = 0; i < 2; i++) withMap(g, i, () => {
-    const p = g.port; p.open = true; p.slots[0] = { type: 'kai', level: 1 }; p.slots[1] = { type: 'kies', level: 2 }; p.slots[2] = { type: 'tank', level: 1 };
-    for (const c of p.bay.cells) g.river.top[c] = g.wl - 3.5;
+    const p = g.port; p.open = true; p.slots[0] = { type: 'kai', level: 3 }; p.slots[1] = { type: 'kies', level: 2 }; p.slots[2] = { type: 'tank', level: 1 }; p.slots[4] = { type: 'cbruecke', level: 1 };
+    ensureHarbor(p, g.wl); for (const c of p.harbor.cells) p.harbor.river.top[c] = g.wl - 5.5; // Hafenbecken tief genug für alle Klassen
   });
   return g;
 }
@@ -1814,7 +1814,7 @@ test('Pfahlwand: Pfahl ist fest, hält die Böschung und sperrt den Abtrag zwisc
 });
 
 test('Pfahlwand: Pontons mit Betoniergerät setzen die geplanten Pfähle (Beton wird verbraucht)', () => {
-  const g = new Game(3, 'hochrhein'); g.eventsOn = false; g.money = 1e7; for (const id of ['auto', 'auto', 'betonrohr']) g.buyUpgrade(id);
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false; g.money = 1e7; for (const id of ['auto', 'auto', 'piler']) g.buyUpgrade(id);
   hireUnit(g); const r = g.river, x = 12, cy = Math.round(r.centerY(x)), cells = lineCells(r, x, cy - 4, x, cy - 2);
   assert.equal(planPile(g, cells), cells.length);
   assert.equal(planPile(g, [r.idx(0, 0)]), 0, 'Land ist nicht planbar');
@@ -1822,7 +1822,26 @@ test('Pfahlwand: Pontons mit Betoniergerät setzen die geplanten Pfähle (Beton 
   assert.equal(g.totals.piles ?? 0, 0, 'ohne Beton wird nichts gebaut');
   g.concrete = 100; for (let t = 0; t < 200; t += 0.1) g.update(0.1);
   assert.equal(g.totals.piles, cells.length); assert.ok(cells.every((i) => r.pile[i]));
-  assert.ok(g.concrete <= 100 - 10 * cells.length + 1e-6); assert.equal(g.fleet.pilePlan.length, 0);
+  assert.ok(g.concrete <= 100 - (4 + 2.2) * cells.length); assert.equal(g.fleet.pilePlan.length, 0);
   assert.ok(r.lim.some((v) => v > -90), 'Abtragsperre gesetzt');
   const rt = restoreGame(serializeGame(g)); assert.ok(rt.river.pile.some((v) => v === 1) && rt.river.lim.some((v) => v > -90));
+});
+
+test('Tiefe Rinne für grosse Schiffe: ohne Pfahlwand rutschen die Böschungen zu, mit Pfählen bleibt sie offen; Pfahlgerät nötig und schneller', () => {
+  const run = (piles) => {
+    const g = new Game(7, 'hochrhein'), r = g.river, wl = r.wl, path = g.fair.kahn.nodes, need = 4.35;
+    for (const n of path) for (let k = -1; k <= 1; k++) { const y = n.y + k; if (y < 0 || y >= r.rows) continue; const i = y * r.cols + n.x; if (r.zone[i]) { r.top[i] = Math.min(r.top[i], wl - need); r.rock[i] = Math.min(r.rock[i], r.top[i] - 0.5); } }
+    for (let i = 0; i < r.top.length; i++) r.pending.add(i);
+    if (piles) for (const n of path) for (const s of [-2, 2]) { const y = n.y + s; if (y >= 0 && y < r.rows) { const i = y * r.cols + n.x; if (r.zone[i] && !r.pile[i]) r.setPile(i, true); } }
+    for (let k = 0; k < 400; k++) r.settle(Infinity);
+    return analyzeClass(r, wl, shipById('container')).passable;
+  };
+  assert.equal(run(false), false, 'ohne Wand füllt die Böschung die tiefe Rinne wieder auf'); assert.equal(run(true), true, 'mit Wand bleibt sie offen');
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false; g.money = 1e7; g.buyUpgrade('auto'); hireUnit(g); g.buyUpgrade('betonrohr');
+  const r = g.river, cy = Math.round(r.centerY(12)), cell = r.idx(12, cy - 3); planPile(g, [cell]); g.concrete = 200;
+  for (let t = 0; t < 100; t += 0.1) g.update(0.1);
+  assert.equal(r.pile[cell], 0, 'ohne Pfahlgerät keine Pfähle');
+  g.buyUpgrade('piler'); const t1 = g.stats.pileTime; g.buyUpgrade('piler'); assert.ok(g.stats.pileTime < t1, 'höhere Stufe baut schneller');
+  const c0 = g.concrete; for (let t = 0; t < 100; t += 0.1) g.update(0.1);
+  assert.equal(r.pile[cell], 1); assert.ok(c0 - g.concrete > 8, 'Pfahl reicht bis auf den Fels: Beton nach Länge, nicht pauschal');
 });

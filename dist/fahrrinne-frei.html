@@ -541,7 +541,7 @@ body:not(.tools-open) #shift-actions .tool-btn:not(.on) { display: none !importa
         <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
         <button id="btn-sound" hidden>🔊 Ton an (M)</button>
         <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
-        <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="5.5" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
+        <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="7.2" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
       </div>
       <div id="pile-bar" hidden><button data-ptool="cell" class="on">✏ Zelle</button><button data-ptool="line">📏 Linie</button><button id="pile-zin">＋ Zoom</button><button id="pile-zout">− Zoom</button><button id="pile-clear">🧹 Plan löschen</button><button id="pile-done" class="primary">Fertig</button></div>
       <div id="land-bar" hidden><button data-tool="road" class="on">🛣 Strasse</button><button data-tool="hall">🏭 Lagerhalle</button><button data-tool="auto">➜ Strasse automatisch</button><button data-tool="demo">✖ Abriss</button><button id="land-done" class="primary">Fertig</button></div>
@@ -639,19 +639,19 @@ body:not(.tools-open) #shift-actions .tool-btn:not(.on) { display: none !importa
 const __defs = [
 function(){
 const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING } = __m(1);
-const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit: portLoadHit } = __m(4);
-const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(5);
+const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit: portLoadHit } = __m(6);
+const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(7);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
 const { Game } = __m(9);
 const { acceptContract } = __m(16);
 const { waitingByClass, shipPos } = __m(15);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, planPile, clearPilePlan, lineCells, PILE, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(17);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, planPile, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(17);
 const { bayCapacity, maxZones, zoneClasses } = __m(15);
 const { materialPrice } = __m(18);
 const { TowSim, groundedNear } = __m(19);
-const { makeHarborView, HARBOR, waitPos } = __m(7);
+const { makeHarborView, HARBOR, waitPos } = __m(4);
 const { toolName } = __m(11);
-const { priceOf, trend } = __m(6);
+const { priceOf, trend } = __m(8);
 const { needDepth, minNeedDepth } = __m(3);
 const { Advisor } = __m(20);
 const { serializeGame, restoreGame, savedSummary } = __m(21);
@@ -783,7 +783,7 @@ const upRows = {};
 // Ausrüstung in Reitern (Übersicht): jeder Reiter listet seine Verbesserungen
 const UP_TABS = [
   { id: 'pump', label: '🌀 Pumpe', ids: ['power', 'radius', 'speed', 'winch', 'curtain'] },
-  { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr'], gate: 'up_gear' },
+  { id: 'gear', label: '⚙ Geräte', ids: ['auto', 'echolot', 'cutter', 'loeffel', 'betonrohr', 'piler'], gate: 'up_gear' },
   { id: 'plant', label: '🏭 Anlage', ids: ['plant', 'dewater', 'sorter', 'mixer'], gate: 'up_plant' },
   { id: 'traffic', label: '🚢 Verkehr', ids: ['beacons', 'signals', 'tugs', 'vts', 'pilot'], gate: 'up_traffic' },
 ];
@@ -1091,7 +1091,7 @@ function finishRoute() {
 // ---------- Pfahlwand planen ----------
 function togglePileMode() {
   if (tow || sim.mode !== 'map' || harborView) { toast('Die Pfahlwand planst du auf der Hauptkarte (Anker lichten mit Q)', 'info', true); return; }
-  if (game.stats.betonrohr <= 0 && !pileMode) toast('Pfähle setzen kann erst, wer das Betoniergerät hat (Technik)', 'info', true);
+  if (game.stats.piler <= 0 && !pileMode) toast('Pfähle setzen kann erst, wer das Pfahlgerät hat (Technik, Reiter Geräte)', 'info', true);
   if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) { if (areaKind === 'route') finishRoute(); else toggleAreaMode(); }
   pileMode = !pileMode; ui.pileMode = pileMode; pileA = null; ui.pileA = null; ui.hoverCell = null; mapTarget = null;
   if (pileMode) { planFocus.x = sim.x; planFocus.y = sim.y; toast('Pfahlwand: Zellen antippen (Einzelzelle) oder zwei Punkte für eine Linie. Mit Joystick/Pfeiltasten verschieben, ± zoomt. Gebaut wird mit dem Betoniergerät aus dem Betonvorrat.', 'info', true); }
@@ -1102,7 +1102,7 @@ function pileClick(px, py) {
   const c = cellAt(px, py), x = Math.floor(c.x), y = Math.floor(c.y), r = game.river;
   if (x < 0 || y < 0 || x >= r.cols || y >= r.rows) return;
   const plan = new Set(game.fleet.pilePlan ?? []);
-  const note = (n, on) => toast(on ? `${n} Zelle${n === 1 ? '' : 'n'} geplant · Plan: ${(game.fleet.pilePlan ?? []).length} Pfähle, ${(game.fleet.pilePlan ?? []).length * PILE.concrete} m³ Beton` : `${n} Zelle${n === 1 ? '' : 'n'} aus dem Plan genommen`, on ? 'good' : 'info', true);
+  const note = (n, on) => toast(on ? `${n} Zelle${n === 1 ? '' : 'n'} geplant · Plan: ${(game.fleet.pilePlan ?? []).length} Pfähle, ${Math.round((game.fleet.pilePlan ?? []).reduce((a, c) => a + pileConcrete(game, c), 0))} m³ Beton` : `${n} Zelle${n === 1 ? '' : 'n'} aus dem Plan genommen`, on ? 'good' : 'info', true);
   if (pileTool === 'line') {
     if (!pileA) { pileA = { x, y }; ui.pileA = pileA; return; }
     const cells = lineCells(r, pileA.x, pileA.y, x, y), allIn = cells.every((i) => plan.has(i) || r.pile[i]); pileA = null; ui.pileA = null;
@@ -1556,7 +1556,7 @@ function updateToolButtons() {
   const act = { 'btn-area': areaMode && areaKind === 'rect', 'btn-route': areaMode && areaKind === 'route', 'btn-pile': pileMode, 'btn-zone': zoneMode, 'btn-land': landMode };
   const tools = [...document.querySelectorAll('#shift-actions .tool-btn')];
   for (const b of tools) b.classList.toggle('on', !!act[b.id]);
-  $('btn-pile').hidden = !(game.stats.betonrohr > 0 || (game.fleet.pilePlan ?? []).length || pileMode) || sim.mode !== 'map' || !!tow;
+  $('btn-pile').hidden = !(game.stats.piler > 0 || (game.fleet.pilePlan ?? []).length || pileMode) || sim.mode !== 'map' || !!tow;
   const fm = $('btn-fleetmenu'); fm.hidden = !tools.some((b) => !b.hidden) || sim.mode !== 'map' || !!tow;
   fm.classList.toggle('open', toolsOpen); fm.textContent = toolsOpen ? '🚤 Flotte ▴' : '🚤 Flotte ▾';
 }
@@ -2021,7 +2021,9 @@ return {  };
 function(){
 const { CONFIG, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
-const { PORT, hasKai, capacity, bayDepth, buy: portBuy, buyPrice, sellPrice, marketImpact } = __m(4);
+const { ensureHarbor, harborAccepts } = __m(4);
+const { PORT, hasKai, capacity, bayDepth, kaiLevel, bridgeLevel, buy: portBuy, buyPrice, sellPrice, marketImpact } = __m(6);
+
 
 
 
@@ -2079,6 +2081,8 @@ function setRoute(g, id, r) {
 }
 
 // Was geht auf dieser Route gerade? ok/reason, erlaubte Ladung, Dauer, Frachtkosten je Tonne, erwartete Marge je Tonne
+// Nimmt der Hafen der aktuellen Karte diese Klasse an (Kai-Stufe und Beckentiefe der Hafenkarte)? Ohne Hafenkarte (alte Stände): Tiefe des alten Beckens
+function portTakes(g, cid) { const p = g.port; ensureHarbor(p, g.wl); return p.harbor ? harborAccepts(p, g.wl, kaiLevel(g), cid) : bayDepth(g) >= minNeedDepth(shipById(cid)); }
 function routeInfo(g, s) {
   const T = SHIPPING.types[s.type], cid = s.type, out = { ok: false, reason: '', lf: 0, eff: 0, days: 0, perT: 0, priceFrom: 0, priceTo: 0, margin: 0 };
   if (s.from === s.to) { out.reason = 'Start und Ziel sind dieselbe Karte'; return out; }
@@ -2086,7 +2090,7 @@ function routeInfo(g, s) {
   for (const i of ends) {
     const m = g.maps[i], f = m.fair?.[cid];
     if (!f?.passable) { out.reason = `Rinne ${m.name} gesperrt für ${T.name}`; return out; }
-    const why = withMap(g, i, () => (!hasKai(g) ? 'Kai fehlt' : capacity(g, s.cargo) <= 0 ? `Lager für ${PORT.label[s.cargo]} fehlt` : bayDepth(g) < minNeedDepth(shipById(cid)) ? 'Hafenbecken zu flach' : ''));
+    const why = withMap(g, i, () => (!hasKai(g) ? 'Kai fehlt' : capacity(g, s.cargo) <= 0 ? `Lager für ${PORT.label[s.cargo]} fehlt` : cid === 'container' && !bridgeLevel(g) ? 'Containerbrücke fehlt' : !portTakes(g, cid) ? 'Hafenbecken zu flach oder Klasse vom Kai nicht angenommen' : ''));
     if (why) { out.reason = `${why} (${m.name})`; return out; }
   }
   out.lf = Math.min(...ends.map((i) => g.maps[i].fair[cid].loadFactor));
@@ -2240,7 +2244,7 @@ const CONFIG = {
     clogSeconds: [15, 15, 10, 5], // Wartezeit bei Verstopfung: Pumpe bleibt stehen, bis sie vorbei ist oder das Freispülen gelingt (bessere Automatik = kürzer)
   },
   // Echolot: lotet das Profil vor dem Abtrag aus. Ohne Echolot ist die Messung ungenau (±), die Automatik trifft die Solltiefe schlechter.
-  echolot: { noise: [0.35, 0.12, 0.04], doneEps: 0.03, defaultDepth: 2.8, minDepth: 1.0, maxDepth: 5.5 },
+  echolot: { noise: [0.35, 0.12, 0.04], doneEps: 0.03, defaultDepth: 2.8, minDepth: 1.0, maxDepth: 7.2 },
   pumpSpeed: { min: 0.2, max: 1, default: 1 },
   // Verkehr: Schiffe erscheinen an beiden Enden, fahren die Fahrrinne ab und zahlen beim Verlassen des Abschnitts
   traffic: {
@@ -2309,7 +2313,7 @@ const BASE_STATS = {
   bufferCapacity: 160, // m³ Puffer vor der Anlage; ist er voll, muss das Saugen pausieren
   disposalFactor: 1, // Faktor auf Entsorgungskosten (Entwässerung senkt ihn)
   sortBonus: 1, // Faktor auf Verkaufserlöse (Sortieranlage hebt ihn)
-  rockFirmness: 0.04, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
+  rockFirmness: 0.10, // Anteil der Leistung, mit der sich Fels abtragen lässt (Felsfräse erhöht ihn)
   autoLevel: 0,
   echolot: 0,
   trafficMult: 1, // Betonnung & Leuchtfeuer: mehr Schiffe
@@ -2317,6 +2321,8 @@ const BASE_STATS = {
   pilot: 0, // Lotsendienst: höhere Gebühren
   signals: 0, // Rotlichter: mehr Kreuzungsstellen und Warteplatz
   tugs: 0, // Schlepper: Warteplatz und schnellere grosse Schiffe
+  piler: 0, // Pfahlgerät-Stufe (0 = keine Pfähle möglich)
+  pileTime: 10, // Sekunden je Pfahl
   loeffel: 0, // Löffelbagger-Stufe (0 = nicht vorhanden)
   betonrohr: 0, // Betoniergerät-Stufe
   pourPower: 0, // m³/s Beton, die das Gerät ausbringt
@@ -2335,6 +2341,7 @@ const UPGRADES = {
   winch: { group: 'ponton', name: 'Katze & Winde', desc: 'Pumpe fährt und taucht schneller (Höchsttempo)', maxLevel: 5, baseCost: 5000, growth: 1.5, apply: (s, l) => { s.headSpeed += l * 0.7; } },
   curtain: { group: 'ponton', name: 'Trübungsschutz', desc: 'Schlammvorhang: weniger Trübung, weniger Bussen', maxLevel: 4, baseCost: 7000, growth: 1.6, apply: (s, l) => { s.curtain = Math.min(0.8, l * 0.2); } },
   cutter: { group: 'ponton', name: 'Felsfräse', desc: 'Schneidkopf: Felsriegel lassen sich abtragen (ohne Fräse kaum)', maxLevel: 4, baseCost: 14000, growth: 1.7, apply: (s, l) => { s.rockFirmness += l * 0.14; } },
+  piler: { group: 'ponton', name: 'Pfahlgerät', desc: 'Rammt Betonpfähle bis auf den Fels (Pfahlwand an der Rinne). Ohne Gerät keine Pfähle; höhere Stufen bauen schneller', maxLevel: 4, baseCost: 18000, growth: 1.7, apply: (s, l) => { s.piler = l; s.pileTime = l > 0 ? [10, 6.5, 4.5, 3][l - 1] : 10; } },
   loeffel: { group: 'ponton', name: 'Löffelbagger', desc: 'Ausleger mit Schaufel (V = Gerät wechseln): verstopft nie, schafft Fels und harte Schicht, wenig Trübung, reicht über Wasser (Ufer abtragen). Höhere Stufen: mehr Leistung', maxLevel: 5, baseCost: 12000, growth: 1.6, apply: (s, l) => { s.loeffel = l; if (l > 0) { s.bucketPower = 2.4 + 1.3 * (l - 1); s.bucketRadius = 1.0 + 0.12 * l; s.bucketRock = 0.28 + 0.08 * l; } } },
   betonrohr: { group: 'ponton', name: 'Betoniergerät', desc: 'Verhärtet Boden und Ufer (V = Gerät wechseln): weniger Verlandung und Rutschung. Zum Tieferbaggern muss der Beton wieder aufgebrochen werden (Löffel)', maxLevel: 3, baseCost: 11000, growth: 1.6, apply: (s, l) => { s.betonrohr = l; s.pourPower = l > 0 ? 2 + 2 * (l - 1) : 0; } },
   mixer: { group: 'plant', name: 'Betonwerk', desc: 'Mischt Beton aus Kies und Sand des Flusses (plus Zement), viel billiger als Zukaufen', maxLevel: 3, baseCost: 16000, growth: 1.7, apply: (s, l) => { s.mixer = l; s.mixRate = 0.2 * l; } },
@@ -2354,9 +2361,9 @@ const UPGRADES = {
 const SHIPS = [
   { id: 'kahn', name: 'Lastkahn', icon: '🛶', draught: 1.4, beam: 2, len: 2.4, speed: 1.6, tons: 300, fee: 500, share: 0.34, cargo: ['kies', 'getreide'], color: '#a07a52' },
   { id: 'motor', name: 'Motorgüterschiff', icon: '🚤', draught: 2.0, beam: 2, len: 3.2, speed: 2.0, tons: 800, fee: 1100, share: 0.3, cargo: ['getreide', 'kohle', 'kies'], color: '#4f86b8' },
-  { id: 'tank', name: 'Tankschiff', icon: '🛢️', draught: 2.6, beam: 3, len: 3.8, speed: 1.9, tons: 1500, fee: 1800, share: 0.16, cargo: ['oel', 'chemie'], color: '#b5483a' },
-  { id: 'container', name: 'Containerschiff', icon: '🚢', draught: 3.2, beam: 3, len: 4.6, speed: 2.2, tons: 2500, fee: 2800, share: 0.13, cargo: ['container'], color: '#3b9a78' },
-  { id: 'schub', name: 'Schubverband', icon: '⛴️', draught: 4.0, beam: 4, len: 5.4, speed: 1.7, tons: 4500, fee: 4500, share: 0.07, cargo: ['kohle', 'erz'], color: '#7a69b8' },
+  { id: 'tank', name: 'Tankschiff', icon: '🛢️', draught: 2.9, beam: 3, len: 3.8, speed: 1.9, tons: 1500, fee: 1800, share: 0.16, cargo: ['oel', 'chemie'], color: '#b5483a' },
+  { id: 'container', name: 'Containerschiff', icon: '🚢', draught: 4.0, beam: 3, len: 4.6, speed: 2.2, tons: 2500, fee: 2800, share: 0.13, cargo: ['container'], color: '#3b9a78' },
+  { id: 'schub', name: 'Schubverband', icon: '⛴️', draught: 5.2, beam: 4, len: 5.4, speed: 1.7, tons: 4500, fee: 4500, share: 0.07, cargo: ['kohle', 'erz'], color: '#7a69b8' },
 ];
 const shipById = (id) => SHIPS.find((s) => s.id === id);
 
@@ -2670,11 +2677,536 @@ function carveFairway(river, wl, cls, margin = 0.15) {
 return { needDepth: needDepth, minNeedDepth: minNeedDepth, crossColumns: crossColumns, zonePlan: zonePlan, analyzeClass: analyzeClass, analyzeFairway: analyzeFairway, minDepthAt: minDepthAt, pointOnPath: pointOnPath, carveFairway: carveFairway };
 },
 function(){
+const { CONFIG, KIND, SHIPS, shipById } = __m(2);
+const { River } = __m(5);
+const { minNeedDepth } = __m(3);
+
+
+
+
+// Hafenkarte: eigenes Raster zum Hafen einer Karte. Von links führt die Zufahrt (tief) in das Hafenbecken (anfangs flach, muss ausgebaggert werden);
+// ringsum ist Land (nicht abbaubar) mit Kaimauer. Die Pontons der Karte lassen sich zwischen Hauptkarte und Hafen aufteilen (unit.loc).
+// Reine Daten und Logik: das Flussbett liegt im Hafen (port.harbor.river) und wird mit gespeichert.
+const HARBOR = {
+  basin: { x0: 14, x1: 33, y0: 11, y1: 24 }, // Zellen des Hafenbeckens
+  entrance: { x0: 0, x1: 13, y0: 16, y1: 19 }, // Zufahrt vom Fluss
+  startDepth: 1.0, siltTo: 1.3, // das Becken verlandet wieder bis zu dieser Tiefe, wenn nicht gebaggert wird
+  entranceDepth: 2.8,
+  need: { kahn: 2.0, motor: 3.0, tank: 4.0, container: 5.0, schub: 6.2 }, // Beckentiefe (m), die die Klasse zum Anlegen braucht (tiefer als der Fluss: Kaimauer, grosse Schiffe)
+  kaiClasses: [1, 2, 5], // so viele Schiffsklassen (der Reihe nach: Lastkahn, Motorschiff, Tankschiff, Containerschiff) nimmt der Kai je Stufe an
+  waits: [1, 2, 4], // Warteräume je Kai-Stufe: dort warten Schiffe, wenn alle Liegeplätze belegt sind
+  waitX: [17, 21, 25, 29], waitY: 21.2, // Warteplätze im südlichen Becken
+  quayY: 10.5, berthX: [16, 20, 24, 28, 32], // Liegeplätze an der Nordkaimauer
+  plots: [[3, 3], [12, 3], [21, 3], [30, 3], [8, 27], [27, 27]], // Bauplätze (Zelle links oben) für die 6 Hafenplätze, Grösse 8×5
+  plotW: 8, plotH: 5,
+};
+
+function createHarborRiver(wl) {
+  const r = new River(CONFIG.river.cols, CONFIG.river.rows), n = r.cols * r.rows, B = HARBOR.basin, E = HARBOR.entrance;
+  r.wl = wl;
+  r.top.fill(wl + 1.4); r.rock.fill(wl - 8); r.cap.fill(0); r.flow.fill(0); r.kind.fill(KIND.sand); r.zone.fill(0); r.ext.fill(0); r.hard.fill(0); r.debris.fill(0); r.armor.fill(0);
+  const water = (x0, x1, y0, y1, depth, cap, flow) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * r.cols + x; r.top[i] = wl - depth; r.cap[i] = wl - cap; r.zone[i] = 1; r.flow[i] = flow; r.kind[i] = KIND.sand; }
+  };
+  water(E.x0, E.x1, E.y0, E.y1, HARBOR.entranceDepth, HARBOR.entranceDepth - CONFIG.sediment.maxAbove, 0.45);
+  water(B.x0, B.x1, B.y0, B.y1, HARBOR.startDepth, HARBOR.siltTo, 0.15);
+  const rim = CONFIG.concrete.thickness; // Kaimauer: Landzellen am Wasser sind betoniert und rutschen nicht nach
+  for (let y = 0; y < r.rows; y++) for (let x = 0; x < r.cols; x++) {
+    const i = y * r.cols + x; if (r.zone[i]) continue;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < r.cols && ny < r.rows && r.zone[ny * r.cols + nx]) { r.armor[i] = rim; break; } }
+  }
+  const cells = []; for (let y = B.y0; y <= B.y1; y++) for (let x = B.x0; x <= B.x1; x++) cells.push(y * r.cols + x);
+  return { river: r, cells };
+}
+// Hafenkarte anlegen (ältere Spielstände mit geöffnetem Hafen bekommen sie nachträglich)
+function ensureHarbor(p, wl) { if (p.open && !p.harbor) p.harbor = createHarborRiver(wl); return p.harbor ?? null; }
+
+// Tiefe, die 80 % des Beckens mindestens haben (m)
+function harborDepth(p, wl) {
+  const h = p.harbor; if (!h) return null;
+  const d = h.cells.map((i) => wl - h.river.top[i]).sort((a, b) => a - b);
+  return d[Math.floor(d.length * 0.2)];
+}
+// Nimmt der Hafen diese Klasse an? Der Kai bestimmt, wie viele Klassen (Stufe 1: nur die einfachste), das Becken muss tief genug sein
+function harborAccepts(p, wl, kaiLevel, clsId) {
+  const k = SHIPS.findIndex((s) => s.id === clsId); if (k < 0 || k >= HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)]) return false;
+  const d = harborDepth(p, wl); return d !== null && d >= HARBOR.need[clsId] - 0.02;
+}
+// Solltiefe für die Pontons im Becken: tief genug für die tiefste Klasse, die der Kai annimmt
+function harborTarget(kaiLevel) {
+  const k = HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)];
+  return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => HARBOR.need[s.id])) + 0.1);
+}
+const waitPos = (i) => ({ x: HARBOR.waitX[Math.min(i, HARBOR.waitX.length - 1)], y: HARBOR.waitY, angle: 0 });
+// Liegeplatz i (Mitte des Schiffs, an der Nordkaimauer)
+const berthPos = (i) => ({ x: HARBOR.berthX[Math.min(i, HARBOR.berthX.length - 1)], y: HARBOR.basin.y0 + 1.1, angle: 0 });
+
+// Ansicht der Hafenkarte: dasselbe Spiel, aber mit dem Flussbett des Hafens, den Pontons im Hafen und ohne Verkehr und Kreuzungen der Hauptkarte.
+// Wird nur zum Zeichnen benutzt (die Simulation läuft unabhängig davon).
+function makeHarborView(g) {
+  const h = g.port.harbor, v = Object.create(g);
+  Object.defineProperties(v, {
+    river: { value: h.river }, fair: { value: {} }, zones: { value: [] }, traffic: { value: { ships: [] } }, site: { value: null },
+    fleet: { value: { units: g.fleet.units.filter((u) => (u.loc ?? 'main') === 'harbor'), areas: [] } },
+    port: { value: Object.create(g.port, { bay: { value: null }, land: { value: { roads: [], halls: [], seq: 0 } } }) },
+    isHarborView: { value: true },
+  });
+  return v;
+}
+
+return { HARBOR: HARBOR, createHarborRiver: createHarborRiver, ensureHarbor: ensureHarbor, harborDepth: harborDepth, harborAccepts: harborAccepts, harborTarget: harborTarget, waitPos: waitPos, berthPos: berthPos, makeHarborView: makeHarborView };
+},
+function(){
+const { CONFIG, KIND, DEBRIS, DEPOSITS } = __m(2);
+
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// Flusssohle als Raster (Zelle = cellArea m²). Der Fluss fliesst in x-Richtung (links nach rechts), y ist die Breite.
+// - top:  Oberfläche der Sohle (m über dem Bezugshorizont; Wasserspiegel = wl, Tiefe = wl - top)
+// - rock: Felsgrund. Sediment = top - rock, darunter nur noch Fels (nur mit Felsfräse sinnvoll abtragbar)
+// - kind: Material der Sedimentschicht (KIND), - zone: 1 = Baggerkorridor, 0 = Land oder Naturschutzzone (Ufer, Flachwasser)
+// Alle öffentlichen Mengen sind in m³.
+class River {
+  constructor(cols, rows) {
+    const n = cols * rows;
+    this.cols = cols;
+    this.rows = rows;
+    this.area = CONFIG.layer.cellArea;
+    this.wl = CONFIG.water.base;
+    this.top = new Float32Array(n);
+    this.rock = new Float32Array(n);
+    this.cap = new Float32Array(n); // Höhe, bis zu der die Sohle wieder verlanden kann (0 = Land, keine Ablagerung)
+    this.flow = new Float32Array(n); // 0..1, Strömung: in der Mitte schnell, am Rand langsam
+    this.kind = new Uint8Array(n);
+    this.hard = new Uint8Array(n); // 0 weich, 1 verdichtet, 2 hart (mehrere Überfahrten)
+    this.debris = new Uint8Array(n); // 0 nichts, sonst Index in DEBRIS + 1
+    this.zone = new Uint8Array(n);
+    this.bay = new Uint8Array(n); // Hafenbecken (zählt als Korridor zum Baggern, aber nicht zur Fahrrinne der Schiffe)
+    this.dep = new Uint8Array(n); // Rohstoffvorkommen: 0 = keins, sonst Nummer in this.deposits
+    this.depLeft = new Float32Array(n); // wie viele Meter des Vorkommens (von oben) in dieser Zelle noch Aufschlag bringen
+    this.pile = new Uint8Array(n); // Pfahlwand: 1 = Betonpfahl (fest, wird nicht abgetragen, hält die Böschung)
+    this.lim = new Float32Array(n).fill(-99); // tiefste erlaubte Höhe der Sohle (Abtragsperre zwischen Pfahlwand und Ufer: nicht tiefer als Oberkante Beton)
+    this.tribs = []; // Zuflüsse: { x, side, my, cells: [Zellen], w: [Gewichte], kind, rate }: bringen laufend Sand/Kies in die Rinne
+    this.deposits = []; // { id, type, name, kind, mult, cx, cy, rx, ry, owned, known, cost }
+    this.armor = new Float32Array(n); // Dicke der Betonschicht (m), die die Oberfläche der Zelle verhärtet; 0 = unbehandelt
+    this.ext = new Uint8Array(n); // Ausbaustreifen am Ufer: 1 = Land, 2 = Flachwasser. Mit dem Löffelbagger abtragbar (wird dann zum Korridor), sonst Schutzgebiet
+    this.pending = new Set(); // Zellen, deren Böschung noch nachrutscht (abgeleitet, wird nicht gespeichert)
+    this.slumpedTotal = 0; // m³ nachgerutscht (Anzeige)
+  }
+
+  static generate(rng, p = {}) {
+    const cfg = { ...CONFIG.river, halfWidth: 6.8, depthMax: 2.4, rockDepth: 6.4, meander: 2.4, bars: [], ridges: [], shoals: 5, altlast: 2, hardBlobs: 3, debris: CONFIG.debris.count, ...p };
+    const r = new River(cfg.cols, cfg.rows);
+    const WL = r.wl;
+    const ph = [rng.range(0, 6.28), rng.range(0, 6.28), rng.range(0, 6.28)];
+    const each = (cx, cy, rx, ry, fn) => {
+      for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(r.rows - 1, Math.ceil(cy + ry)); y++) {
+        for (let x = Math.max(0, Math.floor(cx - rx)); x <= Math.min(r.cols - 1, Math.ceil(cx + rx)); x++) {
+          const d = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+          if (d < 1) fn(r.idx(x, y), d);
+        }
+      }
+    };
+    const yc = (x) => r.rows / 2 + cfg.meander * Math.sin(x * 0.16 + ph[0]) + cfg.meander * 0.8 * Math.sin(x * 0.07 + ph[1]);
+    const hw = (x) => cfg.halfWidth + 1.2 * Math.sin(x * 0.12 + ph[2]);
+    r.centerY = (x) => yc(x); r.halfW = (x) => hw(x); // Hilfen für Anzeige und Tests
+    const noise = (x, y) => Math.sin(x * 0.9 + y * 1.7) * Math.cos(x * 1.3 - y * 0.8);
+    const water = new Uint8Array(r.cols * r.rows);
+    for (let x = 0; x < r.cols; x++) {
+      for (let y = 0; y < r.rows; y++) {
+        const i = r.idx(x, y), rel = Math.abs(y + 0.5 - yc(x)) / hw(x);
+        if (rel < 1) {
+          water[i] = 1;
+          const depth = Math.max(0.5, cfg.depthMax * (1 - rel ** 2.2) + 0.08 * noise(x, y));
+          r.top[i] = WL - depth;
+          r.flow[i] = clamp(1 - rel, 0, 1);
+          r.zone[i] = rel < 0.82 ? 1 : 0;
+          r.ext[i] = rel >= 0.82 ? 2 : 0; // Flachwasser am Ufer: Schutzzone für den Saugbagger, mit dem Löffel als Ausbaustreifen abtragbar
+          r.rock[i] = WL - (cfg.rockDepth + 0.8 * (1 - rel) + 0.25 * noise(y, x));
+        } else {
+          r.top[i] = Math.min(WL + 7, WL + 0.4 + (rel - 1) * (rel < 1.9 ? 2.0 : 6) + 0.1 * noise(x, y)); // flaches Ufer im Ausbaustreifen, dahinter steiler
+          r.rock[i] = WL - 3; // Ufer: viel Sediment, rutscht nach, wenn man zu nah baggert
+          r.flow[i] = 0;
+          r.ext[i] = rel < 1.9 ? 1 : 0;
+        }
+        const f = r.flow[i];
+        r.kind[i] = !water[i] ? KIND.sand : f + 0.12 * noise(y, x) > 0.55 ? KIND.kies : f + 0.12 * noise(y, x) > 0.25 ? KIND.sand : KIND.schlick;
+      }
+    }
+    // Barren: über die ganze Breite erhöhte Sohle, hier wird die Rinne zuerst eng
+    for (const b of cfg.bars) {
+      for (let x = Math.max(0, Math.floor(b.x - b.w)); x <= Math.min(r.cols - 1, Math.ceil(b.x + b.w)); x++) {
+        const along = 1 - Math.abs(x + 0.5 - b.x) / b.w;
+        if (along <= 0) continue;
+        for (let y = 0; y < r.rows; y++) {
+          const i = r.idx(x, y), rel = Math.abs(y + 0.5 - yc(x)) / hw(x);
+          if (water[i]) r.top[i] += b.raise * Math.sqrt(along) * (1 - rel ** 4);
+        }
+      }
+    }
+    // Sandbänke am Rand und kleine Hügel in der Rinne
+    for (let i = 0; i < cfg.shoals; i++) {
+      const x = rng.range(2, r.cols - 2), y = yc(x) + rng.range(-1, 1) * hw(x) * 0.8;
+      const a = rng.range(0.4, 1.0);
+      each(x, y, rng.range(2.5, 4.5), rng.range(2, 3.5), (k, d) => { if (water[k]) r.top[k] += a * (1 - d * d); });
+    }
+    // Felsriegel: unter dieser Tiefe beginnt Fels
+    for (const g of cfg.ridges) {
+      for (let x = Math.max(0, Math.floor(g.x - g.w)); x <= Math.min(r.cols - 1, Math.ceil(g.x + g.w)); x++) {
+        const along = clamp(1 - Math.abs(x + 0.5 - g.x) / g.w, 0, 1);
+        if (along <= 0) continue;
+        for (let y = 0; y < r.rows; y++) {
+          const i = r.idx(x, y);
+          if (!water[i]) continue;
+          const wanted = WL - g.depth, blend = Math.min(1, along * 1.8);
+          r.rock[i] = Math.max(r.rock[i], r.rock[i] + (wanted - r.rock[i]) * blend);
+        }
+      }
+    }
+    for (let k = 0; k < r.top.length; k++) {
+      if (r.top[k] < r.rock[k]) r.top[k] = r.rock[k]; // Fels ragt heraus
+      r.cap[k] = water[k] ? r.top[k] + CONFIG.sediment.maxAbove : 0;
+    }
+    // Altlasten (alte Industrie, Schlackenhalden), harte Schichten, Fremdstoffe
+    for (let i = 0; i < cfg.altlast; i++) {
+      const x = rng.range(3, r.cols - 3);
+      each(x, yc(x) + rng.range(-0.6, 0.6) * hw(x), rng.range(1.8, 3), rng.range(1.5, 2.6), (k) => { if (water[k] && r.top[k] - r.rock[k] > 0.2) r.kind[k] = KIND.altlast; });
+    }
+    // Rohstoffvorkommen: das erste (Kiesbank) liegt früh am Fluss, ist bekannt und freigegeben; die weiteren müssen erkundet und erworben werden
+    (cfg.deposits ?? []).forEach((typeId, k) => {
+      const T = DEPOSITS.find((d) => d.id === typeId) ?? DEPOSITS[0];
+      const x = k === 0 ? rng.range(7, 12) : rng.range(8 + k * 7, 14 + k * 7), y = yc(x) + rng.range(-0.35, 0.35) * hw(x);
+      const rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2);
+      each(Math.min(r.cols - 4, x), y, rx, ry, (i) => { if (water[i] && r.zone[i] && r.top[i] - r.rock[i] > 0.6) { r.dep[i] = k + 1; r.kind[i] = T.kind; r.depLeft[i] = Math.min(r.top[i] - r.rock[i], rng.range(0.9, 1.5)); } });
+      r.deposits.push({ id: k + 1, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: Math.min(r.cols - 4, x), cy: y, rx, ry, owned: k === 0, known: k === 0, cost: T.cost });
+    });
+    for (let i = 0; i < cfg.hardBlobs; i++) {
+      const x = rng.range(2, r.cols - 2);
+      each(x, yc(x) + rng.range(-0.7, 0.7) * hw(x), rng.range(2, 4), rng.range(1.5, 3), (k, d) => { if (water[k]) r.hard[k] = Math.max(r.hard[k], d < 0.5 ? 2 : 1); });
+    }
+    for (let n = 0, tries = 0; n < cfg.debris && tries < 2000; tries++) {
+      const k = r.idx(rng.int(0, r.cols - 1), rng.int(0, r.rows - 1));
+      if (water[k] && r.zone[k] && !r.debris[k] && r.top[k] - r.rock[k] > 0.3) { r.debris[k] = rng.int(1, DEBRIS.length - 1) + (rng.chance(0.07) ? 1 : 0); n++; }
+    }
+    for (let k = 0; k < r.top.length; k++) r.pending.add(k);
+    for (let p = 0; p < 12; p++) r.settle(Infinity); // Anfangsböschungen setzen, ohne dass es im Spiel rutscht
+    r.slumpedTotal = 0;
+    // Zuflüsse (nur wenn die Karte welche hat): am Ufer mündende Bäche, die täglich Sand und Kies in die Rinne tragen; sie als Letztes erzeugen, damit bestehende Flüsse unverändert bleiben
+    for (let n = 0; n < (cfg.tribs ?? 0); n++) {
+      const x = rng.int(9, r.cols - 12), side = rng.chance(0.5) ? -1 : 1;
+      let my = -1; for (let k = 0; k < r.rows; k++) { const y = side < 0 ? k : r.rows - 1 - k; if (r.zone[y * r.cols + x]) { my = y; break; } }
+      if (my < 0) continue;
+      const cx = x + 2.2, cy = my - side * 1.6, rx = 5, ry = 3.4, cells = [], w = [];
+      for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(r.rows - 1, Math.ceil(cy + ry)); y++) for (let xx = Math.max(0, Math.floor(cx - rx)); xx <= Math.min(r.cols - 1, Math.ceil(cx + rx)); xx++) {
+        const i = y * r.cols + xx, d = Math.hypot((xx + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+        if (d < 1 && r.zone[i] && water[i]) { cells.push(i); w.push(+(1 - d).toFixed(2)); }
+      }
+      r.tribs.push({ x, side, my, cells, w, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
+    }
+    return r;
+  }
+
+  idx(x, y) { return y * this.cols + x; }
+  isWater(i) { return this.top[i] < this.wl - 0.05; }
+  depthAt(i) { return this.wl - this.top[i]; }
+  sedAt(i) { return Math.max(0, this.top[i] - this.rock[i]); }
+
+  // Testhilfe: ebener Kanal (alles Korridor), Tiefe `depth`, Fels bei `rockDepth`
+  setFlat(depth = 3, rockDepth = 8, kind = KIND.sand) {
+    const WL = this.wl;
+    this.top.fill(WL - depth); this.rock.fill(WL - rockDepth); this.cap.fill(WL - depth + CONFIG.sediment.maxAbove);
+    this.zone.fill(1); this.bay.fill(0); this.flow.fill(0.7); this.kind.fill(kind); this.hard.fill(0); this.debris.fill(0);
+    this.pending.clear();
+    return this;
+  }
+
+  // Nachrutschen: zu steile Böschungen gleichen sich aus (Material wandert vom höheren zum tieferen Nachbarn).
+  // Massenerhaltend. Verarbeitet höchstens `limit` Zellen pro Aufruf und gibt das bewegte Volumen (m³) zurück.
+  settle(limit = CONFIG.layer.relaxPerTick) {
+    if (!this.pending.size) return 0;
+    const S = CONFIG.layer.slope, cols = this.cols, rows = this.rows;
+    const batch = [];
+    for (const i of this.pending) { batch.push(i); if (batch.length >= limit) break; }
+    for (const i of batch) this.pending.delete(i);
+    let moved = 0;
+    for (const i of batch) {
+      const x = i % cols, y = (i / cols) | 0;
+      for (const [dx, dy] of N4) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const j = ny * cols + nx;
+        const hi = this.top[i] > this.top[j] ? i : j, lo = hi === i ? j : i, diff = this.top[hi] - this.top[lo];
+        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0 || this.bay[hi] || this.bay[lo] || this.pile[hi] || this.pile[lo]) continue; // Beton und die Spundwände des Hafenbeckens halten die Böschung
+        const sed = this.top[hi] - this.rock[hi];
+        if (sed <= 1e-6) continue; // Fels rutscht nicht
+        const m = Math.min(sed, (diff - S) / 2);
+        if (this.top[lo] - this.rock[lo] < 0.05) this.kind[lo] = this.kind[hi];
+        this.top[hi] -= m; this.top[lo] += m; moved += m;
+        this.pending.add(hi); this.pending.add(lo);
+      }
+    }
+    const vol = moved * this.area;
+    this.slumpedTotal += vol;
+    return vol;
+  }
+
+  // Sedimentation: langsames Wasser lagert ab, die Sohle wächst bis zu `cap`. Schnelle Mitte verlandet kaum.
+  deposit(dt, mult = 1) {
+    const S = CONFIG.sediment, a = S.rate * dt * mult;
+    for (let i = 0; i < this.top.length; i++) {
+      if (this.cap[i] <= 0 || this.top[i] >= this.cap[i]) continue;
+      const k = a * (1.1 - this.flow[i]) ** S.flowPower * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1) * (this.bay[i] ? 0.25 : 1); // Hafenbecken verlandet langsam
+      if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
+      this.top[i] = Math.min(this.cap[i], this.top[i] + k);
+      this.pending.add(i);
+    }
+  }
+
+  // Zuflüsse tragen laufend Sand/Kies ein (auch über die normale Obergrenze hinaus), bis zu 0,8 m über der Ausgangssohle
+  tribDeposit(dt) {
+    for (const t of this.tribs ?? []) {
+      for (let k = 0; k < t.cells.length; k++) {
+        const i = t.cells[k]; if (this.cap[i] <= 0 || this.armor[i] > 0 || this.bay[i]) continue;
+        const lim = Math.min(this.wl - 0.6, this.cap[i] + 0.8);
+        if (this.top[i] >= lim) continue;
+        this.top[i] = Math.min(lim, this.top[i] + t.rate * t.w[k] * dt);
+        if (this.kind[i] !== KIND.altlast) this.kind[i] = t.kind;
+        this.pending.add(i);
+      }
+    }
+  }
+
+  // Hochwasser bringt auf einen Schlag Schwebstoffe: am Rand mehr als in der Mitte
+  flood(amount) {
+    for (let i = 0; i < this.top.length; i++) {
+      if (this.cap[i] <= 0) continue;
+      this.top[i] = Math.min(this.cap[i] + 0.25, this.top[i] + amount * (1 - 0.5 * this.flow[i]) * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1));
+      if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
+      this.pending.add(i);
+    }
+  }
+
+  // Leeres Vorkommen verschwindet (Markierung und Zellen); die Nummer bleibt vergeben, weil Vorkommen über ihren Index gefunden werden
+  retireDeposit(id) {
+    const d = this.deposits[id - 1]; if (!d || d.depleted) return false;
+    for (let i = 0; i < this.dep.length; i++) if (this.dep[i] === id) { this.dep[i] = 0; this.depLeft[i] = 0; }
+    d.depleted = true; d.owned = false;
+    return true;
+  }
+  // Neues Vorkommen mit dicker Sedimentschicht im Baggerkorridor (bekannt, Konzession kostet); null, wenn keine passende Stelle gefunden wird
+  spawnDeposit(rng, T) {
+    if (this.deposits.length >= 250) return null;
+    for (let tries = 0; tries < 14; tries++) {
+      const x = Math.floor(rng.range(6, this.cols - 6)), y = this.centerY(x) + rng.range(-0.3, 0.3) * this.halfW(x), rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2), cells = [];
+      for (let yy = Math.max(0, Math.floor(y - ry)); yy <= Math.min(this.rows - 1, Math.ceil(y + ry)); yy++) for (let xx = Math.max(0, Math.floor(x - rx)); xx <= Math.min(this.cols - 1, Math.ceil(x + rx)); xx++) {
+        const i = yy * this.cols + xx;
+        if (((xx - x) / rx) ** 2 + ((yy - y) / ry) ** 2 <= 1 && this.zone[i] && !this.bay[i] && !this.dep[i] && this.kind[i] !== 3 && this.top[i] - this.rock[i] > 0.6) cells.push(i);
+      }
+      if (cells.length < 8) continue;
+      const id = this.deposits.length + 1;
+      for (const i of cells) { this.dep[i] = id; this.kind[i] = T.kind; this.depLeft[i] = Math.min(this.top[i] - this.rock[i], rng.range(0.9, 1.5)); }
+      const d = { id, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: x, cy: y, rx, ry, owned: false, known: true, cost: T.cost };
+      this.deposits.push(d); return d;
+    }
+    return null;
+  }
+
+  // Pfahlwand: Pfähle sind feste Zellen mit Oberkante `pileTop` unter dem Wasserspiegel. In jeder Spalte mit Pfahl ist die Sohle zwischen Pfahl und Ufer
+  // gesichert: sie rutscht nicht nach und darf nicht tiefer als die Oberkante abgetragen werden. Spalten ohne Pfahl bleiben unverändert (Teilstrecken möglich).
+  setPile(i, on, pileTop = 0.5) {
+    if (on) { this.pile[i] = 1; this.top[i] = Math.max(this.top[i], this.wl - pileTop); this.rock[i] = Math.min(this.rock[i], this.top[i]); this.cap[i] = this.top[i]; this.armor[i] = 0; }
+    else this.pile[i] = 0;
+    this.updateLims(pileTop);
+  }
+  updateLims(pileTop = 0.5) {
+    this.lim.fill(-99);
+    for (let i = 0; i < this.pile.length; i++) {
+      if (!this.pile[i]) continue;
+      const x = i % this.cols, y = (i / this.cols) | 0, side = y < this.centerY(x) ? -1 : 1, lim = this.wl - pileTop;
+      for (let yy = y + side; yy >= 0 && yy < this.rows; yy += side) { // vom Pfahl zum Ufer, bis ein weiterer Pfahl oder das Kartenende kommt
+        const j = yy * this.cols + x; if (this.pile[j]) break;
+        this.lim[j] = Math.max(this.lim[j], lim); this.pending.add(j);
+      }
+    }
+  }
+  // Restmenge (m³) eines Vorkommens
+  depositRemaining(id) {
+    let v = 0;
+    for (let i = 0; i < this.dep.length; i++) if (this.dep[i] === id) v += Math.min(this.sedAt(i), this.depLeft[i]);
+    return v * this.area;
+  }
+
+  // Altlasten-Kataster: Zellen und Volumen (m³) belasteten Sediments, gesamt und im Baggerkorridor
+  altlastSummary() {
+    let cells = 0, all = 0, corridor = 0;
+    for (let i = 0; i < this.top.length; i++) {
+      if (this.kind[i] !== KIND.altlast) continue;
+      const sed = this.sedAt(i);
+      if (sed <= 0.05) continue;
+      cells++; all += sed; if (this.zone[i]) corridor += sed;
+    }
+    return { cells, volume: all * this.area, corridor: corridor * this.area };
+  }
+
+  // Verschmutzung rund um (cx, cy) (Zellkoordinaten, Radius in Zellen): Sediment wird zur Altlast. raise > 0: im Kern (Wrack) wächst die Sohle um raise Meter, hart.
+  contaminate(cx, cy, radius, raise = 0) {
+    let n = 0;
+    for (let y = Math.max(0, Math.floor(cy - radius)); y <= Math.min(this.rows - 1, Math.ceil(cy + radius)); y++) {
+      for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(this.cols - 1, Math.ceil(cx + radius)); x++) {
+        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / radius, i = this.idx(x, y);
+        if (d >= 1 || !this.isWater(i)) continue;
+        if (this.sedAt(i) < 0.3) this.top[i] = this.rock[i] + 0.3;
+        this.kind[i] = KIND.altlast; this.hard[i] = Math.max(this.hard[i], 1); this.armor[i] = 0;
+        if (raise > 0 && d < 0.55) { this.top[i] += raise; this.hard[i] = 2; }
+        this.pending.add(i); n++;
+      }
+    }
+    return n;
+  }
+
+  // Gesamtes Sedimentvolumen im Baggerkorridor in m³ (Anzeige, Tests)
+  corridorSediment() {
+    let s = 0;
+    for (let i = 0; i < this.top.length; i++) if (this.zone[i]) s += this.sedAt(i);
+    return s * this.area;
+  }
+
+  // Zellen [index, gewicht] einer Spalte `cx` im Saugbereich um (headY, headH). Gesaugt wird nur Sohle unter Wasser.
+  _profileCells(cx, headY, headH, radius, allowLand = false) {
+    const cells = [];
+    const y0 = Math.max(0, Math.floor(headY - radius)), y1 = Math.min(this.rows - 1, Math.ceil(headY + radius));
+    for (let y = y0; y <= y1; y++) {
+      const i = this.idx(cx, y), s = this.top[i];
+      if (s >= this.wl - 0.05 && !(allowLand && s - this.rock[i] > 1e-6)) continue;
+      const d = Math.hypot(y + 0.5 - headY, s - headH) / radius;
+      if (d < 1) cells.push([i, 1 - d * d]);
+    }
+    return cells;
+  }
+
+  // Fels bekommt nur den Anteil `firmness` der Saugkraft: Zellen ohne Sediment zählen weniger
+  _adj(cells, firmness) { return cells.map(([i, w]) => [i, this.top[i] - this.rock[i] > 1e-6 ? w : w * firmness]); }
+
+  // Gewichtetes Abtragen: verteilt `amount` (Höhe in m) auf die Zellen. Liefert Höhen je Material (by) und Summen.
+  _drain(cells, amount, firmness, adjusted = false, hardFactor = CONFIG.hard.factor, allowLand = false, armorEff = CONFIG.concrete.pumpBreak) {
+    if (!adjusted) cells = this._adj(cells, firmness);
+    const res = { by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, removed: 0, touched: [], dep: {} };
+    let wSum = 0;
+    for (const c of cells) wSum += c[1];
+    if (wSum === 0) return res;
+    amount *= Math.min(1, wSum / CONFIG.pump.fullDraw); // im freien Wasser über dem Boden ist die Saugkraft schwach
+    for (const [i, w] of cells) {
+      if (this.pile[i]) continue; // Pfähle sind fest
+      const sed = this.top[i] - this.rock[i];
+      let eff = 1 / (1 + this.hard[i] * hardFactor);
+      if (sed <= 1e-6) eff *= firmness;
+      const armor = this.armor[i];
+      if (armor > 1e-6) eff *= armorEff; // Beton muss erst aufgebrochen werden
+      let take = ((amount * w) / wSum) * eff;
+      if (sed > 1e-6) take = Math.min(take, sed);
+      if (this.lim[i] > -90) take = Math.min(take, Math.max(0, this.top[i] - this.lim[i])); // Abtragsperre: nicht tiefer als die Oberkante der Pfahlwand
+      if (armor > 1e-6) take = Math.min(take, armor); // zuerst die Betonschicht // erst das Sediment, dann (im nächsten Schritt) der Fels darunter
+      if (take <= 0) continue;
+      const fromSed = Math.min(take, Math.max(0, sed)), fromRock = take - fromSed;
+      this.top[i] -= take;
+      if (fromRock > 0) this.rock[i] -= fromRock; // der Fels wird abgetragen, die Sohle sinkt mit
+      const left = this.top[i] - this.rock[i];
+      let snap = 0;
+      if (fromRock === 0 && left > 0 && left < CONFIG.layer.snap) { snap = left; this.top[i] -= snap; } // winziger Rest gilt als erledigt
+      if (armor > 1e-6) { this.armor[i] = Math.max(0, armor - take); if (this.armor[i] < 0.01) this.armor[i] = 0; res.by[KIND.fels] += fromSed; } // Betonbruch zählt wie Fels (Schotter)
+      else res.by[this.kind[i]] += fromSed + snap;
+      res.by[KIND.fels] += fromRock;
+      if (this.dep[i] && fromSed > 0 && armor <= 1e-6) { // Vorkommen: nur die obersten Meter bringen Aufschlag, danach ausgebeutet
+        const v = Math.min(fromSed + snap, this.depLeft[i]);
+        res.dep[this.dep[i]] = (res.dep[this.dep[i]] ?? 0) + v; this.depLeft[i] -= v;
+        if (this.depLeft[i] < 0.02 || this.top[i] - this.rock[i] < 0.05) this.dep[i] = 0;
+      }
+      take += snap;
+      res.removed += take;
+      const strip = this.ext[i] === 1 || (this.ext[i] === 2 && allowLand);
+      if (this.zone[i]) res.zone += take; else if (strip) res.land += take; else res.out += take;
+      if (strip && !this.zone[i] && this.top[i] < this.wl - 0.1) { this.zone[i] = 1; this.flow[i] = 0.4; this.cap[i] = this.wl - 0.15; } // Land wird Wasser: neuer Korridor
+      if (this.hard[i]) res.hard += fromSed;
+      if (this.top[i] - this.rock[i] <= 1e-6) this.hard[i] = 0;
+      res.touched.push(i);
+    }
+    for (const i of res.touched) this.pending.add(i);
+    return res;
+  }
+
+  _vol(r) {
+    const a = this.area;
+    return { removed: r.removed * a, by: r.by.map((v) => v * a), zone: r.zone * a, out: r.out * a, land: r.land * a, hard: r.hard * a, dep: Object.fromEntries(Object.entries(r.dep ?? {}).map(([k, v]) => [k, v * a])) };
+  }
+
+  // Querschnitt: Der Kasten umfasst die Spalten `cols` (Flussrichtung); die Pumpenleistung verteilt sich nach Bedarf auf alle
+  // Spalten, in denen an der Einsaugstelle etwas zu holen ist. Die Einsaugstelle folgt dem Gelände jeder Spalte
+  // (gleicher Abstand zur lokalen Oberfläche wie in der Mittelspalte). amount in m³.
+  suckSwath(cols, centerCol, headY, headH, radius, amount, firmness = CONFIG_BASE_FIRMNESS, opts = {}) {
+    const { allowLand = false, hardFactor = CONFIG.hard.factor, armorEff = CONFIG.concrete.pumpBreak } = opts;
+    const my = clamp(Math.floor(headY), 0, this.rows - 1), base = this.top[this.idx(centerCol, my)];
+    const work = cols.map((c) => this._adj(this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius, allowLand), firmness)).filter((cells) => cells.length);
+    const rowW = work.map((cells) => cells.reduce((a, c) => a + c[1], 0)), total = rowW.reduce((a, b) => a + b, 0);
+    const sum = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, dep: {} };
+    for (let k = 0; k < work.length; k++) {
+      const res = this._vol(this._drain(work[k], (amount * rowW[k]) / total / this.area, firmness, true, hardFactor, allowLand, armorEff));
+      sum.removed += res.removed; sum.zone += res.zone; sum.out += res.out; sum.land += res.land; sum.hard += res.hard;
+      for (const [k, v] of Object.entries(res.dep)) sum.dep[k] = (sum.dep[k] ?? 0) + v;
+      for (let m = 0; m < 5; m++) sum.by[m] += res.by[m];
+    }
+    return sum;
+  }
+
+  // Beton ausbringen: verhärtet die oberste Sedimentschicht (bis CONFIG.concrete.thickness) der Zellen im Bereich um (headY, headH).
+  // Nur im Baggerkorridor und im Ausbaustreifen (sonst Schutzgebiet), nur auf Sediment (Fels trägt keinen Beton). amount in m³ Beton,
+  // Rückgabe: verbrauchte Menge (m³) und Anzahl neu verhärteter Zellen. Die Höhe der Sohle ändert sich nicht.
+  pourSwath(cols, centerCol, headY, headH, radius, amount) {
+    const T = CONFIG.concrete.thickness, my = clamp(Math.floor(headY), 0, this.rows - 1), base = this.top[this.idx(centerCol, my)];
+    const cells = [];
+    for (const c of cols) {
+      for (const [i, w] of this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius, true)) {
+        const ok = this.zone[i] || this.ext[i] === 1 || this.ext[i] === 2;
+        if (ok && this.top[i] - this.rock[i] > T * 0.5 && this.armor[i] < T - 1e-6) cells.push([i, w]);
+      }
+    }
+    let wSum = 0;
+    for (const [, w] of cells) wSum += w;
+    if (!wSum) return { used: 0, cells: 0 };
+    let left = amount, used = 0, done = 0;
+    for (const [i, w] of cells) {
+      const want = Math.min(T - this.armor[i], this.sedAt(i), (amount * (w / wSum)) / this.area);
+      const dv = Math.min(left, want * this.area);
+      if (dv <= 0) continue;
+      this.armor[i] += dv / this.area; left -= dv; used += dv;
+      if (this.armor[i] >= T - 1e-6) done++;
+    }
+    return { used, cells: done };
+  }
+
+  // Hüllkurven der Spalten `cols` über die Querschnittsfenster-Zellen y0..y0+n-1: höchster Punkt (= die engste Stelle für Schiffe) und tiefster
+  envelope(cols, y0, n) {
+    const hi = new Float32Array(n), lo = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      let mx = -Infinity, mn = Infinity;
+      for (const c of cols) { const t = this.top[this.idx(c, y0 + k)]; if (t > mx) mx = t; if (t < mn) mn = t; }
+      hi[k] = mx; lo[k] = mn;
+    }
+    return { hi, lo };
+  }
+}
+
+const CONFIG_BASE_FIRMNESS = 0.04;
+
+return { River: River };
+},
+function(){
 const { CONFIG, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
-const { hallCapacity, roadFactor } = __m(5);
-const { priceOf, ratioOf } = __m(6);
-const { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } = __m(7);
+const { hallCapacity, roadFactor } = __m(7);
+const { priceOf, ratioOf } = __m(8);
+const { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } = __m(4);
 
 
 
@@ -3211,541 +3743,16 @@ function trend(m, id) {
 return { createMarket: createMarket, priceOf: priceOf, ratioOf: ratioOf, stepMarket: stepMarket, shockMarket: shockMarket, trend: trend };
 },
 function(){
-const { CONFIG, KIND, SHIPS, shipById } = __m(2);
-const { River } = __m(8);
-const { minNeedDepth } = __m(3);
-
-
-
-
-// Hafenkarte: eigenes Raster zum Hafen einer Karte. Von links führt die Zufahrt (tief) in das Hafenbecken (anfangs flach, muss ausgebaggert werden);
-// ringsum ist Land (nicht abbaubar) mit Kaimauer. Die Pontons der Karte lassen sich zwischen Hauptkarte und Hafen aufteilen (unit.loc).
-// Reine Daten und Logik: das Flussbett liegt im Hafen (port.harbor.river) und wird mit gespeichert.
-const HARBOR = {
-  basin: { x0: 14, x1: 33, y0: 11, y1: 24 }, // Zellen des Hafenbeckens
-  entrance: { x0: 0, x1: 13, y0: 16, y1: 19 }, // Zufahrt vom Fluss
-  startDepth: 1.0, siltTo: 1.3, // das Becken verlandet wieder bis zu dieser Tiefe, wenn nicht gebaggert wird
-  entranceDepth: 2.8,
-  need: { kahn: 2.0, motor: 3.0, tank: 4.0, container: 5.0, schub: 6.0 }, // Beckentiefe (m), die die Klasse zum Anlegen braucht (tiefer als der Fluss: Kaimauer, grosse Schiffe)
-  kaiClasses: [1, 2, 4], // so viele Schiffsklassen (der Reihe nach: Lastkahn, Motorschiff, Tankschiff, Containerschiff) nimmt der Kai je Stufe an
-  waits: [1, 2, 4], // Warteräume je Kai-Stufe: dort warten Schiffe, wenn alle Liegeplätze belegt sind
-  waitX: [17, 21, 25, 29], waitY: 21.2, // Warteplätze im südlichen Becken
-  quayY: 10.5, berthX: [16, 20, 24, 28, 32], // Liegeplätze an der Nordkaimauer
-  plots: [[3, 3], [12, 3], [21, 3], [30, 3], [8, 27], [27, 27]], // Bauplätze (Zelle links oben) für die 6 Hafenplätze, Grösse 8×5
-  plotW: 8, plotH: 5,
-};
-
-function createHarborRiver(wl) {
-  const r = new River(CONFIG.river.cols, CONFIG.river.rows), n = r.cols * r.rows, B = HARBOR.basin, E = HARBOR.entrance;
-  r.wl = wl;
-  r.top.fill(wl + 1.4); r.rock.fill(wl - 8); r.cap.fill(0); r.flow.fill(0); r.kind.fill(KIND.sand); r.zone.fill(0); r.ext.fill(0); r.hard.fill(0); r.debris.fill(0); r.armor.fill(0);
-  const water = (x0, x1, y0, y1, depth, cap, flow) => {
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * r.cols + x; r.top[i] = wl - depth; r.cap[i] = wl - cap; r.zone[i] = 1; r.flow[i] = flow; r.kind[i] = KIND.sand; }
-  };
-  water(E.x0, E.x1, E.y0, E.y1, HARBOR.entranceDepth, HARBOR.entranceDepth - CONFIG.sediment.maxAbove, 0.45);
-  water(B.x0, B.x1, B.y0, B.y1, HARBOR.startDepth, HARBOR.siltTo, 0.15);
-  const rim = CONFIG.concrete.thickness; // Kaimauer: Landzellen am Wasser sind betoniert und rutschen nicht nach
-  for (let y = 0; y < r.rows; y++) for (let x = 0; x < r.cols; x++) {
-    const i = y * r.cols + x; if (r.zone[i]) continue;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < r.cols && ny < r.rows && r.zone[ny * r.cols + nx]) { r.armor[i] = rim; break; } }
-  }
-  const cells = []; for (let y = B.y0; y <= B.y1; y++) for (let x = B.x0; x <= B.x1; x++) cells.push(y * r.cols + x);
-  return { river: r, cells };
-}
-// Hafenkarte anlegen (ältere Spielstände mit geöffnetem Hafen bekommen sie nachträglich)
-function ensureHarbor(p, wl) { if (p.open && !p.harbor) p.harbor = createHarborRiver(wl); return p.harbor ?? null; }
-
-// Tiefe, die 80 % des Beckens mindestens haben (m)
-function harborDepth(p, wl) {
-  const h = p.harbor; if (!h) return null;
-  const d = h.cells.map((i) => wl - h.river.top[i]).sort((a, b) => a - b);
-  return d[Math.floor(d.length * 0.2)];
-}
-// Nimmt der Hafen diese Klasse an? Der Kai bestimmt, wie viele Klassen (Stufe 1: nur die einfachste), das Becken muss tief genug sein
-function harborAccepts(p, wl, kaiLevel, clsId) {
-  const k = SHIPS.findIndex((s) => s.id === clsId); if (k < 0 || k >= HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)]) return false;
-  const d = harborDepth(p, wl); return d !== null && d >= HARBOR.need[clsId] - 0.02;
-}
-// Solltiefe für die Pontons im Becken: tief genug für die tiefste Klasse, die der Kai annimmt
-function harborTarget(kaiLevel) {
-  const k = HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)];
-  return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => HARBOR.need[s.id])) + 0.1);
-}
-const waitPos = (i) => ({ x: HARBOR.waitX[Math.min(i, HARBOR.waitX.length - 1)], y: HARBOR.waitY, angle: 0 });
-// Liegeplatz i (Mitte des Schiffs, an der Nordkaimauer)
-const berthPos = (i) => ({ x: HARBOR.berthX[Math.min(i, HARBOR.berthX.length - 1)], y: HARBOR.basin.y0 + 1.1, angle: 0 });
-
-// Ansicht der Hafenkarte: dasselbe Spiel, aber mit dem Flussbett des Hafens, den Pontons im Hafen und ohne Verkehr und Kreuzungen der Hauptkarte.
-// Wird nur zum Zeichnen benutzt (die Simulation läuft unabhängig davon).
-function makeHarborView(g) {
-  const h = g.port.harbor, v = Object.create(g);
-  Object.defineProperties(v, {
-    river: { value: h.river }, fair: { value: {} }, zones: { value: [] }, traffic: { value: { ships: [] } }, site: { value: null },
-    fleet: { value: { units: g.fleet.units.filter((u) => (u.loc ?? 'main') === 'harbor'), areas: [] } },
-    port: { value: Object.create(g.port, { bay: { value: null }, land: { value: { roads: [], halls: [], seq: 0 } } }) },
-    isHarborView: { value: true },
-  });
-  return v;
-}
-
-return { HARBOR: HARBOR, createHarborRiver: createHarborRiver, ensureHarbor: ensureHarbor, harborDepth: harborDepth, harborAccepts: harborAccepts, harborTarget: harborTarget, waitPos: waitPos, berthPos: berthPos, makeHarborView: makeHarborView };
-},
-function(){
-const { CONFIG, KIND, DEBRIS, DEPOSITS } = __m(2);
-
-
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-
-// Flusssohle als Raster (Zelle = cellArea m²). Der Fluss fliesst in x-Richtung (links nach rechts), y ist die Breite.
-// - top:  Oberfläche der Sohle (m über dem Bezugshorizont; Wasserspiegel = wl, Tiefe = wl - top)
-// - rock: Felsgrund. Sediment = top - rock, darunter nur noch Fels (nur mit Felsfräse sinnvoll abtragbar)
-// - kind: Material der Sedimentschicht (KIND), - zone: 1 = Baggerkorridor, 0 = Land oder Naturschutzzone (Ufer, Flachwasser)
-// Alle öffentlichen Mengen sind in m³.
-class River {
-  constructor(cols, rows) {
-    const n = cols * rows;
-    this.cols = cols;
-    this.rows = rows;
-    this.area = CONFIG.layer.cellArea;
-    this.wl = CONFIG.water.base;
-    this.top = new Float32Array(n);
-    this.rock = new Float32Array(n);
-    this.cap = new Float32Array(n); // Höhe, bis zu der die Sohle wieder verlanden kann (0 = Land, keine Ablagerung)
-    this.flow = new Float32Array(n); // 0..1, Strömung: in der Mitte schnell, am Rand langsam
-    this.kind = new Uint8Array(n);
-    this.hard = new Uint8Array(n); // 0 weich, 1 verdichtet, 2 hart (mehrere Überfahrten)
-    this.debris = new Uint8Array(n); // 0 nichts, sonst Index in DEBRIS + 1
-    this.zone = new Uint8Array(n);
-    this.bay = new Uint8Array(n); // Hafenbecken (zählt als Korridor zum Baggern, aber nicht zur Fahrrinne der Schiffe)
-    this.dep = new Uint8Array(n); // Rohstoffvorkommen: 0 = keins, sonst Nummer in this.deposits
-    this.depLeft = new Float32Array(n); // wie viele Meter des Vorkommens (von oben) in dieser Zelle noch Aufschlag bringen
-    this.pile = new Uint8Array(n); // Pfahlwand: 1 = Betonpfahl (fest, wird nicht abgetragen, hält die Böschung)
-    this.lim = new Float32Array(n).fill(-99); // tiefste erlaubte Höhe der Sohle (Abtragsperre zwischen Pfahlwand und Ufer: nicht tiefer als Oberkante Beton)
-    this.tribs = []; // Zuflüsse: { x, side, my, cells: [Zellen], w: [Gewichte], kind, rate }: bringen laufend Sand/Kies in die Rinne
-    this.deposits = []; // { id, type, name, kind, mult, cx, cy, rx, ry, owned, known, cost }
-    this.armor = new Float32Array(n); // Dicke der Betonschicht (m), die die Oberfläche der Zelle verhärtet; 0 = unbehandelt
-    this.ext = new Uint8Array(n); // Ausbaustreifen am Ufer: 1 = Land, 2 = Flachwasser. Mit dem Löffelbagger abtragbar (wird dann zum Korridor), sonst Schutzgebiet
-    this.pending = new Set(); // Zellen, deren Böschung noch nachrutscht (abgeleitet, wird nicht gespeichert)
-    this.slumpedTotal = 0; // m³ nachgerutscht (Anzeige)
-  }
-
-  static generate(rng, p = {}) {
-    const cfg = { ...CONFIG.river, halfWidth: 6.8, depthMax: 2.4, rockDepth: 6.4, meander: 2.4, bars: [], ridges: [], shoals: 5, altlast: 2, hardBlobs: 3, debris: CONFIG.debris.count, ...p };
-    const r = new River(cfg.cols, cfg.rows);
-    const WL = r.wl;
-    const ph = [rng.range(0, 6.28), rng.range(0, 6.28), rng.range(0, 6.28)];
-    const each = (cx, cy, rx, ry, fn) => {
-      for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(r.rows - 1, Math.ceil(cy + ry)); y++) {
-        for (let x = Math.max(0, Math.floor(cx - rx)); x <= Math.min(r.cols - 1, Math.ceil(cx + rx)); x++) {
-          const d = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
-          if (d < 1) fn(r.idx(x, y), d);
-        }
-      }
-    };
-    const yc = (x) => r.rows / 2 + cfg.meander * Math.sin(x * 0.16 + ph[0]) + cfg.meander * 0.8 * Math.sin(x * 0.07 + ph[1]);
-    const hw = (x) => cfg.halfWidth + 1.2 * Math.sin(x * 0.12 + ph[2]);
-    r.centerY = (x) => yc(x); r.halfW = (x) => hw(x); // Hilfen für Anzeige und Tests
-    const noise = (x, y) => Math.sin(x * 0.9 + y * 1.7) * Math.cos(x * 1.3 - y * 0.8);
-    const water = new Uint8Array(r.cols * r.rows);
-    for (let x = 0; x < r.cols; x++) {
-      for (let y = 0; y < r.rows; y++) {
-        const i = r.idx(x, y), rel = Math.abs(y + 0.5 - yc(x)) / hw(x);
-        if (rel < 1) {
-          water[i] = 1;
-          const depth = Math.max(0.5, cfg.depthMax * (1 - rel ** 2.2) + 0.08 * noise(x, y));
-          r.top[i] = WL - depth;
-          r.flow[i] = clamp(1 - rel, 0, 1);
-          r.zone[i] = rel < 0.82 ? 1 : 0;
-          r.ext[i] = rel >= 0.82 ? 2 : 0; // Flachwasser am Ufer: Schutzzone für den Saugbagger, mit dem Löffel als Ausbaustreifen abtragbar
-          r.rock[i] = WL - (cfg.rockDepth + 0.8 * (1 - rel) + 0.25 * noise(y, x));
-        } else {
-          r.top[i] = Math.min(WL + 7, WL + 0.4 + (rel - 1) * (rel < 1.9 ? 2.0 : 6) + 0.1 * noise(x, y)); // flaches Ufer im Ausbaustreifen, dahinter steiler
-          r.rock[i] = WL - 3; // Ufer: viel Sediment, rutscht nach, wenn man zu nah baggert
-          r.flow[i] = 0;
-          r.ext[i] = rel < 1.9 ? 1 : 0;
-        }
-        const f = r.flow[i];
-        r.kind[i] = !water[i] ? KIND.sand : f + 0.12 * noise(y, x) > 0.55 ? KIND.kies : f + 0.12 * noise(y, x) > 0.25 ? KIND.sand : KIND.schlick;
-      }
-    }
-    // Barren: über die ganze Breite erhöhte Sohle, hier wird die Rinne zuerst eng
-    for (const b of cfg.bars) {
-      for (let x = Math.max(0, Math.floor(b.x - b.w)); x <= Math.min(r.cols - 1, Math.ceil(b.x + b.w)); x++) {
-        const along = 1 - Math.abs(x + 0.5 - b.x) / b.w;
-        if (along <= 0) continue;
-        for (let y = 0; y < r.rows; y++) {
-          const i = r.idx(x, y), rel = Math.abs(y + 0.5 - yc(x)) / hw(x);
-          if (water[i]) r.top[i] += b.raise * Math.sqrt(along) * (1 - rel ** 4);
-        }
-      }
-    }
-    // Sandbänke am Rand und kleine Hügel in der Rinne
-    for (let i = 0; i < cfg.shoals; i++) {
-      const x = rng.range(2, r.cols - 2), y = yc(x) + rng.range(-1, 1) * hw(x) * 0.8;
-      const a = rng.range(0.4, 1.0);
-      each(x, y, rng.range(2.5, 4.5), rng.range(2, 3.5), (k, d) => { if (water[k]) r.top[k] += a * (1 - d * d); });
-    }
-    // Felsriegel: unter dieser Tiefe beginnt Fels
-    for (const g of cfg.ridges) {
-      for (let x = Math.max(0, Math.floor(g.x - g.w)); x <= Math.min(r.cols - 1, Math.ceil(g.x + g.w)); x++) {
-        const along = clamp(1 - Math.abs(x + 0.5 - g.x) / g.w, 0, 1);
-        if (along <= 0) continue;
-        for (let y = 0; y < r.rows; y++) {
-          const i = r.idx(x, y);
-          if (!water[i]) continue;
-          const wanted = WL - g.depth, blend = Math.min(1, along * 1.8);
-          r.rock[i] = Math.max(r.rock[i], r.rock[i] + (wanted - r.rock[i]) * blend);
-        }
-      }
-    }
-    for (let k = 0; k < r.top.length; k++) {
-      if (r.top[k] < r.rock[k]) r.top[k] = r.rock[k]; // Fels ragt heraus
-      r.cap[k] = water[k] ? r.top[k] + CONFIG.sediment.maxAbove : 0;
-    }
-    // Altlasten (alte Industrie, Schlackenhalden), harte Schichten, Fremdstoffe
-    for (let i = 0; i < cfg.altlast; i++) {
-      const x = rng.range(3, r.cols - 3);
-      each(x, yc(x) + rng.range(-0.6, 0.6) * hw(x), rng.range(1.8, 3), rng.range(1.5, 2.6), (k) => { if (water[k] && r.top[k] - r.rock[k] > 0.2) r.kind[k] = KIND.altlast; });
-    }
-    // Rohstoffvorkommen: das erste (Kiesbank) liegt früh am Fluss, ist bekannt und freigegeben; die weiteren müssen erkundet und erworben werden
-    (cfg.deposits ?? []).forEach((typeId, k) => {
-      const T = DEPOSITS.find((d) => d.id === typeId) ?? DEPOSITS[0];
-      const x = k === 0 ? rng.range(7, 12) : rng.range(8 + k * 7, 14 + k * 7), y = yc(x) + rng.range(-0.35, 0.35) * hw(x);
-      const rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2);
-      each(Math.min(r.cols - 4, x), y, rx, ry, (i) => { if (water[i] && r.zone[i] && r.top[i] - r.rock[i] > 0.6) { r.dep[i] = k + 1; r.kind[i] = T.kind; r.depLeft[i] = Math.min(r.top[i] - r.rock[i], rng.range(0.9, 1.5)); } });
-      r.deposits.push({ id: k + 1, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: Math.min(r.cols - 4, x), cy: y, rx, ry, owned: k === 0, known: k === 0, cost: T.cost });
-    });
-    for (let i = 0; i < cfg.hardBlobs; i++) {
-      const x = rng.range(2, r.cols - 2);
-      each(x, yc(x) + rng.range(-0.7, 0.7) * hw(x), rng.range(2, 4), rng.range(1.5, 3), (k, d) => { if (water[k]) r.hard[k] = Math.max(r.hard[k], d < 0.5 ? 2 : 1); });
-    }
-    for (let n = 0, tries = 0; n < cfg.debris && tries < 2000; tries++) {
-      const k = r.idx(rng.int(0, r.cols - 1), rng.int(0, r.rows - 1));
-      if (water[k] && r.zone[k] && !r.debris[k] && r.top[k] - r.rock[k] > 0.3) { r.debris[k] = rng.int(1, DEBRIS.length - 1) + (rng.chance(0.07) ? 1 : 0); n++; }
-    }
-    for (let k = 0; k < r.top.length; k++) r.pending.add(k);
-    for (let p = 0; p < 12; p++) r.settle(Infinity); // Anfangsböschungen setzen, ohne dass es im Spiel rutscht
-    r.slumpedTotal = 0;
-    // Zuflüsse (nur wenn die Karte welche hat): am Ufer mündende Bäche, die täglich Sand und Kies in die Rinne tragen; sie als Letztes erzeugen, damit bestehende Flüsse unverändert bleiben
-    for (let n = 0; n < (cfg.tribs ?? 0); n++) {
-      const x = rng.int(9, r.cols - 12), side = rng.chance(0.5) ? -1 : 1;
-      let my = -1; for (let k = 0; k < r.rows; k++) { const y = side < 0 ? k : r.rows - 1 - k; if (r.zone[y * r.cols + x]) { my = y; break; } }
-      if (my < 0) continue;
-      const cx = x + 2.2, cy = my - side * 1.6, rx = 5, ry = 3.4, cells = [], w = [];
-      for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(r.rows - 1, Math.ceil(cy + ry)); y++) for (let xx = Math.max(0, Math.floor(cx - rx)); xx <= Math.min(r.cols - 1, Math.ceil(cx + rx)); xx++) {
-        const i = y * r.cols + xx, d = Math.hypot((xx + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
-        if (d < 1 && r.zone[i] && water[i]) { cells.push(i); w.push(+(1 - d).toFixed(2)); }
-      }
-      r.tribs.push({ x, side, my, cells, w, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
-    }
-    return r;
-  }
-
-  idx(x, y) { return y * this.cols + x; }
-  isWater(i) { return this.top[i] < this.wl - 0.05; }
-  depthAt(i) { return this.wl - this.top[i]; }
-  sedAt(i) { return Math.max(0, this.top[i] - this.rock[i]); }
-
-  // Testhilfe: ebener Kanal (alles Korridor), Tiefe `depth`, Fels bei `rockDepth`
-  setFlat(depth = 3, rockDepth = 8, kind = KIND.sand) {
-    const WL = this.wl;
-    this.top.fill(WL - depth); this.rock.fill(WL - rockDepth); this.cap.fill(WL - depth + CONFIG.sediment.maxAbove);
-    this.zone.fill(1); this.bay.fill(0); this.flow.fill(0.7); this.kind.fill(kind); this.hard.fill(0); this.debris.fill(0);
-    this.pending.clear();
-    return this;
-  }
-
-  // Nachrutschen: zu steile Böschungen gleichen sich aus (Material wandert vom höheren zum tieferen Nachbarn).
-  // Massenerhaltend. Verarbeitet höchstens `limit` Zellen pro Aufruf und gibt das bewegte Volumen (m³) zurück.
-  settle(limit = CONFIG.layer.relaxPerTick) {
-    if (!this.pending.size) return 0;
-    const S = CONFIG.layer.slope, cols = this.cols, rows = this.rows;
-    const batch = [];
-    for (const i of this.pending) { batch.push(i); if (batch.length >= limit) break; }
-    for (const i of batch) this.pending.delete(i);
-    let moved = 0;
-    for (const i of batch) {
-      const x = i % cols, y = (i / cols) | 0;
-      for (const [dx, dy] of N4) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-        const j = ny * cols + nx;
-        const hi = this.top[i] > this.top[j] ? i : j, lo = hi === i ? j : i, diff = this.top[hi] - this.top[lo];
-        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0 || this.bay[hi] || this.bay[lo] || this.pile[hi] || this.pile[lo]) continue; // Beton und die Spundwände des Hafenbeckens halten die Böschung
-        const sed = this.top[hi] - this.rock[hi];
-        if (sed <= 1e-6) continue; // Fels rutscht nicht
-        const m = Math.min(sed, (diff - S) / 2);
-        if (this.top[lo] - this.rock[lo] < 0.05) this.kind[lo] = this.kind[hi];
-        this.top[hi] -= m; this.top[lo] += m; moved += m;
-        this.pending.add(hi); this.pending.add(lo);
-      }
-    }
-    const vol = moved * this.area;
-    this.slumpedTotal += vol;
-    return vol;
-  }
-
-  // Sedimentation: langsames Wasser lagert ab, die Sohle wächst bis zu `cap`. Schnelle Mitte verlandet kaum.
-  deposit(dt, mult = 1) {
-    const S = CONFIG.sediment, a = S.rate * dt * mult;
-    for (let i = 0; i < this.top.length; i++) {
-      if (this.cap[i] <= 0 || this.top[i] >= this.cap[i]) continue;
-      const k = a * (1.1 - this.flow[i]) ** S.flowPower * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1) * (this.bay[i] ? 0.25 : 1); // Hafenbecken verlandet langsam
-      if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
-      this.top[i] = Math.min(this.cap[i], this.top[i] + k);
-      this.pending.add(i);
-    }
-  }
-
-  // Zuflüsse tragen laufend Sand/Kies ein (auch über die normale Obergrenze hinaus), bis zu 0,8 m über der Ausgangssohle
-  tribDeposit(dt) {
-    for (const t of this.tribs ?? []) {
-      for (let k = 0; k < t.cells.length; k++) {
-        const i = t.cells[k]; if (this.cap[i] <= 0 || this.armor[i] > 0 || this.bay[i]) continue;
-        const lim = Math.min(this.wl - 0.6, this.cap[i] + 0.8);
-        if (this.top[i] >= lim) continue;
-        this.top[i] = Math.min(lim, this.top[i] + t.rate * t.w[k] * dt);
-        if (this.kind[i] !== KIND.altlast) this.kind[i] = t.kind;
-        this.pending.add(i);
-      }
-    }
-  }
-
-  // Hochwasser bringt auf einen Schlag Schwebstoffe: am Rand mehr als in der Mitte
-  flood(amount) {
-    for (let i = 0; i < this.top.length; i++) {
-      if (this.cap[i] <= 0) continue;
-      this.top[i] = Math.min(this.cap[i] + 0.25, this.top[i] + amount * (1 - 0.5 * this.flow[i]) * (this.armor[i] > 0 ? CONFIG.concrete.depositFactor : 1));
-      if (this.top[i] - this.rock[i] < 0.05) this.kind[i] = KIND.schlick;
-      this.pending.add(i);
-    }
-  }
-
-  // Leeres Vorkommen verschwindet (Markierung und Zellen); die Nummer bleibt vergeben, weil Vorkommen über ihren Index gefunden werden
-  retireDeposit(id) {
-    const d = this.deposits[id - 1]; if (!d || d.depleted) return false;
-    for (let i = 0; i < this.dep.length; i++) if (this.dep[i] === id) { this.dep[i] = 0; this.depLeft[i] = 0; }
-    d.depleted = true; d.owned = false;
-    return true;
-  }
-  // Neues Vorkommen mit dicker Sedimentschicht im Baggerkorridor (bekannt, Konzession kostet); null, wenn keine passende Stelle gefunden wird
-  spawnDeposit(rng, T) {
-    if (this.deposits.length >= 250) return null;
-    for (let tries = 0; tries < 14; tries++) {
-      const x = Math.floor(rng.range(6, this.cols - 6)), y = this.centerY(x) + rng.range(-0.3, 0.3) * this.halfW(x), rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2), cells = [];
-      for (let yy = Math.max(0, Math.floor(y - ry)); yy <= Math.min(this.rows - 1, Math.ceil(y + ry)); yy++) for (let xx = Math.max(0, Math.floor(x - rx)); xx <= Math.min(this.cols - 1, Math.ceil(x + rx)); xx++) {
-        const i = yy * this.cols + xx;
-        if (((xx - x) / rx) ** 2 + ((yy - y) / ry) ** 2 <= 1 && this.zone[i] && !this.bay[i] && !this.dep[i] && this.kind[i] !== 3 && this.top[i] - this.rock[i] > 0.6) cells.push(i);
-      }
-      if (cells.length < 8) continue;
-      const id = this.deposits.length + 1;
-      for (const i of cells) { this.dep[i] = id; this.kind[i] = T.kind; this.depLeft[i] = Math.min(this.top[i] - this.rock[i], rng.range(0.9, 1.5)); }
-      const d = { id, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: x, cy: y, rx, ry, owned: false, known: true, cost: T.cost };
-      this.deposits.push(d); return d;
-    }
-    return null;
-  }
-
-  // Pfahlwand: Pfähle sind feste Zellen mit Oberkante `pileTop` unter dem Wasserspiegel. In jeder Spalte mit Pfahl ist die Sohle zwischen Pfahl und Ufer
-  // gesichert: sie rutscht nicht nach und darf nicht tiefer als die Oberkante abgetragen werden. Spalten ohne Pfahl bleiben unverändert (Teilstrecken möglich).
-  setPile(i, on, pileTop = 0.5) {
-    if (on) { this.pile[i] = 1; this.top[i] = Math.max(this.top[i], this.wl - pileTop); this.rock[i] = Math.min(this.rock[i], this.top[i]); this.cap[i] = this.top[i]; this.armor[i] = 0; }
-    else this.pile[i] = 0;
-    this.updateLims(pileTop);
-  }
-  updateLims(pileTop = 0.5) {
-    this.lim.fill(-99);
-    for (let i = 0; i < this.pile.length; i++) {
-      if (!this.pile[i]) continue;
-      const x = i % this.cols, y = (i / this.cols) | 0, side = y < this.centerY(x) ? -1 : 1, lim = this.wl - pileTop;
-      for (let yy = y + side; yy >= 0 && yy < this.rows; yy += side) { // vom Pfahl zum Ufer, bis ein weiterer Pfahl oder das Kartenende kommt
-        const j = yy * this.cols + x; if (this.pile[j]) break;
-        this.lim[j] = Math.max(this.lim[j], lim); this.pending.add(j);
-      }
-    }
-  }
-  // Restmenge (m³) eines Vorkommens
-  depositRemaining(id) {
-    let v = 0;
-    for (let i = 0; i < this.dep.length; i++) if (this.dep[i] === id) v += Math.min(this.sedAt(i), this.depLeft[i]);
-    return v * this.area;
-  }
-
-  // Altlasten-Kataster: Zellen und Volumen (m³) belasteten Sediments, gesamt und im Baggerkorridor
-  altlastSummary() {
-    let cells = 0, all = 0, corridor = 0;
-    for (let i = 0; i < this.top.length; i++) {
-      if (this.kind[i] !== KIND.altlast) continue;
-      const sed = this.sedAt(i);
-      if (sed <= 0.05) continue;
-      cells++; all += sed; if (this.zone[i]) corridor += sed;
-    }
-    return { cells, volume: all * this.area, corridor: corridor * this.area };
-  }
-
-  // Verschmutzung rund um (cx, cy) (Zellkoordinaten, Radius in Zellen): Sediment wird zur Altlast. raise > 0: im Kern (Wrack) wächst die Sohle um raise Meter, hart.
-  contaminate(cx, cy, radius, raise = 0) {
-    let n = 0;
-    for (let y = Math.max(0, Math.floor(cy - radius)); y <= Math.min(this.rows - 1, Math.ceil(cy + radius)); y++) {
-      for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(this.cols - 1, Math.ceil(cx + radius)); x++) {
-        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / radius, i = this.idx(x, y);
-        if (d >= 1 || !this.isWater(i)) continue;
-        if (this.sedAt(i) < 0.3) this.top[i] = this.rock[i] + 0.3;
-        this.kind[i] = KIND.altlast; this.hard[i] = Math.max(this.hard[i], 1); this.armor[i] = 0;
-        if (raise > 0 && d < 0.55) { this.top[i] += raise; this.hard[i] = 2; }
-        this.pending.add(i); n++;
-      }
-    }
-    return n;
-  }
-
-  // Gesamtes Sedimentvolumen im Baggerkorridor in m³ (Anzeige, Tests)
-  corridorSediment() {
-    let s = 0;
-    for (let i = 0; i < this.top.length; i++) if (this.zone[i]) s += this.sedAt(i);
-    return s * this.area;
-  }
-
-  // Zellen [index, gewicht] einer Spalte `cx` im Saugbereich um (headY, headH). Gesaugt wird nur Sohle unter Wasser.
-  _profileCells(cx, headY, headH, radius, allowLand = false) {
-    const cells = [];
-    const y0 = Math.max(0, Math.floor(headY - radius)), y1 = Math.min(this.rows - 1, Math.ceil(headY + radius));
-    for (let y = y0; y <= y1; y++) {
-      const i = this.idx(cx, y), s = this.top[i];
-      if (s >= this.wl - 0.05 && !(allowLand && s - this.rock[i] > 1e-6)) continue;
-      const d = Math.hypot(y + 0.5 - headY, s - headH) / radius;
-      if (d < 1) cells.push([i, 1 - d * d]);
-    }
-    return cells;
-  }
-
-  // Fels bekommt nur den Anteil `firmness` der Saugkraft: Zellen ohne Sediment zählen weniger
-  _adj(cells, firmness) { return cells.map(([i, w]) => [i, this.top[i] - this.rock[i] > 1e-6 ? w : w * firmness]); }
-
-  // Gewichtetes Abtragen: verteilt `amount` (Höhe in m) auf die Zellen. Liefert Höhen je Material (by) und Summen.
-  _drain(cells, amount, firmness, adjusted = false, hardFactor = CONFIG.hard.factor, allowLand = false, armorEff = CONFIG.concrete.pumpBreak) {
-    if (!adjusted) cells = this._adj(cells, firmness);
-    const res = { by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, removed: 0, touched: [], dep: {} };
-    let wSum = 0;
-    for (const c of cells) wSum += c[1];
-    if (wSum === 0) return res;
-    amount *= Math.min(1, wSum / CONFIG.pump.fullDraw); // im freien Wasser über dem Boden ist die Saugkraft schwach
-    for (const [i, w] of cells) {
-      if (this.pile[i]) continue; // Pfähle sind fest
-      const sed = this.top[i] - this.rock[i];
-      let eff = 1 / (1 + this.hard[i] * hardFactor);
-      if (sed <= 1e-6) eff *= firmness;
-      const armor = this.armor[i];
-      if (armor > 1e-6) eff *= armorEff; // Beton muss erst aufgebrochen werden
-      let take = ((amount * w) / wSum) * eff;
-      if (sed > 1e-6) take = Math.min(take, sed);
-      if (this.lim[i] > -90) take = Math.min(take, Math.max(0, this.top[i] - this.lim[i])); // Abtragsperre: nicht tiefer als die Oberkante der Pfahlwand
-      if (armor > 1e-6) take = Math.min(take, armor); // zuerst die Betonschicht // erst das Sediment, dann (im nächsten Schritt) der Fels darunter
-      if (take <= 0) continue;
-      const fromSed = Math.min(take, Math.max(0, sed)), fromRock = take - fromSed;
-      this.top[i] -= take;
-      if (fromRock > 0) this.rock[i] -= fromRock; // der Fels wird abgetragen, die Sohle sinkt mit
-      const left = this.top[i] - this.rock[i];
-      let snap = 0;
-      if (fromRock === 0 && left > 0 && left < CONFIG.layer.snap) { snap = left; this.top[i] -= snap; } // winziger Rest gilt als erledigt
-      if (armor > 1e-6) { this.armor[i] = Math.max(0, armor - take); if (this.armor[i] < 0.01) this.armor[i] = 0; res.by[KIND.fels] += fromSed; } // Betonbruch zählt wie Fels (Schotter)
-      else res.by[this.kind[i]] += fromSed + snap;
-      res.by[KIND.fels] += fromRock;
-      if (this.dep[i] && fromSed > 0 && armor <= 1e-6) { // Vorkommen: nur die obersten Meter bringen Aufschlag, danach ausgebeutet
-        const v = Math.min(fromSed + snap, this.depLeft[i]);
-        res.dep[this.dep[i]] = (res.dep[this.dep[i]] ?? 0) + v; this.depLeft[i] -= v;
-        if (this.depLeft[i] < 0.02 || this.top[i] - this.rock[i] < 0.05) this.dep[i] = 0;
-      }
-      take += snap;
-      res.removed += take;
-      const strip = this.ext[i] === 1 || (this.ext[i] === 2 && allowLand);
-      if (this.zone[i]) res.zone += take; else if (strip) res.land += take; else res.out += take;
-      if (strip && !this.zone[i] && this.top[i] < this.wl - 0.1) { this.zone[i] = 1; this.flow[i] = 0.4; this.cap[i] = this.wl - 0.15; } // Land wird Wasser: neuer Korridor
-      if (this.hard[i]) res.hard += fromSed;
-      if (this.top[i] - this.rock[i] <= 1e-6) this.hard[i] = 0;
-      res.touched.push(i);
-    }
-    for (const i of res.touched) this.pending.add(i);
-    return res;
-  }
-
-  _vol(r) {
-    const a = this.area;
-    return { removed: r.removed * a, by: r.by.map((v) => v * a), zone: r.zone * a, out: r.out * a, land: r.land * a, hard: r.hard * a, dep: Object.fromEntries(Object.entries(r.dep ?? {}).map(([k, v]) => [k, v * a])) };
-  }
-
-  // Querschnitt: Der Kasten umfasst die Spalten `cols` (Flussrichtung); die Pumpenleistung verteilt sich nach Bedarf auf alle
-  // Spalten, in denen an der Einsaugstelle etwas zu holen ist. Die Einsaugstelle folgt dem Gelände jeder Spalte
-  // (gleicher Abstand zur lokalen Oberfläche wie in der Mittelspalte). amount in m³.
-  suckSwath(cols, centerCol, headY, headH, radius, amount, firmness = CONFIG_BASE_FIRMNESS, opts = {}) {
-    const { allowLand = false, hardFactor = CONFIG.hard.factor, armorEff = CONFIG.concrete.pumpBreak } = opts;
-    const my = clamp(Math.floor(headY), 0, this.rows - 1), base = this.top[this.idx(centerCol, my)];
-    const work = cols.map((c) => this._adj(this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius, allowLand), firmness)).filter((cells) => cells.length);
-    const rowW = work.map((cells) => cells.reduce((a, c) => a + c[1], 0)), total = rowW.reduce((a, b) => a + b, 0);
-    const sum = { removed: 0, by: [0, 0, 0, 0, 0], zone: 0, out: 0, land: 0, hard: 0, dep: {} };
-    for (let k = 0; k < work.length; k++) {
-      const res = this._vol(this._drain(work[k], (amount * rowW[k]) / total / this.area, firmness, true, hardFactor, allowLand, armorEff));
-      sum.removed += res.removed; sum.zone += res.zone; sum.out += res.out; sum.land += res.land; sum.hard += res.hard;
-      for (const [k, v] of Object.entries(res.dep)) sum.dep[k] = (sum.dep[k] ?? 0) + v;
-      for (let m = 0; m < 5; m++) sum.by[m] += res.by[m];
-    }
-    return sum;
-  }
-
-  // Beton ausbringen: verhärtet die oberste Sedimentschicht (bis CONFIG.concrete.thickness) der Zellen im Bereich um (headY, headH).
-  // Nur im Baggerkorridor und im Ausbaustreifen (sonst Schutzgebiet), nur auf Sediment (Fels trägt keinen Beton). amount in m³ Beton,
-  // Rückgabe: verbrauchte Menge (m³) und Anzahl neu verhärteter Zellen. Die Höhe der Sohle ändert sich nicht.
-  pourSwath(cols, centerCol, headY, headH, radius, amount) {
-    const T = CONFIG.concrete.thickness, my = clamp(Math.floor(headY), 0, this.rows - 1), base = this.top[this.idx(centerCol, my)];
-    const cells = [];
-    for (const c of cols) {
-      for (const [i, w] of this._profileCells(c, headY, Math.max(0, headH + (this.top[this.idx(c, my)] - base)), radius, true)) {
-        const ok = this.zone[i] || this.ext[i] === 1 || this.ext[i] === 2;
-        if (ok && this.top[i] - this.rock[i] > T * 0.5 && this.armor[i] < T - 1e-6) cells.push([i, w]);
-      }
-    }
-    let wSum = 0;
-    for (const [, w] of cells) wSum += w;
-    if (!wSum) return { used: 0, cells: 0 };
-    let left = amount, used = 0, done = 0;
-    for (const [i, w] of cells) {
-      const want = Math.min(T - this.armor[i], this.sedAt(i), (amount * (w / wSum)) / this.area);
-      const dv = Math.min(left, want * this.area);
-      if (dv <= 0) continue;
-      this.armor[i] += dv / this.area; left -= dv; used += dv;
-      if (this.armor[i] >= T - 1e-6) done++;
-    }
-    return { used, cells: done };
-  }
-
-  // Hüllkurven der Spalten `cols` über die Querschnittsfenster-Zellen y0..y0+n-1: höchster Punkt (= die engste Stelle für Schiffe) und tiefster
-  envelope(cols, y0, n) {
-    const hi = new Float32Array(n), lo = new Float32Array(n);
-    for (let k = 0; k < n; k++) {
-      let mx = -Infinity, mn = Infinity;
-      for (const c of cols) { const t = this.top[this.idx(c, y0 + k)]; if (t > mx) mx = t; if (t < mn) mn = t; }
-      hi[k] = mx; lo[k] = mn;
-    }
-    return { hi, lo };
-  }
-}
-
-const CONFIG_BASE_FIRMNESS = 0.04;
-
-return { River: River };
-},
-function(){
 const { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } = __m(2);
 const { toolAvailable } = __m(10);
-const { River } = __m(8);
+const { River } = __m(5);
 const { carveFairway, analyzeFairway, zonePlan } = __m(3);
 const { DredgeSim } = __m(11);
 const { EVENTS } = __m(12);
 const { computeStats, upgradeCost } = __m(13);
 const { createRng } = __m(14);
-const { createMarket, stepMarket } = __m(6);
-const { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } = __m(4);
+const { createMarket, stepMarket } = __m(8);
+const { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } = __m(6);
 const { createShipping, updateShipping } = __m(1);
 const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(15);
 const { processPlant, stockTotal, materialPrice } = __m(18);
@@ -4701,7 +4708,7 @@ return { DredgeSim: DredgeSim, TOOLS: TOOLS, toolName: toolName };
 },
 function(){
 const { CONFIG } = __m(2);
-const { shockMarket } = __m(6);
+const { shockMarket } = __m(8);
 
 
 
@@ -4801,9 +4808,9 @@ function createRng(seed = 1) {
 return { createRng: createRng };
 },
 function(){
-const { reserveBerth, dockShip } = __m(4);
+const { reserveBerth, dockShip } = __m(6);
 const { CONFIG, UPGRADES, SHIPS, CARGOS, DEBRIS, shipById, cargoById } = __m(2);
-const { priceOf, ratioOf } = __m(6);
+const { priceOf, ratioOf } = __m(8);
 const { minDepthAt, pointOnPath } = __m(3);
 const { creditContracts } = __m(16);
 const { fleetSites } = __m(17);
@@ -5104,7 +5111,7 @@ return { createTraffic: createTraffic, bayCapacity: bayCapacity, maxZones: maxZo
 },
 function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(2);
-const { priceOf } = __m(6);
+const { priceOf } = __m(8);
 const { activeClasses } = __m(15);
 
 
@@ -5175,8 +5182,8 @@ function(){
 const { CONFIG, SHIPS, KIND, shipById } = __m(2);
 const { toolAvailable } = __m(10);
 const { zoneSupports } = __m(15);
-const { HARBOR, harborTarget } = __m(7);
-const { kaiLevel } = __m(4);
+const { HARBOR, harborTarget } = __m(4);
+const { kaiLevel } = __m(6);
 
 
 
@@ -5396,7 +5403,9 @@ function setUnitLoc(g, id, loc) {
 const unitsAt = (g, loc) => g.fleet.units.filter((u) => locOf(u) === loc);
 // ---------- Pfahlwand (Hauptkarte): Zellen im Wasser, in die Betonpfähle gesetzt werden. Pfahl = feste Zelle (nicht abtragbar, hält die Böschung); zwischen Pfahl und Ufer
 // ist die Sohle gesichert (Abtragsperre bis Oberkante). Gesetzt wird nur, was geplant ist: die Pontons mit Betoniergerät fahren hin und giessen den Pfahl. ----------
-const PILE = { concrete: 10, time: 5, top: 0.5 }; // m³ Beton je Pfahl, Sekunden Bauzeit, Oberkante unter dem Wasserspiegel (m)
+const PILE = { base: 4, perM: 2.2, top: 0.5 }; // Beton je Pfahl: Sockel + je Meter Länge (Pfahl reicht bis auf den Fels); Oberkante unter dem Wasserspiegel (m); Bauzeit: Stufe des Pfahlgeräts (g.stats.pileTime)
+const pileLength = (g, i) => Math.max(0.5, g.river.wl - PILE.top - g.river.rock[i]); // Pfahllänge bis auf den Fels (m)
+const pileConcrete = (g, i) => PILE.base + PILE.perM * pileLength(g, i);
 function pileBlock(g, i) {
   const r = g.river; if (i < 0 || i >= r.top.length) return 'ausserhalb';
   if (r.pile[i]) return 'steht schon ein Pfahl'; if (r.bay[i]) return 'nicht im Hafenbecken';
@@ -5421,8 +5430,8 @@ function lineCells(r, ax, ay, bx, by) {
 }
 function pickPile(g, u) {
   const plan = g.fleet.pilePlan ?? []; if (!plan.length) return { none: 'Kein Pfahl geplant' };
-  if (g.stats.betonrohr <= 0) return { none: 'Pfähle brauchen das Betoniergerät (Technik)' };
-  if (g.concrete < PILE.concrete) return { none: 'Kein Beton für Pfähle (Betonvorrat)' };
+  if (g.stats.piler <= 0) return { none: 'Pfähle brauchen das Pfahlgerät (Technik, Geräte)' };
+  if (g.concrete < PILE.base + PILE.perM * 1) return { none: 'Kein Beton für Pfähle (Betonvorrat)' };
   const r = g.river, taken = new Set(g.fleet.units.filter((q) => q !== u && q.site?.pile).map((q) => q.site.cell));
   let best = null, bd = Infinity;
   for (const i of plan) {
@@ -5437,10 +5446,11 @@ function pickPile(g, u) {
 function pileWork(g, u, dt) {
   const s = u.site, i = s.cell, F = g.fleet;
   if (pileBlock(g, i)) { F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i); u.state = 'idle'; u.site = null; u.idle = 0; return; }
-  if (g.concrete < PILE.concrete) { u.note = 'Kein Beton mehr für den Pfahl'; if (u.workT > 25) { u.skip[`C${i}`] = g.time + 40; u.state = 'idle'; u.site = null; u.idle = CONFIG.fleet.idleRetry; } return; }
-  u.pileT = (u.pileT ?? 0) + dt; u.note = `setzt Pfahl bei Spalte ${s.col + 1} (${Math.round((u.pileT / PILE.time) * 100)} %)`;
-  if (u.pileT >= PILE.time) {
-    g.concrete -= PILE.concrete; g.river.setPile(i, true, PILE.top); F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i);
+  const need = pileConcrete(g, i);
+  if (g.concrete < need) { u.note = `Kein Beton für den Pfahl (${Math.ceil(need)} m³ nötig)`; if (u.workT > 25) { u.skip[`C${i}`] = g.time + 40; u.state = 'idle'; u.site = null; u.idle = CONFIG.fleet.idleRetry; } return; }
+  u.pileT = (u.pileT ?? 0) + dt; u.note = `setzt Pfahl bei Spalte ${s.col + 1} (${Math.round((u.pileT / g.stats.pileTime) * 100)} %)`;
+  if (u.pileT >= g.stats.pileTime) {
+    g.concrete -= need; g.river.setPile(i, true, PILE.top); F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i);
     g.totals.piles = (g.totals.piles ?? 0) + 1; g.flash.push({ x: s.px, y: s.py, text: 'Pfahl', color: '#cfd3da' });
     u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl gesetzt'; g.fairClock = 0; // Fahrrinne neu auswerten
   }
@@ -5775,11 +5785,11 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => locOf(u) === 'main' && u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileBlock: pileBlock, planPile: planPile, clearPilePlan: clearPilePlan, lineCells: lineCells, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, clearPilePlan: clearPilePlan, lineCells: lineCells, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);
-const { priceOf } = __m(6);
+const { priceOf } = __m(8);
 
 
 
@@ -5886,7 +5896,7 @@ function(){
 const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(2);
 const { upgradeCost } = __m(13);
 const { waitingByClass, bayCapacity, activeClasses } = __m(15);
-const { ratioOf } = __m(6);
+const { ratioOf } = __m(8);
 const { hireBlock, nextHireCost } = __m(17);
 
 
@@ -6051,11 +6061,11 @@ return { Advisor: Advisor };
 function(){
 const { Game, endlessRiver } = __m(9);
 const { createRng } = __m(14);
-const { createMarket } = __m(6);
-const { createPort, ensurePort } = __m(4);
-const { ensureHarbor } = __m(7);
+const { createMarket } = __m(8);
+const { createPort, ensurePort } = __m(6);
+const { ensureHarbor } = __m(4);
 const { levelById } = __m(2);
-const { River } = __m(8);
+const { River } = __m(5);
 
 
 
@@ -6314,10 +6324,10 @@ return { setupTouch: setupTouch };
 function(){
 const { CONFIG, SHIPS, shipById } = __m(2);
 const { needDepth, minNeedDepth } = __m(3);
-const { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } = __m(5);
-const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel, waitsOf, cycleWaitCargo, cyclePriority } = __m(4);
-const { priceOf, ratioOf } = __m(6);
-const { HARBOR } = __m(7);
+const { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } = __m(7);
+const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel, waitsOf, cycleWaitCargo, cyclePriority } = __m(6);
+const { priceOf, ratioOf } = __m(8);
+const { HARBOR } = __m(4);
 
 
 
@@ -6641,10 +6651,10 @@ const { SLICE } = __m(10);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
 const { shipPos, queuePos, bayCapacity } = __m(15);
 const { needDepth, minNeedDepth } = __m(3);
-const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(4);
-const { HARBOR, berthPos, waitPos } = __m(7);
+const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(6);
+const { HARBOR, berthPos, waitPos } = __m(4);
 const { areaWork } = __m(17);
-const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(5);
+const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(7);
 const { Chain, drawChain } = __m(31);
 const { groundedNear } = __m(19);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
