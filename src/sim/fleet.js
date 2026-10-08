@@ -9,7 +9,7 @@ import { kaiLevel } from './port.js';
 // Sie nutzen dieselbe Physik wie dein eigener Ponton (DredgeSim/SliceSim), nur ohne Anzeige. Das Ausbauziel ist eine Schiffsklasse
 // (Standard: die kleinste Klasse, die noch nicht fährt). Pontons ohne Arbeit warten und melden, was fehlt.
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
-export const createFleet = () => ({ units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false });
+export const createFleet = () => ({ pilePlan: [], units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false });
 
 const hiredCount = (g) => g.fleet.units.filter((u) => !u.self).length; // dein eigener Ponton (self) zählt nicht zu den gemieteten
 export const nextHireCost = (g) => CONFIG.fleet.costs[hiredCount(g)] ?? null;
@@ -110,7 +110,7 @@ export function openColumns(g, cls) {
 const locOf = (u) => u.loc ?? 'main'; // Einsatzort: 'main' (Hauptkarte) oder 'harbor' (Hafenkarte)
 const reservedBy = (g, me) => g.fleet.units.filter((u) => u !== me && locOf(u) === locOf(me) && u.site && (u.state === 'travel' || u.state === 'work')).map((u) => u.site);
 const overlaps = (res, c0) => res.some((s) => c0 < s.c0 + CONFIG.box.cols && s.c0 < c0 + CONFIG.box.cols);
-const skipKey = (s) => (s.aid ? `A${s.aid}:${s.col}` : s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
+const skipKey = (s) => (s.pile ? `C${s.cell}` : s.aid ? `A${s.aid}:${s.col}` : s.did ? `M${s.did}` : s.zid ? `Z${s.zid}` : s.pour ? `P${s.col}` : s.land ? `L${s.col}${s.side}` : s.col);
 
 // Land-Automatik: Spalten, in denen im Ausbaustreifen neben dem ursprünglichen Korridor noch Land über der Tiefe der Ausbauklasse liegt.
 // Pro Spalte und Ufer die ersten `widenW` Zeilen des Streifens (ext > 0); ursprünglicher Korridor = zone && !ext (umgewandeltes Land zählt nicht dazu).
@@ -215,6 +215,57 @@ export function setUnitLoc(g, id, loc) {
   return true;
 }
 export const unitsAt = (g, loc) => g.fleet.units.filter((u) => locOf(u) === loc);
+// ---------- Pfahlwand (Hauptkarte): Zellen im Wasser, in die Betonpfähle gesetzt werden. Pfahl = feste Zelle (nicht abtragbar, hält die Böschung); zwischen Pfahl und Ufer
+// ist die Sohle gesichert (Abtragsperre bis Oberkante). Gesetzt wird nur, was geplant ist: die Pontons mit Betoniergerät fahren hin und giessen den Pfahl. ----------
+export const PILE = { concrete: 10, time: 5, top: 0.5 }; // m³ Beton je Pfahl, Sekunden Bauzeit, Oberkante unter dem Wasserspiegel (m)
+export function pileBlock(g, i) {
+  const r = g.river; if (i < 0 || i >= r.top.length) return 'ausserhalb';
+  if (r.pile[i]) return 'steht schon ein Pfahl'; if (r.bay[i]) return 'nicht im Hafenbecken';
+  if (!r.zone[i] || !r.isWater(i)) return 'nur im Wasser des Baggerkorridors'; return null;
+}
+// Zellen zum Plan hinzufügen (on) bzw. aus dem Plan nehmen; gibt die Zahl der geänderten Zellen zurück
+export function planPile(g, cells, on = true) {
+  const F = g.fleet; F.pilePlan ??= []; let n = 0; const set = new Set(F.pilePlan);
+  for (const i of cells) {
+    if (on) { if (!set.has(i) && !pileBlock(g, i)) { set.add(i); n++; } }
+    else if (set.delete(i)) n++;
+  }
+  F.pilePlan = [...set].sort((a, b) => a - b); if (n) bump(g);
+  return n;
+}
+export const clearPilePlan = (g) => { const n = (g.fleet.pilePlan ?? []).length; g.fleet.pilePlan = []; if (n) bump(g); return n; };
+// Zellen einer geraden Linie (Rasterlinie) von Zelle a nach Zelle b
+export function lineCells(r, ax, ay, bx, by) {
+  const out = [], n = Math.max(Math.abs(bx - ax), Math.abs(by - ay), 1);
+  for (let s = 0; s <= n; s++) { const x = Math.round(ax + ((bx - ax) * s) / n), y = Math.round(ay + ((by - ay) * s) / n); if (x >= 0 && y >= 0 && x < r.cols && y < r.rows) out.push(y * r.cols + x); }
+  return out;
+}
+function pickPile(g, u) {
+  const plan = g.fleet.pilePlan ?? []; if (!plan.length) return { none: 'Kein Pfahl geplant' };
+  if (g.stats.betonrohr <= 0) return { none: 'Pfähle brauchen das Betoniergerät (Technik)' };
+  if (g.concrete < PILE.concrete) return { none: 'Kein Beton für Pfähle (Betonvorrat)' };
+  const r = g.river, taken = new Set(g.fleet.units.filter((q) => q !== u && q.site?.pile).map((q) => q.site.cell));
+  let best = null, bd = Infinity;
+  for (const i of plan) {
+    if (taken.has(i) || pileBlock(g, i) || (u.skip[`C${i}`] && g.time < u.skip[`C${i}`])) continue;
+    const x = i % r.cols, y = (i / r.cols) | 0, d = Math.hypot(x + 0.5 - u.x, y + 0.5 - u.y);
+    if (d < bd) { bd = d; best = i; }
+  }
+  if (best === null) return { none: 'Alle geplanten Pfähle sind vergeben' };
+  const x = best % r.cols, y = (best / r.cols) | 0;
+  return { pile: true, cell: best, col: x, c0: Math.max(0, x - 2), px: x + 0.5, py: y + 0.5, y: y + 0.5, cls: g.level.classes[0], depth: 0, tool: 'pump', rock: false };
+}
+function pileWork(g, u, dt) {
+  const s = u.site, i = s.cell, F = g.fleet;
+  if (pileBlock(g, i)) { F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i); u.state = 'idle'; u.site = null; u.idle = 0; return; }
+  if (g.concrete < PILE.concrete) { u.note = 'Kein Beton mehr für den Pfahl'; if (u.workT > 25) { u.skip[`C${i}`] = g.time + 40; u.state = 'idle'; u.site = null; u.idle = CONFIG.fleet.idleRetry; } return; }
+  u.pileT = (u.pileT ?? 0) + dt; u.note = `setzt Pfahl bei Spalte ${s.col + 1} (${Math.round((u.pileT / PILE.time) * 100)} %)`;
+  if (u.pileT >= PILE.time) {
+    g.concrete -= PILE.concrete; g.river.setPile(i, true, PILE.top); F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i);
+    g.totals.piles = (g.totals.piles ?? 0) + 1; g.flash.push({ x: s.px, y: s.py, text: 'Pfahl', color: '#cfd3da' });
+    u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl gesetzt'; g.fairClock = 0; // Fahrrinne neu auswerten
+  }
+}
 export function setAreaUnit(g, id, unitId) { const a = (g.fleet.areas ?? []).find((q) => q.id === id); if (!a) return false; a.unit = unitId ?? null; bump(g); return true; }
 
 // Spalten des Gebiets, in denen noch Sohle über der Gebietstiefe liegt. Ufer (Ausbaustreifen) kommt erst dran, wenn das Wasser im Gebiet
@@ -408,7 +459,7 @@ function pickSite(g, u) {
   const units = g.fleet.units, landRole = g.fleet.widen && g.stats.loeffel > 0 && units.indexOf(u) === units.length - 1;
   const mine = g.zones.filter((z) => z.unit === u.id && !zoneSupports(g, z, z.cls ?? g.zoneClassId));
   if (mine.length) { const s = pickZone(g, u); return s.none ? { none: `Kreuzungsstelle (Vorrang): ${s.none}` } : s; } // zugeteilte Kreuzung hat Vorrang: sonst nichts anderes bauen
-  const order = [pickArea, ...(landRole ? [pickZone, pickLand, pickLane] : [pickLane, pickZone, pickLand]), pickMine, pickPour];
+  const order = [pickPile, pickArea, ...(landRole ? [pickZone, pickLand, pickLane] : [pickLane, pickZone, pickLand]), pickMine, pickPour];
   const msgs = [];
   for (const f of order) { const s = f(g, u); if (!s.none) return s; msgs.push(s); }
   const neutral = /ist aus$|^Keine geplante|^Kein Arbeitsgebiet|^Arbeitsgebiete sind fertig|^Kein Vorkommen|^Alle Vorkommen|Rinne ist frei$|alle Klassen fahren|ist betoniert|Ufer ist verbreitert|vergeben$/;
@@ -463,7 +514,7 @@ function stepUnit(g, u, dt) {
     if (!route?.nodes || sim.mode !== 'map') { u.state = 'idle'; u.idle = 0; }
     else {
       u.travelT = (u.travelT ?? 0) + dt;
-      const B = CONFIG.box.cols, goal = { x: s.c0 + Math.floor(B / 2), y: s.y };
+      const B = CONFIG.box.cols, goal = s.pile ? { x: s.px, y: s.py } : { x: s.c0 + Math.floor(B / 2), y: s.y };
       // entlang der Rinne der kleinsten Klasse fahren (immer Wasser), zuletzt geradeaus zum Ziel
       let near = route.nodes[0], nd = Infinity, ni = 0;
       route.nodes.forEach((n, i) => { const d = Math.hypot(n.x + 0.5 - sim.x, n.y + 0.5 - sim.y); if (d < nd) { nd = d; near = n; ni = i; } });
@@ -476,7 +527,8 @@ function stepUnit(g, u, dt) {
       const dx = aim.x - sim.x, dy = aim.y - sim.y, dist = Math.hypot(dx, dy);
       if (!blocked && (Math.hypot(goal.x - sim.x, goal.y - sim.y) < 0.5 || u.travelT > 90)) { // angekommen (oder zu lange unterwegs): ankern, Automatik an
         u.travelT = 0;
-        if (!sim.canFloat(goal.x, goal.y)) { u.skip[skipKey(s)] = g.time + 60; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
+        if (s.pile) { sim.x = goal.x; sim.y = goal.y; u.state = 'work'; u.workT = 0; u.pileT = 0; u.note = `setzt Pfahl bei Spalte ${s.col + 1}`; }
+        else if (!sim.canFloat(goal.x, goal.y)) { u.skip[skipKey(s)] = g.time + 60; u.state = 'idle'; u.idle = CONFIG.fleet.idleRetry; u.note = 'kein Platz zum Ankern'; }
         else {
           sim.x = goal.x; sim.y = goal.y; // ganzzahlig: der Kasten beginnt dann genau bei c0
           sim.targetDepth = s.depth; sim.pumpSpeed = 1;
@@ -515,6 +567,8 @@ function stepUnit(g, u, dt) {
         const k = CONFIG.fleet.speedMult; inp = { dx: (dx / dist) * k, dy: (dy / dist) * k, suction: false };
       }
     }
+  } else if (u.state === 'work' && u.site?.pile) {
+    u.workT += dt; pileWork(g, u, dt);
   } else if (u.state === 'work') {
     u.workT += dt;
     if (sim.mode === 'slice' && !sim.pumpOn && sim.slice.auto.on) { sim.pumpOn = true; sim.autoStartedPump = true; }

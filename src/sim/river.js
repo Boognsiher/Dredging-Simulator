@@ -26,6 +26,8 @@ export class River {
     this.bay = new Uint8Array(n); // Hafenbecken (zählt als Korridor zum Baggern, aber nicht zur Fahrrinne der Schiffe)
     this.dep = new Uint8Array(n); // Rohstoffvorkommen: 0 = keins, sonst Nummer in this.deposits
     this.depLeft = new Float32Array(n); // wie viele Meter des Vorkommens (von oben) in dieser Zelle noch Aufschlag bringen
+    this.pile = new Uint8Array(n); // Pfahlwand: 1 = Betonpfahl (fest, wird nicht abgetragen, hält die Böschung)
+    this.lim = new Float32Array(n).fill(-99); // tiefste erlaubte Höhe der Sohle (Abtragsperre zwischen Pfahlwand und Ufer: nicht tiefer als Oberkante Beton)
     this.tribs = []; // Zuflüsse: { x, side, my, cells: [Zellen], w: [Gewichte], kind, rate }: bringen laufend Sand/Kies in die Rinne
     this.deposits = []; // { id, type, name, kind, mult, cx, cy, rx, ry, owned, known, cost }
     this.armor = new Float32Array(n); // Dicke der Betonschicht (m), die die Oberfläche der Zelle verhärtet; 0 = unbehandelt
@@ -176,7 +178,7 @@ export class River {
         if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
         const j = ny * cols + nx;
         const hi = this.top[i] > this.top[j] ? i : j, lo = hi === i ? j : i, diff = this.top[hi] - this.top[lo];
-        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0 || this.bay[hi] || this.bay[lo]) continue; // Beton und die Spundwände des Hafenbeckens halten die Böschung
+        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0 || this.bay[hi] || this.bay[lo] || this.pile[hi] || this.pile[lo]) continue; // Beton und die Spundwände des Hafenbeckens halten die Böschung
         const sed = this.top[hi] - this.rock[hi];
         if (sed <= 1e-6) continue; // Fels rutscht nicht
         const m = Math.min(sed, (diff - S) / 2);
@@ -251,6 +253,24 @@ export class River {
     return null;
   }
 
+  // Pfahlwand: Pfähle sind feste Zellen mit Oberkante `pileTop` unter dem Wasserspiegel. In jeder Spalte mit Pfahl ist die Sohle zwischen Pfahl und Ufer
+  // gesichert: sie rutscht nicht nach und darf nicht tiefer als die Oberkante abgetragen werden. Spalten ohne Pfahl bleiben unverändert (Teilstrecken möglich).
+  setPile(i, on, pileTop = 0.5) {
+    if (on) { this.pile[i] = 1; this.top[i] = Math.max(this.top[i], this.wl - pileTop); this.rock[i] = Math.min(this.rock[i], this.top[i]); this.cap[i] = this.top[i]; this.armor[i] = 0; }
+    else this.pile[i] = 0;
+    this.updateLims(pileTop);
+  }
+  updateLims(pileTop = 0.5) {
+    this.lim.fill(-99);
+    for (let i = 0; i < this.pile.length; i++) {
+      if (!this.pile[i]) continue;
+      const x = i % this.cols, y = (i / this.cols) | 0, side = y < this.centerY(x) ? -1 : 1, lim = this.wl - pileTop;
+      for (let yy = y + side; yy >= 0 && yy < this.rows; yy += side) { // vom Pfahl zum Ufer, bis ein weiterer Pfahl oder das Kartenende kommt
+        const j = yy * this.cols + x; if (this.pile[j]) break;
+        this.lim[j] = Math.max(this.lim[j], lim); this.pending.add(j);
+      }
+    }
+  }
   // Restmenge (m³) eines Vorkommens
   depositRemaining(id) {
     let v = 0;
@@ -318,6 +338,7 @@ export class River {
     if (wSum === 0) return res;
     amount *= Math.min(1, wSum / CONFIG.pump.fullDraw); // im freien Wasser über dem Boden ist die Saugkraft schwach
     for (const [i, w] of cells) {
+      if (this.pile[i]) continue; // Pfähle sind fest
       const sed = this.top[i] - this.rock[i];
       let eff = 1 / (1 + this.hard[i] * hardFactor);
       if (sed <= 1e-6) eff *= firmness;
@@ -325,6 +346,7 @@ export class River {
       if (armor > 1e-6) eff *= armorEff; // Beton muss erst aufgebrochen werden
       let take = ((amount * w) / wSum) * eff;
       if (sed > 1e-6) take = Math.min(take, sed);
+      if (this.lim[i] > -90) take = Math.min(take, Math.max(0, this.top[i] - this.lim[i])); // Abtragsperre: nicht tiefer als die Oberkante der Pfahlwand
       if (armor > 1e-6) take = Math.min(take, armor); // zuerst die Betonschicht // erst das Sediment, dann (im nächsten Schritt) der Fels darunter
       if (take <= 0) continue;
       const fromSed = Math.min(take, Math.max(0, sed)), fromRock = take - fromSed;

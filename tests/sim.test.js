@@ -598,7 +598,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
-import { setUnitLoc, setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
+import { planPile, lineCells, setUnitLoc, setZoneUnit, addRoute, setAreaWidth, setGoal, updateFleet, hireUnit, hireBlock, dismissUnit, openColumns, targetClass, fleetSites } from '../src/sim/fleet.js';
 
 function bankSlice(levels = { loeffel: 3 }) {
   const g = new Game(3, 'hochrhein'), r = g.river;
@@ -1797,4 +1797,32 @@ test('Containerbrücke: Containerschiffe brauchen sie, Container werden schnelle
   const job2 = { ...job, done: 0 }; assert.ok(withBridge >= PORT.jobs.crewRate.container * 10 * 2.9, 'mindestens 3× schneller: ' + withBridge);
   assert.ok(job2.done === 0);
   assert.ok(HARBOR.need.motor >= 3 && HARBOR.need.container >= 5, 'grössere Tiefen für grosse Schiffe');
+});
+
+test('Pfahlwand: Pfahl ist fest, hält die Böschung und sperrt den Abtrag zwischen Pfahl und Ufer, nur in der eigenen Spalte', () => {
+  const g = new Game(7, 'hochrhein'); const r = g.river, x = 20, cy = Math.round(r.centerY(x));
+  const idx = (xx, yy) => yy * r.cols + xx, pile = idx(x, cy - 3), shore = idx(x, cy - 5), chan = idx(x, cy), other = idx(x + 3, cy - 5);
+  const top0 = r.top[shore], otherTop = r.top[other];
+  r.setPile(pile, true);
+  assert.equal(r.pile[pile], 1); assert.ok(r.top[pile] >= r.wl - 0.51, 'Oberkante Beton knapp unter Wasser');
+  assert.ok(r.lim[shore] > -90 && r.lim[other] < -90, 'Sperre nur in der Spalte mit Pfahl');
+  // Abtrag: Pfahl bleibt, Ufer-Zelle nicht tiefer als Oberkante, Rinne frei
+  const topP = r.top[pile]; r._drain([[pile, 1], [shore, 1], [chan, 1]], 50, 1);
+  assert.equal(r.top[pile], topP, 'Pfahl wird nicht abgetragen'); assert.ok(r.top[shore] >= r.lim[shore] - 1e-6 || r.top[shore] >= top0 - 1e-6, 'Abtragsperre');
+  r.setPile(pile, false); assert.ok(r.lim[shore] < -90, 'Sperre fällt mit dem Pfahl weg');
+  assert.equal(r.top[other], otherTop);
+});
+
+test('Pfahlwand: Pontons mit Betoniergerät setzen die geplanten Pfähle (Beton wird verbraucht)', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false; g.money = 1e7; for (const id of ['auto', 'auto', 'betonrohr']) g.buyUpgrade(id);
+  hireUnit(g); const r = g.river, x = 12, cy = Math.round(r.centerY(x)), cells = lineCells(r, x, cy - 4, x, cy - 2);
+  assert.equal(planPile(g, cells), cells.length);
+  assert.equal(planPile(g, [r.idx(0, 0)]), 0, 'Land ist nicht planbar');
+  g.concrete = 0; for (let t = 0; t < 60; t += 0.1) g.update(0.1);
+  assert.equal(g.totals.piles ?? 0, 0, 'ohne Beton wird nichts gebaut');
+  g.concrete = 100; for (let t = 0; t < 200; t += 0.1) g.update(0.1);
+  assert.equal(g.totals.piles, cells.length); assert.ok(cells.every((i) => r.pile[i]));
+  assert.ok(g.concrete <= 100 - 10 * cells.length + 1e-6); assert.equal(g.fleet.pilePlan.length, 0);
+  assert.ok(r.lim.some((v) => v > -90), 'Abtragsperre gesetzt');
+  const rt = restoreGame(serializeGame(g)); assert.ok(rt.river.pile.some((v) => v === 1) && rt.river.lim.some((v) => v > -90));
 });

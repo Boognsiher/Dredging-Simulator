@@ -106,6 +106,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   if (sel) drawClassOverlay(ctx, game, sel);
   drawZones(ctx, game, ui);
   drawHarbor(ctx, game);
+  drawPiles(ctx, game, ui);
   drawAreas(ctx, game, ui);
   drawLandSide(ctx, game, ui);
   drawShips(ctx, game, ui);
@@ -243,6 +244,35 @@ function drawPontoon(ctx, game, sim, ui) {
     ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
     ctx.moveTo(t.x - 14, t.y); ctx.lineTo(t.x + 14, t.y); ctx.moveTo(t.x, t.y - 14); ctx.lineTo(t.x, t.y + 14); ctx.stroke();
   }
+}
+
+// Pfahlwand: gesetzte Pfähle (Beton mit Nieten), gesicherte Streifen zwischen Pfahl und Ufer (bläulich), geplante Pfähle (gestrichelt), im Planungsmodus Raster, Maus und Linienvorschau
+function drawPiles(ctx, game, ui) {
+  const r = game.river, cols = r.cols, plan = game.fleet?.pilePlan ?? [];
+  if (!r.pile) return;
+  for (let i = 0; i < r.pile.length; i++) {
+    const x = OX + (i % cols) * CELL, y = ((i / cols) | 0) * CELL;
+    if (r.lim[i] > -90 && !r.pile[i]) { ctx.fillStyle = 'rgba(110,150,200,.22)'; ctx.fillRect(x, y, CELL, CELL); }
+    if (r.pile[i]) {
+      ctx.fillStyle = '#9aa0a8'; ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2); ctx.strokeStyle = '#3d4249'; ctx.lineWidth = 1.5; ctx.strokeRect(x + 1.5, y + 1.5, CELL - 3, CELL - 3);
+      ctx.fillStyle = '#3d4249'; ctx.fillRect(x + 4, y + 4, 2.5, 2.5); ctx.fillRect(x + CELL - 7, y + CELL - 7, 2.5, 2.5);
+    }
+  }
+  for (const i of plan) { const x = OX + (i % cols) * CELL, y = ((i / cols) | 0) * CELL; ctx.fillStyle = 'rgba(120,200,255,.28)'; ctx.fillRect(x, y, CELL, CELL); ctx.strokeStyle = '#7fd0ff'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 2]); ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2); ctx.setLineDash([]); }
+  if (!ui.pileMode) return;
+  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = 0; x <= cols; x++) { ctx.moveTo(OX + x * CELL, 0); ctx.lineTo(OX + x * CELL, r.rows * CELL); }
+  for (let y = 0; y <= r.rows; y++) { ctx.moveTo(OX, y * CELL); ctx.lineTo(OX + cols * CELL, y * CELL); }
+  ctx.stroke();
+  const H = ui.hoverCell, A = ui.pileA;
+  if (A && H) { // Linienvorschau
+    const x1 = Math.floor(H.x), y1 = Math.floor(H.y), n = Math.max(Math.abs(x1 - A.x), Math.abs(y1 - A.y), 1);
+    ctx.fillStyle = 'rgba(255,255,255,.35)';
+    for (let s = 0; s <= n; s++) { const x = Math.round(A.x + ((x1 - A.x) * s) / n), y = Math.round(A.y + ((y1 - A.y) * s) / n); ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); }
+  } else if (A) { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(OX + A.x * CELL, A.y * CELL, CELL, CELL); }
+  if (H) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(OX + Math.floor(H.x) * CELL, Math.floor(H.y) * CELL, CELL, CELL); }
+  ctx.font = font(13); const t = A ? 'Zweiten Punkt der Linie antippen' : 'Pfahlwand planen: Zellen antippen (nochmals antippen = aus dem Plan) · Joystick/Pfeile verschieben, ± zoomt'; ctx.textAlign = 'start';
+  ctx.fillStyle = '#000b'; ctx.fillRect(OX + 6, H0() - fs(13) - 14, Math.min(ctx.measureText(t).width + 18, W - OX - 12), fs(13) + 8); ctx.fillStyle = '#bfeaff'; ctx.fillText(t, OX + 14, H0() - 12);
 }
 
 // Zuflüsse: Bach vom Rand bis zur Mündung, dahinter eine Fahne aus Sand/Kies in der Rinne (je stärker, desto mehr Material kommt an)

@@ -465,3 +465,14 @@ body.harbor-view :is(#btn-area, #btn-route, #btn-zone, #btn-land, #btn-fleetlend
 #lb-zone { position: absolute; top: 0; bottom: 0; background: #4bd16a; }
 #lb-mark { position: absolute; top: -2px; bottom: -2px; width: 6px; margin-left: -3px; background: #fff; border-radius: 3px; }
 #load-bar button { margin: 0; padding: 8px; }
+
+/* Pfahlwand-Leiste (wie die Land-Leiste) */
+#pile-bar { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 12; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 12px); }
+#pile-bar[hidden] { display: none; }
+#pile-bar button { margin: 0; width: auto; padding: 6px 10px; font-size: 13px; background: #12283bdd; white-space: nowrap; min-height: 0; } #pile-bar button.on { background: var(--accent); color: #04222b; font-weight: 700; }
+#pile-bar button.primary { background: var(--accent); color: #04222b; font-weight: 700; }
+@media (max-width: 860px) and (orientation: portrait) { #pile-bar { bottom: auto; top: 64px; } }
+/* Knöpfe unter der Karte: nur das Regelmässige sichtbar, alles rund um die Flotte steckt hinter «Flotte ▾» */
+body:not(.tools-open) #shift-actions .tool-btn:not(.on) { display: none !important; }
+#btn-fleetmenu.open { background: var(--accent); color: #04222b; font-weight: 700; }
+#btn-sound { display: none !important; }

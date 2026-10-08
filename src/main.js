@@ -5,7 +5,7 @@ import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, ship
 import { Game } from './sim/game.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
-import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
+import { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, planPile, clearPilePlan, lineCells, PILE, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } from './sim/fleet.js';
 import { bayCapacity, maxZones, zoneClasses } from './sim/traffic.js';
 import { materialPrice } from './sim/plant.js';
 import { TowSim, groundedNear } from './sim/tow.js';
@@ -63,6 +63,7 @@ let mapTarget = null;
 let harborView = false, mainSim = null, harborSim = null; // Hafenkarte: eigener Ponton fährt im Becken, die Hauptkarte pausiert für ihn
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false, menuOpen = false, mapFull = false, panYm = 0;
+let pileMode = false, pileTool = 'cell', pileA = null, pileZoom = 2.4; const planFocus = { x: 22, y: 18 }; // Pfahlwand planen (Karte, gezoomt): Zellen antippen oder Linie ziehen
 let landMode = false, landTool = 'road'; // Landseite des Hafens bauen (Karte)
 let areaKind = 'rect'; // 'rect' = Rechteck, 'route' = Linie mit Wegpunkten (beide über areaMode)
 let areaMode = false; // Arbeitsgebiet für gemietete Pontons aufziehen (Karte): zwei Ecken antippen
@@ -267,7 +268,7 @@ function changeMap(i) {
   if (sim.mode === 'slice') sim.leave();
   game.site = null; game.switchMap(i);
   sim = game.createSession(); sim.autoRange = game.autoRange ?? null;
-  mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null; ui.areaA = null; ui.hoverX = null;
+  mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null; ui.areaA = null; pileMode = false; ui.pileMode = false; document.body.classList.remove('pile-mode'); $('pile-bar').hidden = true; ui.hoverX = null;
   const first = game.level.classes.find((id) => game.fair?.[id] && !game.fair[id].passable); classSel = first ?? null; ui.classSel = classSel;
   fleetSig = null; trafficSig = null; hazardSig = null; depositSig = null; shoreSig = null; mapsSig = null;
   fx.clear(); syncMode(); updatePanel(); applyLevel(); fitCanvas();
@@ -363,6 +364,7 @@ function updateTrafficPanel() {
 }
 function toggleZoneMode() {
   if (tow || sim.mode !== 'map') { toast('Kreuzungsstellen planst du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
+  if (pileMode) togglePileMode();
   zoneMode = !zoneMode; ui.zoneMode = zoneMode; trafficSig = null; mapTarget = null;
   $('btn-zone').textContent = zoneMode ? '✔ Kreuzung: fertig (K)' : '↔ Kreuzung (K)';
   updateTrafficPanel();
@@ -371,7 +373,7 @@ function toggleZoneMode() {
 function toggleLandMode() {
   if (tow || sim.mode !== 'map') { toast('Die Landseite baust du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
   if (!game.port.open) { toast('Erst das Hafengelände erwerben (Hafen, H)', 'bad', true); return; }
-  if (zoneMode) toggleZoneMode(); if (areaMode) toggleAreaMode();
+  if (zoneMode) toggleZoneMode(); if (areaMode) toggleAreaMode(); if (pileMode) togglePileMode();
   landMode = !landMode; ui.landMode = landMode; ui.landTool = landTool; ui.hoverCell = null; mapTarget = null;
   $('btn-land').textContent = landMode ? '✔ Land: fertig (L)' : '🛣 Land (L)'; $('land-bar').hidden = !landMode;
   if (landMode) toast(`Landseite: Strasse ${chf(LAND.road.cost)} je Zelle, Lagerhalle ${chf(LAND.hall.cost)} plus Erdarbeiten`, 'info', true);
@@ -391,7 +393,7 @@ function landClick(px, py) {
 function toggleAreaMode() {
   if (tow || sim.mode !== 'map') { toast('Arbeitsgebiete gibst du auf der Karte vor (Anker lichten mit Q)', 'info', true); return; }
   if (areaMode && areaKind === 'route') { finishRoute(); return; }
-  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode();
+  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (pileMode) togglePileMode();
   areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null;
   areaMode = !areaMode; ui.areaMode = areaMode; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
   syncAreaButtons();
@@ -406,7 +408,7 @@ function syncAreaButtons() {
 function toggleRouteMode() {
   if (tow || sim.mode !== 'map') { toast('Routen zeichnest du auf der Karte (Anker lichten mit Q)', 'info', true); return; }
   if (areaMode && areaKind === 'route') { finishRoute(); return; }
-  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) toggleAreaMode();
+  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) toggleAreaMode(); if (pileMode) togglePileMode();
   areaKind = 'route'; ui.areaKind = 'route'; ui.routePts = []; areaMode = true; ui.areaMode = true; ui.areaA = null; ui.hoverCell = null; mapTarget = null;
   syncAreaButtons();
   toast(`Wegpunkte der Route antippen, zuletzt «Route: fertig» (N) oder den letzten Punkt nochmals antippen (max. ${MAX_AREAS} Gebiete/Routen)`, 'info', true);
@@ -420,6 +422,35 @@ function finishRoute() {
   toast(`Route ${a.id} angelegt: Breite ${a.w}, Tiefe ${a.depth.toFixed(1)} m${a.lost ? ` · ${a.lost} Zellen auf nicht abbaubarem Land bleiben stehen` : ''}${game.stats.loeffel > 0 ? '' : ' · Land braucht den Löffelbagger'}`, 'good', true);
   fleetSig = null; updateFleet();
 }
+// ---------- Pfahlwand planen ----------
+function togglePileMode() {
+  if (tow || sim.mode !== 'map' || harborView) { toast('Die Pfahlwand planst du auf der Hauptkarte (Anker lichten mit Q)', 'info', true); return; }
+  if (game.stats.betonrohr <= 0 && !pileMode) toast('Pfähle setzen kann erst, wer das Betoniergerät hat (Technik)', 'info', true);
+  if (zoneMode) toggleZoneMode(); if (landMode) toggleLandMode(); if (areaMode) { if (areaKind === 'route') finishRoute(); else toggleAreaMode(); }
+  pileMode = !pileMode; ui.pileMode = pileMode; pileA = null; ui.pileA = null; ui.hoverCell = null; mapTarget = null;
+  if (pileMode) { planFocus.x = sim.x; planFocus.y = sim.y; toast('Pfahlwand: Zellen antippen (Einzelzelle) oder zwei Punkte für eine Linie. Mit Joystick/Pfeiltasten verschieben, ± zoomt. Gebaut wird mit dem Betoniergerät aus dem Betonvorrat.', 'info', true); }
+  document.body.classList.toggle('pile-mode', pileMode); $('pile-bar').hidden = !pileMode; syncPileButton(); layoutSig = ''; fitCanvas();
+}
+function syncPileButton() { $('btn-pile').textContent = pileMode ? '✔ Pfahlwand: fertig (O)' : '🧱 Pfahlwand (O)'; for (const b of $('pile-bar').querySelectorAll('[data-ptool]')) b.classList.toggle('on', b.dataset.ptool === pileTool); }
+function pileClick(px, py) {
+  const c = cellAt(px, py), x = Math.floor(c.x), y = Math.floor(c.y), r = game.river;
+  if (x < 0 || y < 0 || x >= r.cols || y >= r.rows) return;
+  const plan = new Set(game.fleet.pilePlan ?? []);
+  const note = (n, on) => toast(on ? `${n} Zelle${n === 1 ? '' : 'n'} geplant · Plan: ${(game.fleet.pilePlan ?? []).length} Pfähle, ${(game.fleet.pilePlan ?? []).length * PILE.concrete} m³ Beton` : `${n} Zelle${n === 1 ? '' : 'n'} aus dem Plan genommen`, on ? 'good' : 'info', true);
+  if (pileTool === 'line') {
+    if (!pileA) { pileA = { x, y }; ui.pileA = pileA; return; }
+    const cells = lineCells(r, pileA.x, pileA.y, x, y), allIn = cells.every((i) => plan.has(i) || r.pile[i]); pileA = null; ui.pileA = null;
+    const n = planPile(game, cells, !allIn); if (!n) toast('Hier kann kein Pfahl geplant werden (nur Wasser im Baggerkorridor)', 'bad', true); else note(n, !allIn);
+    fleetSig = null; return;
+  }
+  const i = y * r.cols + x;
+  if (r.pile[i]) { toast('Hier steht schon ein Pfahl', 'info', true); return; }
+  const on = !plan.has(i), n = planPile(game, [i], on);
+  if (!n) { toast(`Hier nicht möglich: ${(function () { const why = pileBlockText(i); return why; })()}`, 'bad', true); return; }
+  note(n, on); fleetSig = null;
+}
+const pileBlockText = (i) => { const r = game.river; return r.bay[i] ? 'nicht im Hafenbecken' : 'nur im Wasser des Baggerkorridors'; };
+function pileZoomBy(f) { pileZoom = Math.min(4, Math.max(1.2, pileZoom * f)); layoutSig = ''; fitCanvas(); }
 function cellAt(px, py) { return { x: (px - OX) / CELL, y: py / CELL }; }
 function areaClick(px, py) {
   const c = cellAt(px, py);
@@ -656,6 +687,7 @@ let zoom = 1, panX = 0, panY = 0, cropVis = null;
 const MAX_ZOOM = 1.7, MAX_ZOOM_SLICE = 2.3; // im Querschnitt (Hochformat) darf das Bild näher an die Pumpe
 let layoutSig = '';
 function focusY(lh, h) {
+  if (pileMode) return ((planFocus.y * CELL) / lh) * h;
   if (sim.mode === 'slice') return (sliceHeadScreen(sim.slice).y / lh) * h;
   return ((sim.y * CELL) / lh) * h;
 }
@@ -679,16 +711,19 @@ function panCanvas(dt) {
   if (sig !== layoutSig) { layoutSig = sig; fitCanvas(); }
   const stageW = $('stage').clientWidth, cw = parseFloat(canvas.style.width) || stageW, ch = parseFloat(canvas.style.height) || 0;
   if (mapFull) {
-    const AW = innerWidth, AH = innerHeight, fxp = tow ? cw / 2 : ((OX + sim.x * CELL) / canvas.logicalW) * cw;
+    const AW = innerWidth, AH = innerHeight, fx0 = pileMode ? planFocus : sim, fxp = tow ? cw / 2 : ((OX + fx0.x * CELL) / canvas.logicalW) * cw;
     const want = cw <= AW ? (AW - cw) / 2 : Math.min(0, Math.max(AW - cw, AW / 2 - fxp));
     panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1);
-    const fyp = tow ? ch / 2 : ((sim.y * CELL) / canvas.logicalH) * ch, wantY = ch <= AH ? (AH - ch) / 2 : Math.min(0, Math.max(AH - ch, AH / 2 - fyp));
+    const fyp = tow ? ch / 2 : ((fx0.y * CELL) / canvas.logicalH) * ch, wantY = ch <= AH ? (AH - ch) / 2 : Math.min(0, Math.max(AH - ch, AH / 2 - fyp));
     panYm += (wantY - panYm) * (dt > 0 ? Math.min(1, dt * 6) : 1);
     canvas.style.left = `${panX}px`; canvas.style.top = `${panYm}px`;
     canvas.style.marginLeft = canvas.style.marginTop = canvas.style.marginBottom = canvas.style.clipPath = '';
     return;
   }
-  if (zoom > 1 && sim.mode === 'slice') {
+  if (zoom > 1 && pileMode) {
+    const fxp = ((OX + planFocus.x * CELL) / canvas.logicalW) * cw, want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
+    panX += (want - panX) * Math.min(1, dt * 6); canvas.style.marginLeft = `${-panX}px`;
+  } else if (zoom > 1 && sim.mode === 'slice') {
     const sl = sim.slice, fxp = ((sl.x - sl.x0) / 16) * cw;
     const want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
     panX += (want - panX) * Math.min(1, dt * 6);
@@ -722,9 +757,14 @@ function fitCanvas() {
     const AW = innerWidth, AH = innerHeight, aspect = lw / lh;
     if (AW / AH >= aspect) { w = AW; h = AW / aspect; } // breiter als die Karte: Breite füllen, in der Höhe dem Ponton folgen
     else { w = Math.min(AH * aspect, AW * 2.1); h = w / aspect; } // schmaler: Höhe füllen (bis 2,1-fach), seitlich dem Ponton folgen
+    if (pileMode) { w *= pileZoom; h *= pileZoom; }
     canvas.style.position = 'absolute';
   } else { canvas.style.position = ''; canvas.style.left = ''; canvas.style.top = ''; }
   if (mapFull) { /* oben berechnet */ }
+  else if (portrait && pileMode) { // Pfahlwand planen im Hochformat: auf die Planungsstelle zoomen, Joystick verschiebt
+    const visAvail = Math.max(60, innerHeight - docTop - below - 12);
+    zoom = pileZoom; w = stageW * zoom; h = w * (lh / lw); if (h > visAvail + 1) cropVis = visAvail;
+  }
   else if (portrait && sim.mode === 'slice') {
     const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
     zoom = Math.min(MAX_ZOOM_SLICE, Math.max(1, visAvail / nat));
@@ -843,7 +883,20 @@ function toggleLend() {
   if (sim.mode === 'slice') sim.leave();
   if (lendPonton(game, sim.x, sim.y)) { fleetSig = null; updateFleet(); syncMode(); updateTowButton(); toast('Dein Ponton arbeitet für die Flotte (nochmals tippen: zurücknehmen)', 'good', true); }
 }
+// Knöpfe unter der Karte: «Flotte ▾» klappt alle Werkzeuge rund um die Flotte (Gebiet, Route, Pfahlwand, Kreuzung, Land, Ponton zuteilen) auf
+let toolsOpen = false;
+function toggleTools(open = !toolsOpen) { toolsOpen = open; document.body.classList.toggle('tools-open', open); layoutSig = ''; }
+function updateToolButtons() {
+  const act = { 'btn-area': areaMode && areaKind === 'rect', 'btn-route': areaMode && areaKind === 'route', 'btn-pile': pileMode, 'btn-zone': zoneMode, 'btn-land': landMode };
+  const tools = [...document.querySelectorAll('#shift-actions .tool-btn')];
+  for (const b of tools) b.classList.toggle('on', !!act[b.id]);
+  $('btn-pile').hidden = !(game.stats.betonrohr > 0 || (game.fleet.pilePlan ?? []).length || pileMode) || sim.mode !== 'map' || !!tow;
+  const fm = $('btn-fleetmenu'); fm.hidden = !tools.some((b) => !b.hidden) || sim.mode !== 'map' || !!tow;
+  fm.classList.toggle('open', toolsOpen); fm.textContent = toolsOpen ? '🚤 Flotte ▴' : '🚤 Flotte ▾';
+}
+$('btn-fleetmenu').onclick = () => toggleTools();
 function updateTowButton() {
+  updateToolButtons();
   const hb = $('btn-harborview'); hb.hidden = !game.port.open || !game.port.harbor || !!tow; hb.textContent = harborView ? '↩ Hauptkarte (Y)' : '⚓ Hafenkarte (Y)'; hb.classList.toggle('primary', harborView);
   const lb = $('btn-fleetlend'), lent = !!lentUnit(game);
   lb.hidden = !!tow || (!lent && game.stats.autoLevel < 1);
@@ -992,7 +1045,7 @@ function restart(loaded = null) {
   $('btn-pause').textContent = '⏸ Pause (P)';
   sizeCanvas(canvas);
   setSheet(false); mapTarget = null; contractSig = null; marketSig = ''; logSig = ''; $('goal').innerHTML = '';
-  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; areaMode = false; ui.areaMode = false; areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null; ui.areaA = null; landMode = false; ui.landMode = false; $('land-bar').hidden = true; $('btn-land').textContent = '🛣 Land (L)'; tow = null;
+  classSel = null; ui.classSel = null; ui.floaters = []; fleetSig = null; concreteSig = null; trafficSig = null; hazardSig = null; depositSig = null; zoneMode = false; ui.zoneMode = false; ui.hoverX = null; areaMode = false; ui.areaMode = false; areaKind = 'rect'; ui.areaKind = 'rect'; ui.routePts = null; ui.areaA = null; pileMode = false; ui.pileMode = false; document.body.classList.remove('pile-mode'); $('pile-bar').hidden = true; landMode = false; ui.landMode = false; $('land-bar').hidden = true; $('btn-land').textContent = '🛣 Land (L)'; tow = null;
   buildClassbar();
   // Vorauswahl: die kleinste Klasse, die noch nicht fährt
   const first = game.level.classes.find((id) => !game.fair[id].passable);
@@ -1043,6 +1096,7 @@ addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); 
 
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
 readInput.onTap((px, py) => {
+  if (pileMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { pileClick(px, py); return; }
   if (landMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { landClick(px, py); return; }
   if (areaMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { areaClick(px, py); return; }
   if (zoneMode && sim.mode === 'map' && !tow && !paused && !sheetOpen && !overlayOpen()) { zoneClick(px, py); return; }
@@ -1055,16 +1109,20 @@ readInput.onTap((px, py) => {
 });
 $('btn-anchor').onclick = anchor;
 $('btn-zone').onclick = toggleZoneMode;
-$('btn-harborview').onclick = toggleHarborView; $('btn-fleetlend').onclick = toggleLend; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
+$('btn-harborview').onclick = toggleHarborView; $('btn-fleetlend').onclick = toggleLend; $('btn-pile').onclick = togglePileMode; $('btn-area').onclick = toggleAreaMode; $('btn-route').onclick = toggleRouteMode; $('btn-land').onclick = toggleLandMode;
 for (const b of $('land-bar').querySelectorAll('[data-tool]')) b.onclick = () => setLandTool(b.dataset.tool);
 $('land-done').onclick = toggleLandMode;
+for (const b of $('pile-bar').querySelectorAll('[data-ptool]')) b.onclick = () => { pileTool = b.dataset.ptool; pileA = null; ui.pileA = null; syncPileButton(); };
+$('pile-clear').onclick = () => { const n = clearPilePlan(game); toast(n ? `Plan gelöscht (${n} Zellen)` : 'Plan ist leer', 'info', true); fleetSig = null; };
+$('pile-zin').onclick = () => pileZoomBy(1.3); $('pile-zout').onclick = () => pileZoomBy(1 / 1.3); $('pile-done').onclick = togglePileMode;
 canvas.addEventListener('pointermove', (e) => { // Setz-Modus: Spalte unter dem Zeiger
-  if (areaMode || landMode) { const r = canvas.getBoundingClientRect(); ui.hoverCell = cellAt(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH); return; }
+  if (areaMode || landMode || pileMode) { const r = canvas.getBoundingClientRect(); ui.hoverCell = cellAt(((e.clientX - r.left) / r.width) * canvas.logicalW, ((e.clientY - r.top) / r.height) * canvas.logicalH); return; }
   if (!zoneMode) { ui.hoverX = null; return; }
   const r = canvas.getBoundingClientRect();
   ui.hoverX = Math.floor((((e.clientX - r.left) / r.width) * canvas.logicalW - OX) / CELL);
 });
 canvas.addEventListener('pointerdown', (e) => { // Maus: Klick setzt oder entfernt eine Kreuzungsstelle (Touch läuft über onTap)
+  if (pileMode && e.pointerType !== 'touch' && sim.mode === 'map' && !tow) { const r2 = canvas.getBoundingClientRect(); pileClick(((e.clientX - r2.left) / r2.width) * canvas.logicalW, ((e.clientY - r2.top) / r2.height) * canvas.logicalH); return; }
   if (landMode && e.pointerType !== 'touch' && sim.mode === 'map' && !tow) { const r1 = canvas.getBoundingClientRect(); landClick(((e.clientX - r1.left) / r1.width) * canvas.logicalW, ((e.clientY - r1.top) / r1.height) * canvas.logicalH); return; }
   if (areaMode && e.pointerType !== 'touch' && sim.mode === 'map' && !tow) { const r0 = canvas.getBoundingClientRect(); areaClick(((e.clientX - r0.left) / r0.width) * canvas.logicalW, ((e.clientY - r0.top) / r0.height) * canvas.logicalH); return; }
   if (!zoneMode || e.pointerType === 'touch' || sim.mode !== 'map' || tow) return;
@@ -1128,7 +1186,8 @@ function frame(now) {
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
     if (lentUnit(game) && sim.mode === 'map') { const lu = lentUnit(game); sim.x = lu.x; sim.y = lu.y; } // der eigene Ponton fährt als Flottenschiff mit
-    if (tow || zoneMode || areaMode || landMode || lentUnit(game)) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
+    if (pileMode) { planFocus.x = Math.min(game.river.cols, Math.max(0, planFocus.x + inp.dx * dt * 16)); planFocus.y = Math.min(game.river.rows, Math.max(0, planFocus.y + inp.dy * dt * 16)); }
+    if (tow || zoneMode || areaMode || landMode || pileMode || lentUnit(game)) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
     ui.towShip = !tow && sim.mode === 'map' ? groundedNear(game, sim.x, sim.y)?.id ?? null : tow?.shipId ?? null;
     for (let k = 0; k < game.level.classes.length; k++) if (readInput.tap(`Digit${k + 1}`, `Numpad${k + 1}`)) chooseClass(game.level.classes[k]);
     if (inMap) {
@@ -1145,6 +1204,7 @@ function frame(now) {
       if (!tow && readInput.tap('KeyT')) startTow();
       if (!tow && readInput.tap('KeyK')) toggleZoneMode();
       if (!tow && readInput.tap('KeyG')) toggleAreaMode();
+      if (!tow && readInput.tap('KeyO')) togglePileMode();
       if (!tow && readInput.tap('KeyN')) toggleRouteMode();
       if (!tow && readInput.tap('KeyJ')) toggleLend();
       if (!tow && readInput.tap('KeyY')) toggleHarborView();

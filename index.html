@@ -43,24 +43,27 @@
       </div>
       <div id="shift-actions" hidden>
         <button id="btn-anchor" class="primary">⚓ Anker werfen (E)</button>
-        <button id="btn-port">🏗 Hafen (H)</button>
         <button id="btn-leave">↩ Zurück zur Karte (Q)</button>
         <button id="btn-auto">🤖 Auto (T)</button>
         <button id="btn-fix" class="primary">🔧 Reset (R)</button>
-        <button id="btn-area" hidden>▭ Gebiet (G)</button>
+        <button id="btn-pump">🌀 Pumpe: AUS (Leertaste)</button>
+        <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
+        <button id="btn-port">🏗 Hafen (H)</button>
         <button id="btn-harborview" hidden>⚓ Hafenkarte (Y)</button>
-        <button id="btn-fleetlend" hidden>🧑‍✈️ Zur Flotte (J)</button>
-        <button id="btn-route" hidden>〰 Route (N)</button>
-        <button id="btn-land" hidden>🛣 Land (L)</button>
-        <button id="btn-zone">↔ Kreuzung (K)</button>
+        <button id="btn-fleetmenu" hidden>🚤 Flotte ▾</button>
+        <button id="btn-area" class="tool-btn" hidden>▭ Gebiet (G)</button>
+        <button id="btn-route" class="tool-btn" hidden>〰 Route (N)</button>
+        <button id="btn-pile" class="tool-btn" hidden>🧱 Pfahlwand (O)</button>
+        <button id="btn-zone" class="tool-btn">↔ Kreuzung (K)</button>
+        <button id="btn-land" class="tool-btn" hidden>🛣 Land (L)</button>
+        <button id="btn-fleetlend" class="tool-btn" hidden>🧑‍✈️ Zur Flotte (J)</button>
         <button id="btn-goto" hidden>📍 Zum Aufläufer</button>
         <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
-        <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
-        <button id="btn-pump">🌀 Pumpe: AUS (Leertaste)</button>
-        <button id="btn-sound">🔊 Ton an (M)</button>
+        <button id="btn-sound" hidden>🔊 Ton an (M)</button>
         <label id="spd-box" hidden>Tempo <input id="spd" type="range" min="0.2" max="1" step="0.05" value="1"> <b id="spd-val">100%</b> <small>(Z/X)</small></label>
         <label id="cut-box" hidden>Solltiefe <input id="cut" type="range" min="1" max="5.5" step="0.1" value="2.8"> <b id="cut-val">2.8 m</b> <small>(F/G)</small></label>
       </div>
+      <div id="pile-bar" hidden><button data-ptool="cell" class="on">✏ Zelle</button><button data-ptool="line">📏 Linie</button><button id="pile-zin">＋ Zoom</button><button id="pile-zout">− Zoom</button><button id="pile-clear">🧹 Plan löschen</button><button id="pile-done" class="primary">Fertig</button></div>
       <div id="land-bar" hidden><button data-tool="road" class="on">🛣 Strasse</button><button data-tool="hall">🏭 Lagerhalle</button><button data-tool="auto">➜ Strasse automatisch</button><button data-tool="demo">✖ Abriss</button><button id="land-done" class="primary">Fertig</button></div>
       <div id="toast"></div>
       <div id="port-page" hidden></div>
