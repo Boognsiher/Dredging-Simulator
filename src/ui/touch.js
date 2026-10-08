@@ -15,7 +15,7 @@ export function setupTouch(input, hooks) {
   let stickId = null;
   const moveStick = (e) => {
     const r = stick.getBoundingClientRect(), vx = e.clientX - (r.left + r.width / 2), vy = e.clientY - (r.top + r.height / 2);
-    const s = snapStick(vx, vy, DEAD, input.virtual);
+    const s = snapStick(vx, vy, DEAD);
     input.virtual.dx = s.dx; input.virtual.dy = s.dy;
     const len = Math.hypot(vx, vy) || 1, k = Math.min(1, KNOB_RADIUS / len);
     knob.style.transform = `translate(${vx * k}px, ${vy * k}px)`;

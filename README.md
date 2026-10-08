@@ -213,3 +213,5 @@ Das Level ist die höchste Klasse, deren Rinne schon einmal befahrbar war (auf i
 Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Bestehende Spielstände bekommen das Level passend zu den schon befahrbaren Klassen.
 
 **Pumpe in beide Richtungen:** Die Pumpe saugt von Hand und in der Automatik in beide Richtungen (keine Leerfahrt); beide Richtungen haben dasselbe Tempo. Im Querschnitt zeigt der Knopf «ⓘ» eine Legende der Farben und Markierungen.
+
+**Steuerung auf der Karte:** Der Touch-Stick fährt den Ponton in jede Richtung, auch schräg (vorher rastete er auf eine Achse ein).

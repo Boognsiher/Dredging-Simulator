@@ -5,11 +5,12 @@ import { snapStick, steerToward, isTap } from '../src/ui/touch-logic.js';
 import { fitSize, renderQuality } from '../src/ui/layout.js';
 import { hintsFor } from '../src/ui/hints.js';
 
-test('Stick rastet auf eine Achse ein und hat Totzone und Hysterese', () => {
+test('Stick gibt die Richtung frei (auch schräg) und hat eine Totzone', () => {
   assert.deepEqual(snapStick(2, 1, 14), { dx: 0, dy: 0 });
-  assert.deepEqual(snapStick(30, 10), { dx: 1, dy: 0 });
-  assert.deepEqual(snapStick(-5, -40), { dx: 0, dy: -1 });
-  assert.deepEqual(snapStick(30, 36, 14, { dx: 1, dy: 0 }), { dx: 1, dy: 0 }, 'bleibt horizontal, solange nicht klar vertikal');
+  assert.deepEqual(snapStick(30, 0), { dx: 1, dy: 0 });
+  const d = snapStick(30, 30);
+  assert.ok(Math.abs(d.dx - Math.SQRT1_2) < 1e-9 && Math.abs(d.dy - Math.SQRT1_2) < 1e-9, 'diagonal');
+  assert.ok(Math.abs(Math.hypot(snapStick(-5, -40).dx, snapStick(-5, -40).dy) - 1) < 1e-9);
 });
 
 test('Zielfahrt: Richtung zum Ziel, Ankunft in der Nähe', () => {
