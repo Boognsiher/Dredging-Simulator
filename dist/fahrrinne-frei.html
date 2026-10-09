@@ -7567,13 +7567,13 @@ function drawZones(ctx, game, ui) {
       let yc = (top + bot) / 2; for (const q of f.path.points) if (q.x >= z.x + 0.5) { yc = q.y * CELL; break; }
       const bw = c.beam * CELL * 0.9, xl = x0 - R * CELL, xr = x0 + z.w * CELL + R * CELL, x1 = x0 + z.w * CELL;
       ctx.beginPath(); ctx.moveTo(xl, yc - bw / 2); ctx.lineTo(x0, top); ctx.lineTo(x1, top); ctx.lineTo(xr, yc - bw / 2); ctx.lineTo(xr, yc + bw / 2); ctx.lineTo(x1, bot); ctx.lineTo(x0, bot); ctx.lineTo(xl, yc + bw / 2); ctx.closePath();
-      ctx.fillStyle = ready ? 'rgba(160,230,90,.16)' : 'rgba(255,200,70,.15)'; ctx.fill();
-      ctx.strokeStyle = ready ? 'rgba(166,230,90,.9)' : 'rgba(255,201,77,.9)'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [7, 5]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = ready ? 'rgba(120,255,160,.30)' : 'rgba(255,255,255,.22)'; ctx.fill(); // wie die Rinne: grün = befahrbar, weiss = noch nicht tief genug
+      ctx.strokeStyle = ready ? '#7bf0a0' : '#ffffff'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.setLineDash([]);
     }
     const rv = p.rampVolume ?? [0, 0], label = ready ? `Kreuzung ${c.icon} ✓` : `Kreuzung ${c.icon}: fehlt ${p.volume === Infinity ? '?' : Math.round(p.volume) + ' m³'}${p.wins && (rv[0] > 1e-6 || rv[1] > 1e-6) ? ` (Zufahrt ${Math.round(rv[0] + rv[1])})` : ''}`;
     ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(label).width + 10;
     const zdy = labelDy(x0 + z.w * CELL / 2 - tw / 2, 3, tw, fs(12) + 6);
-    ctx.fillStyle = '#000b'; ctx.fillRect(x0 + z.w * CELL / 2 - tw / 2, 3 + zdy, tw, fs(12) + 6); ctx.fillStyle = ready ? '#d6f5a8' : '#ffe08a'; ctx.fillText(label, x0 + z.w * CELL / 2, 4 + fs(12) + zdy); ctx.textAlign = 'start';
+    ctx.fillStyle = '#000b'; ctx.fillRect(x0 + z.w * CELL / 2 - tw / 2, 3 + zdy, tw, fs(12) + 6); ctx.fillStyle = ready ? '#bff7cf' : '#ffffff'; ctx.fillText(label, x0 + z.w * CELL / 2, 4 + fs(12) + zdy); ctx.textAlign = 'start';
   }
 }
 
