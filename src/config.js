@@ -94,7 +94,7 @@ export const CONFIG = {
   zones: {
     // Naturschutzstreifen freikaufen: CHF pro Zelle, Abschnitte (Oberlauf, Mittellauf, Unterlauf) je Ufer
     shoreCell: 350, shoreParts: 3,
-    baseMax: 1, width: 3, cost: 3000 },
+    baseMax: 1, width: 3, ramp: 2, cost: 3000 }, // ramp: Spalten je Seite für Ein- und Ausfahrt (dort wechselt das Schiff seitlich auf seine Spur; auch sie müssen tief genug sein)
   // Markt: Frachtpreise schwanken (Mean-Reversion + Ereignisse); hohe Preise locken mehr Schiffe dieser Fracht an
   market: { sigma: 0.07, revert: 0.1, minRatio: 0.45, maxRatio: 2.2, history: 24 },
   // Frachtaufträge der Reedereien: X Tonnen einer Fracht bis zu einem Termin durchbringen = Prämie

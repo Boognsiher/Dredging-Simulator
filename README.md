@@ -219,3 +219,5 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 **Anlage:** Sie besteht aus zwei Upgrades: **Stapelbecken** (Puffer, startet bei 1000 m³) und **Verarbeitung** (Durchsatz). Beide, dazu Entwässerung und Sortierung, werden frei, sobald der Puffer insgesamt 45 s voll war oder Level 2 erreicht ist. **Leitbaken am Ponton** (Verkehr) reduzieren die Verlangsamung von Schiffen, die am Ponton vorbeifahren. Alte Spielstände übernehmen die bisherige Anlagenstufe für beide.
 
 **Kreuzungsstellen:** Schiffe wechseln nur noch seitlich auf ihre Spur, wo der Grund für ihren Tiefgang reicht (auch einen Schritt voraus); sonst bleiben sie in der Hauptrinne. Vorher liefen sie beim Spurwechsel vor und nach der Kreuzungsstelle auf (Auffahrt nicht ausgebaggert).
+
+**Kreuzungsstellen mit Ein- und Ausfahrt:** Eine Kreuzungsstelle umfasst den Kern (3 Spalten) und je 2 Spalten Einfahrt und Ausfahrt. Beide Spuren liegen in allen Spalten auf denselben Zeilen; bereit ist die Stelle erst, wenn alles tief genug ist. Auf der Karte zeigen Einfahrt und Ausfahrt je ✓ oder die fehlende Menge, und die Flotte baggert sie mit aus.

@@ -148,30 +148,44 @@ export function crossColumns(river, def, beam) {
 // Planung einer Kreuzungsstelle (Mitte xc, drei Spalten) für eine Klasse: in jeder Spalte müssen zwei getrennte Rinnen (je beam Zeilen, eine Zeile Abstand)
 // tief genug sein. Berechnet je Spalte die günstigsten zwei Fenster und das fehlende Volumen (m³). Zellen im Ausbaustreifen (Land, Flachwasser) zählen mit,
 // sie müssen dafür abgetragen werden; Zellen ausserhalb davon sperren. volume = Infinity, wenn auch so kein Platz ist.
-export function zonePlan(river, wl, cls, xc, w = 3) {
-  const needTop = wl - needDepth(cls) + EPS, beam = cls.beam, rows = river.rows, wins = [];
-  let volume = 0, land = false, rock = false, armor = false;
-  for (let x = xc - Math.floor(w / 2); x <= xc + Math.floor(w / 2); x++) {
-    if (x < 0 || x >= river.cols) return { volume: Infinity, wins: null };
+export function zonePlan(river, wl, cls, xc, w = 3, ramp = CONFIG.zones.ramp ?? 0) {
+  const needTop = wl - needDepth(cls) + EPS, beam = cls.beam, rows = river.rows, half = Math.floor(w / 2);
+  const x0 = xc - half - ramp, x1 = xc + half + ramp;
+  if (x0 < 0 || x1 >= river.cols) return { volume: Infinity, wins: null };
+  // Kosten je Zeile und Spalte (Zellen im Ausbaustreifen zählen mit, Land/Hafen sperren); beide Spuren liegen in allen Spalten (Kern und Zufahrten) auf denselben Zeilen
+  const colCost = [];
+  for (let x = x0; x <= x1; x++) {
     const c = new Array(rows);
     for (let y = 0; y < rows; y++) {
       const i = y * river.cols + x;
       c[y] = river.bay[i] ? Infinity : river.zone[i] ? Math.max(0, river.top[i] - needTop) : river.ext[i] ? Math.max(0.05, river.top[i] - needTop) : Infinity;
     }
-    const wc = [];
-    for (let a = 0; a + beam <= rows; a++) { let t = 0; for (let k = a; k < a + beam; k++) t += c[k]; wc.push(t); }
-    let best = Infinity, ba = -1, bb = -1;
-    for (let a = 0; a < wc.length; a++) for (let b = a + beam + 1; b < wc.length; b++) if (wc[a] + wc[b] < best) { best = wc[a] + wc[b]; ba = a; bb = b; }
-    if (best === Infinity) return { volume: Infinity, wins: null };
-    volume += best * river.area;
-    wins.push({ x, a: ba, b: bb });
+    colCost.push(c);
+  }
+  const winCost = (a, list) => { let t = 0; for (const c of list) for (let k = a; k < a + beam; k++) t += c[k]; return t; };
+  const core = colCost.slice(ramp, ramp + w), all = colCost; // Kern zuerst wählen (Pflicht), dann auf Zufahrten ausdehnen: gemeinsame Zeilen für alle Spalten
+  let best = Infinity, ba = -1, bb = -1;
+  for (let a = 0; a + beam <= rows; a++) {
+    const wa = winCost(a, all); if (wa === Infinity) continue;
+    for (let b = a + beam + 1; b + beam <= rows; b++) { const t = wa + winCost(b, all); if (t < best) { best = t; ba = a; bb = b; } }
+  }
+  if (best === Infinity) return { volume: Infinity, wins: null };
+  const wins = [];
+  let volume = 0, rampVolume = [0, 0], land = false, rock = false, armor = false;
+  for (let x = x0; x <= x1; x++) {
+    const side = x < xc - half ? 0 : x > xc + half ? 1 : -1; // 0 = Einfahrt (flussaufwärts), 1 = Ausfahrt
+    let colV = 0;
     for (const a of [ba, bb]) for (let k = a; k < a + beam; k++) {
-      const i = k * river.cols + x;
+      const i = k * river.cols + x, c = colCost[x - x0][k];
+      colV += c * river.area;
       if (!river.zone[i]) land = true;
       if (river.top[i] > needTop) { if (river.rock[i] > needTop) rock = true; if (river.armor[i] > 0) armor = true; }
     }
+    volume += colV; if (side >= 0) rampVolume[side] += colV;
+    wins.push({ x, a: ba, b: bb, ramp: side });
   }
-  return { volume, wins, land, rock, armor, needTop, beam };
+  void core;
+  return { volume, wins, land, rock, armor, needTop, beam, rampVolume, x0, x1 };
 }
 
 export function analyzeClass(river, wl, cls) {

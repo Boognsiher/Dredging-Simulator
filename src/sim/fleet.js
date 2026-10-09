@@ -473,7 +473,8 @@ function pickZone(g, u) {
     if (blockedZ) { note = 'Kreuzungsstelle: Altlast oder Naturschutz im Weg (Meiden aktiv)'; continue; }
     if ((plan.land || plan.armor) && !loeff) { note = plan.armor ? 'Beton im Weg: braucht den Löffelbagger' : 'Kreuzungsstelle braucht den Löffelbagger (Uferabtrag)'; continue; }
     if (plan.rock && !canRock(g)) { note = 'Fels im Weg: braucht Felsfräse oder Löffelbagger'; continue; }
-    const c0 = Math.min(Math.max(0, z.x - 1), r.cols - B);
+    const openX = plan.wins.filter((w) => [w.a, w.b].some((a0) => { for (let k = a0; k < a0 + plan.beam; k++) if (r.top[k * r.cols + w.x] > needTopZ) return true; return false; })).map((w) => w.x); // offene Spalten (Kern, Ein- und Ausfahrt)
+    const c0 = Math.min(Math.max(0, openX.length ? Math.min(...openX) : z.x - 1), r.cols - B);
     if (overlaps(res, c0)) continue;
     let r0 = Infinity, r1 = -Infinity;
     for (const w of plan.wins) { r0 = Math.min(r0, w.a); r1 = Math.max(r1, w.b + plan.beam - 1); }

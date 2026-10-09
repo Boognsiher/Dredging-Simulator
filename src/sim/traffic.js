@@ -74,19 +74,21 @@ export function zoneSupports(g, z, clsId) {
   const cross = g.fair?.[clsId]?.cross;
   if (!cross) return false;
   for (let x = z.x - 1; x <= z.x + 1; x++) if (x < 0 || x >= g.river.cols || !cross[x]) return false;
-  return true;
+  const a = zoneLaneStart(g, z, clsId, 1), b = zoneLaneStart(g, z, clsId, -1); // beide Spuren samt Ein- und Ausfahrt tief genug
+  return a >= 0 && b >= 0 && b >= a + shipById(clsId).beam + 1;
 }
 export const zoneClasses = (g, z) => SHIPS.filter((s) => g.level.classes.includes(s.id) && zoneSupports(g, z, s.id));
 
 // Fahrspur einer Klasse in der Kreuzungsstelle: erstes Fenster (beam Zeilen), das in allen drei Spalten tief genug ist.
 // Schiffe talwärts (dir > 0) nehmen die obere, bergwärts die untere Spur. -1 = kein Platz
+const rampOf = (z) => z.ramp ?? CONFIG.zones.ramp ?? 0; // Ein-/Ausfahrt-Spalten je Seite
 export function zoneLaneStart(g, z, clsId, dir) {
   const def = g.fair?.[clsId]?.def, beam = shipById(clsId).beam, r = g.river;
   if (!def) return -1;
   for (let k = 0; k <= r.rows - beam; k++) {
     const a = dir > 0 ? k : r.rows - beam - k;
     let ok = true;
-    for (let x = z.x - 1; x <= z.x + 1 && ok; x++) { if (x < 0 || x >= r.cols) { ok = false; break; } for (let y = a; y < a + beam; y++) if (def[y * r.cols + x] !== 0) { ok = false; break; } }
+    for (let x = z.x - 1 - rampOf(z); x <= z.x + 1 + rampOf(z) && ok; x++) { if (x < 0 || x >= r.cols) { ok = false; break; } for (let y = a; y < a + beam; y++) if (def[y * r.cols + x] !== 0) { ok = false; break; } }
     if (ok) return a;
   }
   return -1;

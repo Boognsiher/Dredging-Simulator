@@ -1957,3 +1957,23 @@ test('Anlage: Stapelbecken und Verarbeitung getrennt, frei nach 45 s vollem Puff
     assert.equal(g.buyUpgrade('guide'), true); assert.ok(g.stats.siteRelief > 0);
   } finally { UNLOCK.enabled = false; }
 });
+
+test('Kreuzungsstelle: Ein- und Ausfahrt gehören zum Plan, gemeinsame Spurzeilen, bereit erst wenn alles tief genug ist', () => {
+  const g = new Game(6, 'hochrhein'); g.eventsOn = false; g.money = 1e8;
+  const cls = shipById('kahn'), x = 20, R = CONFIG.zones.ramp;
+  const p = g.zonePlanFor(x, 'kahn');
+  assert.ok(p.wins && p.wins.length === 3 + 2 * R, 'Kern plus Zufahrten');
+  assert.ok(new Set(p.wins.map((w) => w.a)).size === 1 && new Set(p.wins.map((w) => w.b)).size === 1, 'gleiche Zeilen in allen Spalten');
+  assert.ok(Array.isArray(p.rampVolume));
+  // Kern und Zufahrten auf Tiefe baggern (beide Fenster): dann ist die Stelle bereit
+  const r = g.river;
+  for (const w of p.wins) for (const a of [w.a, w.b]) for (let k = a; k < a + cls.beam; k++) { const i = k * r.cols + w.x; if (r.top[i] > p.needTop) r.top[i] = p.needTop - 0.05; }
+  g.analyze(true);
+  const p2 = g.zonePlanFor(x, 'kahn');
+  assert.ok(p2.ready, 'bereit nach dem Ausbau'); assert.ok(p2.volume <= 1e-6);
+  // eine Spalte der Einfahrt wieder verflachen: nicht mehr bereit, Fehlmenge in der Einfahrt
+  const w0 = p.wins[0]; for (let k = w0.a; k < w0.a + cls.beam; k++) r.top[k * r.cols + w0.x] = p.needTop + 0.5;
+  g.analyze(true);
+  const p3 = g.zonePlanFor(x, 'kahn');
+  assert.equal(p3.ready, false); assert.ok(p3.rampVolume[0] > 0);
+});

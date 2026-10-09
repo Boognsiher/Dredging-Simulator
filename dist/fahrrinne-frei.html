@@ -2434,7 +2434,7 @@ const CONFIG = {
   zones: {
     // Naturschutzstreifen freikaufen: CHF pro Zelle, Abschnitte (Oberlauf, Mittellauf, Unterlauf) je Ufer
     shoreCell: 350, shoreParts: 3,
-    baseMax: 1, width: 3, cost: 3000 },
+    baseMax: 1, width: 3, ramp: 2, cost: 3000 }, // ramp: Spalten je Seite für Ein- und Ausfahrt (dort wechselt das Schiff seitlich auf seine Spur; auch sie müssen tief genug sein)
   // Markt: Frachtpreise schwanken (Mean-Reversion + Ereignisse); hohe Preise locken mehr Schiffe dieser Fracht an
   market: { sigma: 0.07, revert: 0.1, minRatio: 0.45, maxRatio: 2.2, history: 24 },
   // Frachtaufträge der Reedereien: X Tonnen einer Fracht bis zu einem Termin durchbringen = Prämie
@@ -2751,30 +2751,44 @@ function crossColumns(river, def, beam) {
 // Planung einer Kreuzungsstelle (Mitte xc, drei Spalten) für eine Klasse: in jeder Spalte müssen zwei getrennte Rinnen (je beam Zeilen, eine Zeile Abstand)
 // tief genug sein. Berechnet je Spalte die günstigsten zwei Fenster und das fehlende Volumen (m³). Zellen im Ausbaustreifen (Land, Flachwasser) zählen mit,
 // sie müssen dafür abgetragen werden; Zellen ausserhalb davon sperren. volume = Infinity, wenn auch so kein Platz ist.
-function zonePlan(river, wl, cls, xc, w = 3) {
-  const needTop = wl - needDepth(cls) + EPS, beam = cls.beam, rows = river.rows, wins = [];
-  let volume = 0, land = false, rock = false, armor = false;
-  for (let x = xc - Math.floor(w / 2); x <= xc + Math.floor(w / 2); x++) {
-    if (x < 0 || x >= river.cols) return { volume: Infinity, wins: null };
+function zonePlan(river, wl, cls, xc, w = 3, ramp = CONFIG.zones.ramp ?? 0) {
+  const needTop = wl - needDepth(cls) + EPS, beam = cls.beam, rows = river.rows, half = Math.floor(w / 2);
+  const x0 = xc - half - ramp, x1 = xc + half + ramp;
+  if (x0 < 0 || x1 >= river.cols) return { volume: Infinity, wins: null };
+  // Kosten je Zeile und Spalte (Zellen im Ausbaustreifen zählen mit, Land/Hafen sperren); beide Spuren liegen in allen Spalten (Kern und Zufahrten) auf denselben Zeilen
+  const colCost = [];
+  for (let x = x0; x <= x1; x++) {
     const c = new Array(rows);
     for (let y = 0; y < rows; y++) {
       const i = y * river.cols + x;
       c[y] = river.bay[i] ? Infinity : river.zone[i] ? Math.max(0, river.top[i] - needTop) : river.ext[i] ? Math.max(0.05, river.top[i] - needTop) : Infinity;
     }
-    const wc = [];
-    for (let a = 0; a + beam <= rows; a++) { let t = 0; for (let k = a; k < a + beam; k++) t += c[k]; wc.push(t); }
-    let best = Infinity, ba = -1, bb = -1;
-    for (let a = 0; a < wc.length; a++) for (let b = a + beam + 1; b < wc.length; b++) if (wc[a] + wc[b] < best) { best = wc[a] + wc[b]; ba = a; bb = b; }
-    if (best === Infinity) return { volume: Infinity, wins: null };
-    volume += best * river.area;
-    wins.push({ x, a: ba, b: bb });
+    colCost.push(c);
+  }
+  const winCost = (a, list) => { let t = 0; for (const c of list) for (let k = a; k < a + beam; k++) t += c[k]; return t; };
+  const core = colCost.slice(ramp, ramp + w), all = colCost; // Kern zuerst wählen (Pflicht), dann auf Zufahrten ausdehnen: gemeinsame Zeilen für alle Spalten
+  let best = Infinity, ba = -1, bb = -1;
+  for (let a = 0; a + beam <= rows; a++) {
+    const wa = winCost(a, all); if (wa === Infinity) continue;
+    for (let b = a + beam + 1; b + beam <= rows; b++) { const t = wa + winCost(b, all); if (t < best) { best = t; ba = a; bb = b; } }
+  }
+  if (best === Infinity) return { volume: Infinity, wins: null };
+  const wins = [];
+  let volume = 0, rampVolume = [0, 0], land = false, rock = false, armor = false;
+  for (let x = x0; x <= x1; x++) {
+    const side = x < xc - half ? 0 : x > xc + half ? 1 : -1; // 0 = Einfahrt (flussaufwärts), 1 = Ausfahrt
+    let colV = 0;
     for (const a of [ba, bb]) for (let k = a; k < a + beam; k++) {
-      const i = k * river.cols + x;
+      const i = k * river.cols + x, c = colCost[x - x0][k];
+      colV += c * river.area;
       if (!river.zone[i]) land = true;
       if (river.top[i] > needTop) { if (river.rock[i] > needTop) rock = true; if (river.armor[i] > 0) armor = true; }
     }
+    volume += colV; if (side >= 0) rampVolume[side] += colV;
+    wins.push({ x, a: ba, b: bb, ramp: side });
   }
-  return { volume, wins, land, rock, armor, needTop, beam };
+  void core;
+  return { volume, wins, land, rock, armor, needTop, beam, rampVolume, x0, x1 };
 }
 
 function analyzeClass(river, wl, cls) {
@@ -5131,19 +5145,21 @@ function zoneSupports(g, z, clsId) {
   const cross = g.fair?.[clsId]?.cross;
   if (!cross) return false;
   for (let x = z.x - 1; x <= z.x + 1; x++) if (x < 0 || x >= g.river.cols || !cross[x]) return false;
-  return true;
+  const a = zoneLaneStart(g, z, clsId, 1), b = zoneLaneStart(g, z, clsId, -1); // beide Spuren samt Ein- und Ausfahrt tief genug
+  return a >= 0 && b >= 0 && b >= a + shipById(clsId).beam + 1;
 }
 const zoneClasses = (g, z) => SHIPS.filter((s) => g.level.classes.includes(s.id) && zoneSupports(g, z, s.id));
 
 // Fahrspur einer Klasse in der Kreuzungsstelle: erstes Fenster (beam Zeilen), das in allen drei Spalten tief genug ist.
 // Schiffe talwärts (dir > 0) nehmen die obere, bergwärts die untere Spur. -1 = kein Platz
+const rampOf = (z) => z.ramp ?? CONFIG.zones.ramp ?? 0; // Ein-/Ausfahrt-Spalten je Seite
 function zoneLaneStart(g, z, clsId, dir) {
   const def = g.fair?.[clsId]?.def, beam = shipById(clsId).beam, r = g.river;
   if (!def) return -1;
   for (let k = 0; k <= r.rows - beam; k++) {
     const a = dir > 0 ? k : r.rows - beam - k;
     let ok = true;
-    for (let x = z.x - 1; x <= z.x + 1 && ok; x++) { if (x < 0 || x >= r.cols) { ok = false; break; } for (let y = a; y < a + beam; y++) if (def[y * r.cols + x] !== 0) { ok = false; break; } }
+    for (let x = z.x - 1 - rampOf(z); x <= z.x + 1 + rampOf(z) && ok; x++) { if (x < 0 || x >= r.cols) { ok = false; break; } for (let y = a; y < a + beam; y++) if (def[y * r.cols + x] !== 0) { ok = false; break; } }
     if (ok) return a;
   }
   return -1;
@@ -5903,7 +5919,8 @@ function pickZone(g, u) {
     if (blockedZ) { note = 'Kreuzungsstelle: Altlast oder Naturschutz im Weg (Meiden aktiv)'; continue; }
     if ((plan.land || plan.armor) && !loeff) { note = plan.armor ? 'Beton im Weg: braucht den Löffelbagger' : 'Kreuzungsstelle braucht den Löffelbagger (Uferabtrag)'; continue; }
     if (plan.rock && !canRock(g)) { note = 'Fels im Weg: braucht Felsfräse oder Löffelbagger'; continue; }
-    const c0 = Math.min(Math.max(0, z.x - 1), r.cols - B);
+    const openX = plan.wins.filter((w) => [w.a, w.b].some((a0) => { for (let k = a0; k < a0 + plan.beam; k++) if (r.top[k * r.cols + w.x] > needTopZ) return true; return false; })).map((w) => w.x); // offene Spalten (Kern, Ein- und Ausfahrt)
+    const c0 = Math.min(Math.max(0, openX.length ? Math.min(...openX) : z.x - 1), r.cols - B);
     if (overlaps(res, c0)) continue;
     let r0 = Infinity, r1 = -Infinity;
     for (const w of plan.wins) { r0 = Math.min(r0, w.a); r1 = Math.max(r1, w.b + plan.beam - 1); }
@@ -7456,6 +7473,15 @@ function drawZones(ctx, game, ui) {
     ctx.fillStyle = ready ? 'rgba(160,230,90,.13)' : 'rgba(255,200,70,.12)'; ctx.fillRect(x0, 0, z.w * CELL, H);
     ctx.strokeStyle = ready ? '#a6e65a' : '#ffc94d'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
     ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.moveTo(x0 + z.w * CELL, 0); ctx.lineTo(x0 + z.w * CELL, H); ctx.stroke(); ctx.setLineDash([]);
+    const R = CONFIG.zones.ramp ?? 0, rv = p.rampVolume ?? [0, 0];
+    if (R > 0) for (const [side, rx] of [[0, x0 - R * CELL], [1, x0 + z.w * CELL]]) { // Einfahrt (links) und Ausfahrt (rechts): grün = tief genug, orange = fehlt noch
+      const okR = p.wins && rv[side] <= 1e-6;
+      ctx.fillStyle = okR ? 'rgba(160,230,90,.08)' : 'rgba(255,150,60,.14)'; ctx.fillRect(rx, 0, R * CELL, H);
+      ctx.strokeStyle = okR ? '#a6e65a99' : '#ff9a4acc'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.moveTo(rx, 0); ctx.lineTo(rx, H); ctx.moveTo(rx + R * CELL, 0); ctx.lineTo(rx + R * CELL, H); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = font(11); ctx.textAlign = 'center'; const rl = `${side ? 'Ausfahrt' : 'Einfahrt'} ${okR ? '✓' : p.wins ? `−${Math.round(rv[side])} m³` : '?'}`, rw = ctx.measureText(rl).width + 8;
+      ctx.fillStyle = '#000a'; ctx.fillRect(rx + R * CELL / 2 - rw / 2, H - fs(11) - 8, rw, fs(11) + 5); ctx.fillStyle = okR ? '#d6f5a8' : '#ffc08a'; ctx.fillText(rl, rx + R * CELL / 2, H - 6); ctx.textAlign = 'start';
+    }
     const label = ready ? `Kreuzung ${c.icon} ✓` : `Kreuzung ${c.icon}: fehlt ${p.volume === Infinity ? '?' : Math.round(p.volume) + ' m³'}`;
     ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(label).width + 10;
     const zdy = labelDy(x0 + z.w * CELL / 2 - tw / 2, 3, tw, fs(12) + 6);

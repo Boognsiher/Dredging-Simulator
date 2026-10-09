@@ -466,6 +466,15 @@ function drawZones(ctx, game, ui) {
     ctx.fillStyle = ready ? 'rgba(160,230,90,.13)' : 'rgba(255,200,70,.12)'; ctx.fillRect(x0, 0, z.w * CELL, H);
     ctx.strokeStyle = ready ? '#a6e65a' : '#ffc94d'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
     ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.moveTo(x0 + z.w * CELL, 0); ctx.lineTo(x0 + z.w * CELL, H); ctx.stroke(); ctx.setLineDash([]);
+    const R = CONFIG.zones.ramp ?? 0, rv = p.rampVolume ?? [0, 0];
+    if (R > 0) for (const [side, rx] of [[0, x0 - R * CELL], [1, x0 + z.w * CELL]]) { // Einfahrt (links) und Ausfahrt (rechts): grün = tief genug, orange = fehlt noch
+      const okR = p.wins && rv[side] <= 1e-6;
+      ctx.fillStyle = okR ? 'rgba(160,230,90,.08)' : 'rgba(255,150,60,.14)'; ctx.fillRect(rx, 0, R * CELL, H);
+      ctx.strokeStyle = okR ? '#a6e65a99' : '#ff9a4acc'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.moveTo(rx, 0); ctx.lineTo(rx, H); ctx.moveTo(rx + R * CELL, 0); ctx.lineTo(rx + R * CELL, H); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = font(11); ctx.textAlign = 'center'; const rl = `${side ? 'Ausfahrt' : 'Einfahrt'} ${okR ? '✓' : p.wins ? `−${Math.round(rv[side])} m³` : '?'}`, rw = ctx.measureText(rl).width + 8;
+      ctx.fillStyle = '#000a'; ctx.fillRect(rx + R * CELL / 2 - rw / 2, H - fs(11) - 8, rw, fs(11) + 5); ctx.fillStyle = okR ? '#d6f5a8' : '#ffc08a'; ctx.fillText(rl, rx + R * CELL / 2, H - 6); ctx.textAlign = 'start';
+    }
     const label = ready ? `Kreuzung ${c.icon} ✓` : `Kreuzung ${c.icon}: fehlt ${p.volume === Infinity ? '?' : Math.round(p.volume) + ' m³'}`;
     ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(label).width + 10;
     const zdy = labelDy(x0 + z.w * CELL / 2 - tw / 2, 3, tw, fs(12) + 6);
