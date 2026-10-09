@@ -96,7 +96,7 @@ export const CONFIG = {
     shoreCell: 350, shoreParts: 3,
     baseMax: 1, width: 3, ramp: 2, cost: 3000 }, // ramp: Spalten je Seite für Ein- und Ausfahrt (dort wechselt das Schiff seitlich auf seine Spur; auch sie müssen tief genug sein)
   // Markt: Frachtpreise schwanken (Mean-Reversion + Ereignisse); hohe Preise locken mehr Schiffe dieser Fracht an
-  market: { sigma: 0.07, revert: 0.1, minRatio: 0.45, maxRatio: 2.2, history: 24 },
+  market: { sigma: 0.07, revert: 0.1, impactRecover: 0.14, minRatio: 0.45, maxRatio: 2.2, history: 24 },
   // Frachtaufträge der Reedereien: X Tonnen einer Fracht bis zu einem Termin durchbringen = Prämie
   contracts: {
     firstAtDay: 7, everyDays: [9, 16], offerDays: 8, dueDays: 28, maxOpen: 3,
@@ -213,6 +213,7 @@ export const DEPOSITS = [
   { id: 'kiesbank', name: 'Kiesbank (Premium-Kies)', kind: 2, mult: 3.0, cost: 2500, color: '#e6cf86' },
   { id: 'quarz', name: 'Quarzsand (Glasindustrie)', kind: 1, mult: 4.5, cost: 6000, color: '#7fd4ff' },
   { id: 'seife', name: 'Erzseife (Schwermineralsand)', kind: 1, mult: 9, cost: 12000, color: '#ff9a2e' },
+  { id: 'delta', name: 'Flussdelta (Kies, wächst schnell nach)', kind: 2, mult: 1.6, cost: 5000, color: '#cfe6a0', big: true, regen: 0.12 }, // grosses Vorkommen, das täglich nachwächst (nie leer)
 ];
 export const depositType = (id) => DEPOSITS.find((d) => d.id === id);
 

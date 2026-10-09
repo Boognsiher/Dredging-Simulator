@@ -25,6 +25,7 @@ export function endlessRiver(seed, k) {
   for (let i = 0; i < ridgeN; i++) ridges.push({ x: Math.round(((i + 1) * 44) / (ridgeN + 1) + r.range(-3, 3)), w: +r.range(3, 5).toFixed(1), depth: +Math.max(3.1, 4.3 - 0.22 * k + r.range(-0.2, 0.2)).toFixed(2) });
   const kinds = ['kiesbank', 'quarz', 'seife'], deposits = ['kiesbank'];
   for (let i = 0; i < 2 + (k >= 2 ? 1 : 0); i++) deposits.push(kinds[r.int(0, 2)]);
+  if (k >= 1) deposits.push('delta'); // jede weitere Karte hat ein grosses Kies-Flussdelta (erkunden und Konzession kaufen)
   return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
     bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
 }
@@ -277,7 +278,8 @@ export class Game {
     const D = CONFIG.deposits;
     for (const m of this.maps) {
       const r = m.river, name = this.maps.length > 1 ? `${m.name}: ` : '';
-      for (const d of r.deposits) if (!d.depleted && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
+      for (const d of r.deposits) if (d.regen && !d.depleted) for (let i = 0; i < r.dep.length; i++) if (r.dep[i] === d.id) r.depLeft[i] = Math.min(1.5, r.depLeft[i] + d.regen, Math.max(0, r.top[i] - r.rock[i])); // Flussdelta wächst täglich nach
+      for (const d of r.deposits) if (!d.depleted && !d.regen && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
       const active = r.deposits.filter((d) => !d.depleted).length;
       if (active < D.maxActive && this.rng() < D.spawnChance) {
         const T = DEPOSITS[Math.floor(this.rng() * DEPOSITS.length)], d = r.spawnDeposit(this.rng, T);

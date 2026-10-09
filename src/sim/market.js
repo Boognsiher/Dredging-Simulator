@@ -6,14 +6,14 @@ const gauss = (rng) => Math.sqrt(-2 * Math.log(Math.max(1e-9, rng()))) * Math.co
 
 // bias: dauerhafter Preisaufschlag/-abschlag je Fracht (regionale Knappheit, Endlos-Karten); priceOf = Basis × (1 + Abweichung + Bias)
 export function createMarket(bias = {}) {
-  const m = { dev: {}, history: {}, bias: { ...bias }, glut: 0 }; // glut: Preisabschlag, wenn Schiffe nicht fahren können (Niedrigwasser, Sperrung)
-  for (const c of CARGOS) { m.dev[c.id] = 0; m.history[c.id] = [c.base]; }
+  const m = { dev: {}, imp: {}, history: {}, bias: { ...bias }, glut: 0 }; // glut: Preisabschlag, wenn Schiffe nicht fahren können (Niedrigwasser, Sperrung)
+  for (const c of CARGOS) { m.dev[c.id] = 0; m.imp[c.id] = 0; m.history[c.id] = [c.base]; }
   return m;
 }
 
 export const priceOf = (m, id) => {
   const c = CARGOS.find((x) => x.id === id), K = CONFIG.market;
-  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0) + (m.bias?.[id] ?? 0) - (m.glut ?? 0)));
+  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0) + (m.imp?.[id] ?? 0) + (m.bias?.[id] ?? 0) - (m.glut ?? 0)));
 };
 export const ratioOf = (m, id) => priceOf(m, id) / CARGOS.find((x) => x.id === id).base;
 
@@ -23,6 +23,7 @@ export function stepMarket(m, rng) {
   for (const c of CARGOS) {
     m.dev[c.id] += (0 - m.dev[c.id]) * K.revert + K.sigma * gauss(rng);
     m.dev[c.id] = Math.min(K.maxRatio - 1, Math.max(K.minRatio - 1, m.dev[c.id]));
+    if (m.imp) m.imp[c.id] = (m.imp[c.id] ?? 0) * (1 - K.impactRecover); // eigene Käufe und Verkäufe drücken den Preis vor Ort, er erholt sich in einigen Tagen
     const h = m.history[c.id];
     h.push(priceOf(m, c.id));
     if (h.length > K.history) h.shift();

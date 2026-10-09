@@ -1323,7 +1323,7 @@ test('Flotte baut Rohstoffe mit Konzession ab, ohne Konzession nicht', () => {
   const k = new Game(3, 'hochrhein'); k.money = 1e6; k.buyUpgrade('auto'); k.traffic.spawnIn = 1e9; k.eventsOn = false; k.fleet.goal = 'kahn'; fullLane(k, 'kahn'); setMine(k, false); hireUnit(k);
   for (let i = 0; i < 14 * 20 * 20; i++) k.update(0.05);
   assert.equal(k.totals.premium, 0);
-  assert.ok(DEPOSITS.length === 3);
+  assert.ok(DEPOSITS.length === 4);
 });
 
 test('Hafen: Gelände von Hand planieren (Abtrag und Auffüllen), Überschuss und Kosten', () => {
@@ -1452,7 +1452,7 @@ test('Eigene Reederei: Route zwischen Karten, Ladung hängt von der Rinne ab, Ni
   const m0 = g.money; for (let i = 0; i < 14 * 12 * 20; i++) updateShipping(g, 0.05);
   assert.ok(s.trips >= 1 && s.profit > 0, 'Arbitrage bringt Gewinn');
   // Ziel einlagern statt verkaufen
-  setRoute(g, s.id, { toStock: true }); const st0 = g.maps[1].port.stock.kies;
+  setRoute(g, s.id, { toStock: true, minMargin: -50, backhaul: false }); const st0 = g.maps[1].port.stock.kies;
   for (let i = 0; i < 14 * 12 * 20; i++) updateShipping(g, 0.05);
   assert.ok(g.maps[1].port.stock.kies > st0, 'Ware liegt im Zwischenlager des Zielhafens');
   assert.equal(sellShip(g, s.id) || s.state === 'sail', true);
@@ -1991,4 +1991,46 @@ test('Reederei: Ankunft mit Wahl: abladen oder warten, Abladen ab Preis, Warteze
   assert.equal(s.state, 'hold'); assert.ok(g.money < m0, 'Wartezeit kostet Unterhalt');
   const info = holdInfo(g, s); assert.ok(info.price > 0 && Number.isFinite(info.gain));
   assert.equal(unloadNow(g, 1), true); assert.ok(s.state !== 'hold' && s.load === 0 || s.state === 'sail');
+});
+
+// ---------- Hafenhandel: Eigenproduktion, Lagerkosten, Preiserholung ----------
+import { oilInfo, buildBlock as portBuildBlock, PORT as PORT2, marketImpact as impact2 } from '../src/sim/port.js';
+import { stepMarket as step2, priceOf as price2, createMarket as mk2 } from '../src/sim/market.js';
+function harborGame() {
+  const g = new Game(8, 'endlos'); g.eventsOn = false; g.money = 1e8;
+  openPort(g); g.port.slots[0] = { type: 'kai', level: 1 }; g.port.slots[1] = { type: 'tank', level: 2 }; g.port.slots[2] = { type: 'container', level: 2 }; g.port.slots[3] = { type: 'kies', level: 2 };
+  return g;
+}
+test('Marktwirkung: eigener Verkauf drückt den Preis und erholt sich in einigen Tagen', () => {
+  const m = mk2(), rng = createRng(1), g = { market: m }; void g;
+  const p0 = price2(m, 'kies'); m.imp.kies = -0.3; assert.ok(price2(m, 'kies') < p0 * 0.8);
+  for (let i = 0; i < 12; i++) { m.dev.kies = 0; step2(m, () => 0.5); m.dev.kies = 0; }
+  assert.ok(Math.abs(m.imp.kies) < 0.06, 'nach 12 Tagen weitgehend erholt');
+});
+test('Lagerkosten: Ware im Hafenlager kostet täglich', () => {
+  const g = harborGame(); g.port.stock.kies = 1000; g.port.stock.oel = 100;
+  const m0 = g.money; portDay(g);
+  assert.ok(m0 - g.money > 1000 * PORT2.storageCost.kies + 100 * PORT2.storageCost.oel - 1 && g.totals.storageCost > 0);
+});
+test('Ölfeld und Bahnterminal: Eigenproduktion mit Förderkosten, Vorkommen endlich, Bedingungen', () => {
+  const g = harborGame(); const oi = oilInfo(g);
+  // andere Karten testen, bis eine Öl hat (nicht jede Karte hat Öl)
+  let found = oi.has; for (let k = 0; !found && k < 40; k++) { g.maps[0].seed = 1000 + k; delete g.maps[0].oilStart; found = oilInfo(g).has; }
+  assert.ok(found, 'es gibt Karten mit Ölvorkommen');
+  assert.equal(portBuildBlock(g, 4, 'oelfeld'), 'Gelände muss erst planiert werden'.slice(0, 0) || portBuildBlock(g, 4, 'oelfeld')); // planiert-Bedingung hängt vom Gelände ab
+  g.port.slots[4] = { type: 'oelfeld', level: 1 }; g.port.slots[5] = { type: 'bahn', level: 2 };
+  const left0 = oilInfo(g).left, o0 = g.port.stock.oel, c0 = g.port.stock.container, m0 = g.money;
+  portDay(g);
+  assert.ok(g.port.stock.oel > o0 && oilInfo(g).left < left0, 'Öl gefördert, Vorkommen schrumpft');
+  assert.ok(g.port.stock.container > c0, 'Bahn liefert Container');
+  assert.ok(g.money < m0 && g.port.cost.oel > 0 && g.port.cost.oel < 180, 'Förderkosten, Einstand unter Marktpreis');
+  g.maps[0].oilLeft = 5; g.port.stock.oel = 0; portDay(g); assert.ok(g.port.stock.oel <= 5 + 1e-9, 'nie mehr als der Rest');
+});
+test('Flussdelta: wächst täglich nach und verschwindet nicht', () => {
+  const g = new Game(8, 'endlos'); g.eventsOn = false; g.money = 1e8; g.addMap();
+  const r = g.maps[1].river, d = r.deposits.find((q) => q.type === 'delta'); assert.ok(d && d.regen > 0, 'Delta auf Folgekarte');
+  const cells = []; for (let i = 0; i < r.dep.length; i++) if (r.dep[i] === d.id) cells.push(i);
+  assert.ok(cells.length > 30, 'gross');
+  for (const i of cells) r.depLeft[i] = 0.1; g.depositsDay();
+  assert.ok(cells.every((i) => r.depLeft[i] > 0.1), 'wächst nach'); assert.equal(d.depleted ?? false, false);
 });

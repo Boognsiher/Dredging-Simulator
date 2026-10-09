@@ -119,9 +119,9 @@ export class River {
     (cfg.deposits ?? []).forEach((typeId, k) => {
       const T = DEPOSITS.find((d) => d.id === typeId) ?? DEPOSITS[0];
       const x = k === 0 ? rng.range(7, 12) : rng.range(8 + k * 7, 14 + k * 7), y = yc(x) + rng.range(-0.35, 0.35) * hw(x);
-      const rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2);
+      const rx = rng.range(3, 4.2) * (T.big ? 1.6 : 1), ry = rng.range(2.2, 3.2) * (T.big ? 1.4 : 1);
       each(Math.min(r.cols - 4, x), y, rx, ry, (i) => { if (water[i] && r.zone[i] && r.top[i] - r.rock[i] > 0.6) { r.dep[i] = k + 1; r.kind[i] = T.kind; r.depLeft[i] = Math.min(r.top[i] - r.rock[i], rng.range(0.9, 1.5)); } });
-      r.deposits.push({ id: k + 1, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: Math.min(r.cols - 4, x), cy: y, rx, ry, owned: k === 0, known: k === 0, cost: T.cost });
+      r.deposits.push({ id: k + 1, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: Math.min(r.cols - 4, x), cy: y, rx, ry, owned: k === 0, known: k === 0, cost: T.cost, regen: T.regen ?? 0 });
     });
     for (let i = 0; i < cfg.hardBlobs; i++) {
       const x = rng.range(2, r.cols - 2);
@@ -240,7 +240,7 @@ export class River {
   spawnDeposit(rng, T) {
     if (this.deposits.length >= 250) return null;
     for (let tries = 0; tries < 14; tries++) {
-      const x = Math.floor(rng.range(6, this.cols - 6)), y = this.centerY(x) + rng.range(-0.3, 0.3) * this.halfW(x), rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2), cells = [];
+      const x = Math.floor(rng.range(6, this.cols - 6)), y = this.centerY(x) + rng.range(-0.3, 0.3) * this.halfW(x), rx = rng.range(3, 4.2) * (T.big ? 1.6 : 1), ry = rng.range(2.2, 3.2) * (T.big ? 1.4 : 1), cells = [];
       for (let yy = Math.max(0, Math.floor(y - ry)); yy <= Math.min(this.rows - 1, Math.ceil(y + ry)); yy++) for (let xx = Math.max(0, Math.floor(x - rx)); xx <= Math.min(this.cols - 1, Math.ceil(x + rx)); xx++) {
         const i = yy * this.cols + xx;
         if (((xx - x) / rx) ** 2 + ((yy - y) / ry) ** 2 <= 1 && this.zone[i] && !this.bay[i] && !this.dep[i] && this.kind[i] !== 3 && this.top[i] - this.rock[i] > 0.6) cells.push(i);
@@ -248,7 +248,7 @@ export class River {
       if (cells.length < 8) continue;
       const id = this.deposits.length + 1;
       for (const i of cells) { this.dep[i] = id; this.kind[i] = T.kind; this.depLeft[i] = Math.min(this.top[i] - this.rock[i], rng.range(0.9, 1.5)); }
-      const d = { id, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: x, cy: y, rx, ry, owned: false, known: true, cost: T.cost };
+      const d = { id, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: x, cy: y, rx, ry, owned: false, known: true, cost: T.cost, regen: T.regen ?? 0 };
       this.deposits.push(d); return d;
     }
     return null;
@@ -362,7 +362,7 @@ export class River {
       if (this.dep[i] && fromSed > 0 && armor <= 1e-6) { // Vorkommen: nur die obersten Meter bringen Aufschlag, danach ausgebeutet
         const v = Math.min(fromSed + snap, this.depLeft[i]);
         res.dep[this.dep[i]] = (res.dep[this.dep[i]] ?? 0) + v; this.depLeft[i] -= v;
-        if (this.depLeft[i] < 0.02 || this.top[i] - this.rock[i] < 0.05) this.dep[i] = 0;
+        if ((this.depLeft[i] < 0.02 && !this.deposits[this.dep[i] - 1]?.regen) || this.top[i] - this.rock[i] < 0.05) this.dep[i] = 0; // nachwachsende Vorkommen (Delta) behalten ihre Zellen
       }
       take += snap;
       res.removed += take;

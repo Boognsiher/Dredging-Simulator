@@ -1,7 +1,8 @@
-import { CONFIG, shipById } from '../config.js';
+import { CONFIG, CARGOS, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
 import { hallCapacity, roadFactor } from './land.js';
 import { priceOf, ratioOf } from './market.js';
+import { createRng } from './rng.js';
 import { rankOf, NEED, rankName } from './rank.js';
 import { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } from './harbor.js';
 
@@ -9,6 +10,8 @@ import { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } from '
 // Der Hafen handelt mit Waren: Schiffe der passenden Fracht laden bei hohen Preisen aus deinem Lager (du verkaufst) und entladen bei tiefen
 // Preisen in dein Lager (du kaufst). Zusätzlich kannst du von Hand kaufen/verkaufen oder den Handel automatisieren (Kauf-/Verkaufsschwelle).
 export const PORT = {
+  storageCost: { kies: 0.08, oel: 0.4, container: 0.6 }, // Einlagerkosten in CHF je Tonne und Tag (Lager voll = teuer; Ware zur rechten Zeit verkaufen)
+  ownCost: { oel: 0.35, container: 0.6 }, // Förder- bzw. Bahnkosten als Anteil des Basispreises (Eigenproduktion)
   openCost: 30000, slots: 6, spread: 0.05, reserve: 5000, shipShare: 0.15,
   // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
   waitMax: 90, // s: so lange wartet ein Schiff im Warteraum, dann gibt es auf
@@ -24,6 +27,8 @@ export const PORT = {
     container: { name: 'Containerterminal', icon: '📦', commodity: 'container', cost: 32000, up: [45000, 90000], cap: [300, 800, 1800], text: 'Umschlag und Lager für Container (Stückgut). Hoher Wert pro Tonne, braucht tiefe Hafenbecken für die grossen Containerschiffe.' },
     werk: { name: 'Aufbereitungshalle', icon: '🏭', cost: 24000, up: [45000, 90000], max: 1, text: 'Erweitert die Anlage an Land: Jede Stufe schaltet zwei weitere Ausbaustufen der Aufbereitungsanlage frei (über Stufe 6 hinaus).' },
     cbruecke: { name: 'Containerbrücke', icon: '🏗', cost: 38000, max: 1, up: [65000], text: 'Spezialkran für Container: Containerschiffe legen nur mit Brücke an, Container werden 3× (Stufe 2: 5×) schneller umgeschlagen, im Minispiel 60 t pro Treffer.' },
+    oelfeld: { name: 'Ölfeld (Förderpumpen)', icon: '🛢', cost: 60000, max: 1, up: [90000, 140000], rate: [8, 16, 28], text: 'Fördert Mineralöl aus dem Ölvorkommen dieser Karte ins Tanklager (Förderkosten 35 % des Basispreises je Tonne). Das Vorkommen ist endlich; es gibt nicht auf jeder Karte eines.' },
+    bahn: { name: 'Container-Bahnterminal', icon: '🚆', cost: 120000, max: 1, up: [180000], rate: [20, 45], text: 'Bahnanschluss: bringt täglich Container ins Containerlager (Einstand 60 % des Basispreises je Tonne). Braucht ein Containerterminal; du verkaufst über den Hafen.' },
     sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
   },
   commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' }, container: { name: 'Container', lot: 40, icon: '📦' } },
@@ -169,6 +174,13 @@ export function autoLevel(g, slot) {
   return true;
 }
 
+// Ölvorkommen der aktuellen Karte (Endlos): nicht jede Karte hat eines, die Menge ist endlich und aus dem Kartensamen festgelegt
+export function oilInfo(g) {
+  const m = g.maps?.[g.mapIdx];
+  if (!m || !g.endless) return { has: false, left: 0, start: 0 };
+  if (m.oilStart === undefined) { const r = createRng(((m.seed ?? 1) ^ 0x51ed270b) >>> 0); m.oilStart = r() < 0.55 ? Math.round(r.range(2500, 6000)) : 0; m.oilLeft = m.oilStart; }
+  return { has: m.oilStart > 0, left: m.oilLeft ?? 0, start: m.oilStart };
+}
 export function buildBlock(g, slot, type) {
   const p = g.port, B = PORT.buildings[type];
   if (!p.open) return 'Hafen noch nicht eröffnet';
@@ -176,6 +188,8 @@ export function buildBlock(g, slot, type) {
   if (p.slots[slot]) return 'Platz ist belegt';
   if (!siteReady(g, slot)) return 'Gelände muss erst planiert werden';
   if (type !== 'kai' && !hasKai(g)) return 'Zuerst einen Kai bauen';
+  if (type === 'oelfeld') { if (!g.endless) return 'Ölfelder gibt es nur im Endlos-Modus'; if (!oilInfo(g).has) return 'Kein Ölvorkommen auf dieser Karte'; if (!slotsOf(p, 'tank').length) return 'Zuerst ein Tanklager bauen'; }
+  if (type === 'bahn' && !slotsOf(p, 'container').length) return 'Zuerst ein Containerterminal bauen';
   if (B.max && slotsOf(p, type).length >= B.max) return 'Gibt es nur einmal';
   if (g.money < B.cost) return `Braucht ${B.cost.toLocaleString('de-CH')} CHF`;
   return g.status === 'playing' ? null : 'Spiel beendet';
@@ -212,10 +226,10 @@ export function demolish(g, slot) { // Abriss: Lagerinhalt, der nicht mehr reinp
 
 // Von Hand kaufen/verkaufen (Tonnen)
 // Marktwirkung: grosse Käufe treiben den Preis der Karte hoch, grosse Verkäufe drücken ihn (je 1000 t); die Abweichung klingt täglich ab
-export const IMPACT = { kies: 0.12, oel: 0.05, container: 0.04 };
+export const IMPACT = { kies: 0.18, oel: 0.075, container: 0.06 };
 export function marketImpact(g, id, tons, dir) {
   const K = CONFIG.market, m = g.market; if (!m?.dev || !(id in IMPACT)) return;
-  m.dev[id] = Math.min(K.maxRatio - 1, Math.max(K.minRatio - 1, (m.dev[id] ?? 0) + dir * (tons / 1000) * IMPACT[id]));
+  m.imp ??= {}; m.imp[id] = Math.min(0.6, Math.max(-0.6, (m.imp[id] ?? 0) + dir * (tons / 1000) * IMPACT[id])); // wirkt nur kurz: erholt sich täglich um impactRecover
 }
 export function buy(g, id, tons) {
   const p = g.port; if (!hasKai(g) || !PORT.commodities[id]) return 0;
@@ -334,6 +348,21 @@ export function updatePort(g, dt) {
 // Tagesende: automatischer Handel nach den eingestellten Schwellen
 export function portDay(g) {
   const p = g.port; if (!hasKai(g)) return;
+  // Eigenproduktion: Ölfeld (Förderpumpen) und Bahnterminal liefern täglich Ware ins Lager; Kosten je Tonne werden sofort bezahlt und gehen in den Einstand ein
+  const prod = (id, amt, unitCost) => {
+    let q = Math.min(amt, capacity(g, id) - p.stock[id], Math.floor(Math.max(0, g.money - PORT.reserve) / Math.max(1, unitCost)));
+    if (!(q > 0)) return 0;
+    const c = q * unitCost; p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q; g.money -= c; p.spent += c; g.today.costs += c;
+    return q;
+  };
+  const oil = slotsOf(p, 'oelfeld')[0], oi = oilInfo(g);
+  if (oil && oi.left > 0) { const q = prod('oel', Math.min(PORT.buildings.oelfeld.rate[oil.level - 1], oi.left), PORT.ownCost.oel * cargoBase('oel')); g.maps[g.mapIdx].oilLeft -= q; g.totals.oilProduced = (g.totals.oilProduced ?? 0) + q; }
+  const rail = slotsOf(p, 'bahn')[0];
+  if (rail) { const q = prod('container', PORT.buildings.bahn.rate[rail.level - 1], PORT.ownCost.container * cargoBase('container')); g.totals.railDelivered = (g.totals.railDelivered ?? 0) + q; }
+  for (const id of Object.keys(PORT.commodities)) { // Einlagerkosten
+    const c = (p.stock[id] ?? 0) * (PORT.storageCost[id] ?? 0); if (c <= 0) continue;
+    g.money -= c; p.spent += c; g.today.costs += c; g.totals.storageCost = (g.totals.storageCost ?? 0) + c;
+  }
   for (const id of Object.keys(PORT.commodities)) {
     const a = p.auto[id], cap = capacity(g, id); if (!a.on || cap <= 0) continue;
     const r = ratioOf(g.market, id);
@@ -341,3 +370,4 @@ export function portDay(g) {
     else if (r >= a.sellAbove) sell(g, id, p.stock[id] * 0.5);
   }
 }
+const cargoBase = (id) => CARGOS.find((c) => c.id === id)?.base ?? 1;

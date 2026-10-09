@@ -241,3 +241,10 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 **Freie Kamera:** Arbeitet dein Ponton für die Flotte, lässt sich die Karte verschieben (Wischen, Stick oder Pfeiltasten). Nimmst du ihn aus der Flotte, folgt die Karte wieder dem Ponton.
 
 **Reederei: Ankunft mit Wahl:** Pro Schiff stellst du ein, was bei der Ankunft im Zielhafen passiert: «warten, ich entscheide» (neue Schiffe), «abladen ab Preis» (automatisch, sobald der Verkaufspreis dort den Mindestpreis erreicht) oder «sofort abladen» (wie früher, auch für ältere Spielstände). Ein wartendes Schiff bleibt mit der Ware an Bord im Zielhafen und kostet Unterhalt (30 % im Leerlauf). Die Karte zeigt Preis jetzt, Einkaufspreis, Gewinn bei Verkauf, den Durchschnitt der letzten Tage und den Trend; «Jetzt abladen» liefert zum aktuellen Preis. Danach fährt das Schiff wie gewohnt weiter (Rückfracht, falls aktiv).
+
+### Hafenhandel: Eigenproduktion, Preiserholung, Einlagerkosten
+- Eigene Verkäufe drücken den Preis stärker, er erholt sich aber spürbar (ca. 14 % pro Tag).
+- Lagerbestand kostet täglich Einlagerkosten (Kies am wenigsten, Container am meisten).
+- Regional günstige/teure Fracht wird im Hafen markiert.
+- Eigene Quellen: Ölfeld (Ölvorkommen der Karte), Kies-Delta (regeneriert schnell), Bahnterminal für Container.
+- Reederei: Schiffe warten am Ziel ohne Limit, bis du ablädst oder der Wunschpreis erreicht ist.

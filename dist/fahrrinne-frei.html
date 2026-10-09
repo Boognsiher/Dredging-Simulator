@@ -708,9 +708,9 @@ const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING, un
 const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit: portLoadHit } = __m(6);
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(7);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
-const { Game } = __m(10);
+const { Game } = __m(11);
 const { startIcons } = __m(20);
-const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(9);
+const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(10);
 const { acceptContract } = __m(17);
 const { waitingByClass, shipPos } = __m(16);
 const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
@@ -718,7 +718,7 @@ const { bayCapacity, maxZones, zoneClasses } = __m(16);
 const { materialPrice } = __m(19);
 const { TowSim, groundedNear } = __m(21);
 const { makeHarborView, HARBOR, waitPos } = __m(4);
-const { toolName } = __m(12);
+const { toolName } = __m(13);
 const { priceOf, trend } = __m(8);
 const { needDepth, minNeedDepth } = __m(3);
 const { Advisor } = __m(22);
@@ -2210,7 +2210,7 @@ const { CONFIG, CARGOS, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
 const { ensureHarbor, harborAccepts } = __m(4);
 const { PORT, hasKai, capacity, bayDepth, kaiLevel, bridgeLevel, buy: portBuy, buyPrice, sellPrice, marketImpact } = __m(6);
-const { rankOf, NEED, rankName } = __m(9);
+const { rankOf, NEED, rankName } = __m(10);
 
 
 
@@ -2491,7 +2491,7 @@ const CONFIG = {
     shoreCell: 350, shoreParts: 3,
     baseMax: 1, width: 3, ramp: 2, cost: 3000 }, // ramp: Spalten je Seite für Ein- und Ausfahrt (dort wechselt das Schiff seitlich auf seine Spur; auch sie müssen tief genug sein)
   // Markt: Frachtpreise schwanken (Mean-Reversion + Ereignisse); hohe Preise locken mehr Schiffe dieser Fracht an
-  market: { sigma: 0.07, revert: 0.1, minRatio: 0.45, maxRatio: 2.2, history: 24 },
+  market: { sigma: 0.07, revert: 0.1, impactRecover: 0.14, minRatio: 0.45, maxRatio: 2.2, history: 24 },
   // Frachtaufträge der Reedereien: X Tonnen einer Fracht bis zu einem Termin durchbringen = Prämie
   contracts: {
     firstAtDay: 7, everyDays: [9, 16], offerDays: 8, dueDays: 28, maxOpen: 3,
@@ -2608,6 +2608,7 @@ const DEPOSITS = [
   { id: 'kiesbank', name: 'Kiesbank (Premium-Kies)', kind: 2, mult: 3.0, cost: 2500, color: '#e6cf86' },
   { id: 'quarz', name: 'Quarzsand (Glasindustrie)', kind: 1, mult: 4.5, cost: 6000, color: '#7fd4ff' },
   { id: 'seife', name: 'Erzseife (Schwermineralsand)', kind: 1, mult: 9, cost: 12000, color: '#ff9a2e' },
+  { id: 'delta', name: 'Flussdelta (Kies, wächst schnell nach)', kind: 2, mult: 1.6, cost: 5000, color: '#cfe6a0', big: true, regen: 0.12 }, // grosses Vorkommen, das täglich nachwächst (nie leer)
 ];
 const depositType = (id) => DEPOSITS.find((d) => d.id === id);
 
@@ -3135,9 +3136,9 @@ class River {
     (cfg.deposits ?? []).forEach((typeId, k) => {
       const T = DEPOSITS.find((d) => d.id === typeId) ?? DEPOSITS[0];
       const x = k === 0 ? rng.range(7, 12) : rng.range(8 + k * 7, 14 + k * 7), y = yc(x) + rng.range(-0.35, 0.35) * hw(x);
-      const rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2);
+      const rx = rng.range(3, 4.2) * (T.big ? 1.6 : 1), ry = rng.range(2.2, 3.2) * (T.big ? 1.4 : 1);
       each(Math.min(r.cols - 4, x), y, rx, ry, (i) => { if (water[i] && r.zone[i] && r.top[i] - r.rock[i] > 0.6) { r.dep[i] = k + 1; r.kind[i] = T.kind; r.depLeft[i] = Math.min(r.top[i] - r.rock[i], rng.range(0.9, 1.5)); } });
-      r.deposits.push({ id: k + 1, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: Math.min(r.cols - 4, x), cy: y, rx, ry, owned: k === 0, known: k === 0, cost: T.cost });
+      r.deposits.push({ id: k + 1, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: Math.min(r.cols - 4, x), cy: y, rx, ry, owned: k === 0, known: k === 0, cost: T.cost, regen: T.regen ?? 0 });
     });
     for (let i = 0; i < cfg.hardBlobs; i++) {
       const x = rng.range(2, r.cols - 2);
@@ -3256,7 +3257,7 @@ class River {
   spawnDeposit(rng, T) {
     if (this.deposits.length >= 250) return null;
     for (let tries = 0; tries < 14; tries++) {
-      const x = Math.floor(rng.range(6, this.cols - 6)), y = this.centerY(x) + rng.range(-0.3, 0.3) * this.halfW(x), rx = rng.range(3, 4.2), ry = rng.range(2.2, 3.2), cells = [];
+      const x = Math.floor(rng.range(6, this.cols - 6)), y = this.centerY(x) + rng.range(-0.3, 0.3) * this.halfW(x), rx = rng.range(3, 4.2) * (T.big ? 1.6 : 1), ry = rng.range(2.2, 3.2) * (T.big ? 1.4 : 1), cells = [];
       for (let yy = Math.max(0, Math.floor(y - ry)); yy <= Math.min(this.rows - 1, Math.ceil(y + ry)); yy++) for (let xx = Math.max(0, Math.floor(x - rx)); xx <= Math.min(this.cols - 1, Math.ceil(x + rx)); xx++) {
         const i = yy * this.cols + xx;
         if (((xx - x) / rx) ** 2 + ((yy - y) / ry) ** 2 <= 1 && this.zone[i] && !this.bay[i] && !this.dep[i] && this.kind[i] !== 3 && this.top[i] - this.rock[i] > 0.6) cells.push(i);
@@ -3264,7 +3265,7 @@ class River {
       if (cells.length < 8) continue;
       const id = this.deposits.length + 1;
       for (const i of cells) { this.dep[i] = id; this.kind[i] = T.kind; this.depLeft[i] = Math.min(this.top[i] - this.rock[i], rng.range(0.9, 1.5)); }
-      const d = { id, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: x, cy: y, rx, ry, owned: false, known: true, cost: T.cost };
+      const d = { id, type: T.id, name: T.name, kind: T.kind, mult: T.mult, cx: x, cy: y, rx, ry, owned: false, known: true, cost: T.cost, regen: T.regen ?? 0 };
       this.deposits.push(d); return d;
     }
     return null;
@@ -3378,7 +3379,7 @@ class River {
       if (this.dep[i] && fromSed > 0 && armor <= 1e-6) { // Vorkommen: nur die obersten Meter bringen Aufschlag, danach ausgebeutet
         const v = Math.min(fromSed + snap, this.depLeft[i]);
         res.dep[this.dep[i]] = (res.dep[this.dep[i]] ?? 0) + v; this.depLeft[i] -= v;
-        if (this.depLeft[i] < 0.02 || this.top[i] - this.rock[i] < 0.05) this.dep[i] = 0;
+        if ((this.depLeft[i] < 0.02 && !this.deposits[this.dep[i] - 1]?.regen) || this.top[i] - this.rock[i] < 0.05) this.dep[i] = 0; // nachwachsende Vorkommen (Delta) behalten ihre Zellen
       }
       take += snap;
       res.removed += take;
@@ -3459,12 +3460,14 @@ const CONFIG_BASE_FIRMNESS = 0.04;
 return { River: River };
 },
 function(){
-const { CONFIG, shipById } = __m(2);
+const { CONFIG, CARGOS, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
 const { hallCapacity, roadFactor } = __m(7);
 const { priceOf, ratioOf } = __m(8);
-const { rankOf, NEED, rankName } = __m(9);
+const { createRng } = __m(9);
+const { rankOf, NEED, rankName } = __m(10);
 const { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } = __m(4);
+
 
 
 
@@ -3476,6 +3479,8 @@ const { ensureHarbor, harborDepth, harborAccepts, harborTarget, HARBOR } = __m(4
 // Der Hafen handelt mit Waren: Schiffe der passenden Fracht laden bei hohen Preisen aus deinem Lager (du verkaufst) und entladen bei tiefen
 // Preisen in dein Lager (du kaufst). Zusätzlich kannst du von Hand kaufen/verkaufen oder den Handel automatisieren (Kauf-/Verkaufsschwelle).
 const PORT = {
+  storageCost: { kies: 0.08, oel: 0.4, container: 0.6 }, // Einlagerkosten in CHF je Tonne und Tag (Lager voll = teuer; Ware zur rechten Zeit verkaufen)
+  ownCost: { oel: 0.35, container: 0.6 }, // Förder- bzw. Bahnkosten als Anteil des Basispreises (Eigenproduktion)
   openCost: 30000, slots: 6, spread: 0.05, reserve: 5000, shipShare: 0.15,
   // Umschlagaufträge: Die Mannschaft lädt langsam (t/s), du kannst mit Radlader/Kran im Minispiel schneller sein und Zeit gewinnen
   waitMax: 90, // s: so lange wartet ein Schiff im Warteraum, dann gibt es auf
@@ -3491,6 +3496,8 @@ const PORT = {
     container: { name: 'Containerterminal', icon: '📦', commodity: 'container', cost: 32000, up: [45000, 90000], cap: [300, 800, 1800], text: 'Umschlag und Lager für Container (Stückgut). Hoher Wert pro Tonne, braucht tiefe Hafenbecken für die grossen Containerschiffe.' },
     werk: { name: 'Aufbereitungshalle', icon: '🏭', cost: 24000, up: [45000, 90000], max: 1, text: 'Erweitert die Anlage an Land: Jede Stufe schaltet zwei weitere Ausbaustufen der Aufbereitungsanlage frei (über Stufe 6 hinaus).' },
     cbruecke: { name: 'Containerbrücke', icon: '🏗', cost: 38000, max: 1, up: [65000], text: 'Spezialkran für Container: Containerschiffe legen nur mit Brücke an, Container werden 3× (Stufe 2: 5×) schneller umgeschlagen, im Minispiel 60 t pro Treffer.' },
+    oelfeld: { name: 'Ölfeld (Förderpumpen)', icon: '🛢', cost: 60000, max: 1, up: [90000, 140000], rate: [8, 16, 28], text: 'Fördert Mineralöl aus dem Ölvorkommen dieser Karte ins Tanklager (Förderkosten 35 % des Basispreises je Tonne). Das Vorkommen ist endlich; es gibt nicht auf jeder Karte eines.' },
+    bahn: { name: 'Container-Bahnterminal', icon: '🚆', cost: 120000, max: 1, up: [180000], rate: [20, 45], text: 'Bahnanschluss: bringt täglich Container ins Containerlager (Einstand 60 % des Basispreises je Tonne). Braucht ein Containerterminal; du verkaufst über den Hafen.' },
     sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
   },
   commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' }, container: { name: 'Container', lot: 40, icon: '📦' } },
@@ -3636,6 +3643,13 @@ function autoLevel(g, slot) {
   return true;
 }
 
+// Ölvorkommen der aktuellen Karte (Endlos): nicht jede Karte hat eines, die Menge ist endlich und aus dem Kartensamen festgelegt
+function oilInfo(g) {
+  const m = g.maps?.[g.mapIdx];
+  if (!m || !g.endless) return { has: false, left: 0, start: 0 };
+  if (m.oilStart === undefined) { const r = createRng(((m.seed ?? 1) ^ 0x51ed270b) >>> 0); m.oilStart = r() < 0.55 ? Math.round(r.range(2500, 6000)) : 0; m.oilLeft = m.oilStart; }
+  return { has: m.oilStart > 0, left: m.oilLeft ?? 0, start: m.oilStart };
+}
 function buildBlock(g, slot, type) {
   const p = g.port, B = PORT.buildings[type];
   if (!p.open) return 'Hafen noch nicht eröffnet';
@@ -3643,6 +3657,8 @@ function buildBlock(g, slot, type) {
   if (p.slots[slot]) return 'Platz ist belegt';
   if (!siteReady(g, slot)) return 'Gelände muss erst planiert werden';
   if (type !== 'kai' && !hasKai(g)) return 'Zuerst einen Kai bauen';
+  if (type === 'oelfeld') { if (!g.endless) return 'Ölfelder gibt es nur im Endlos-Modus'; if (!oilInfo(g).has) return 'Kein Ölvorkommen auf dieser Karte'; if (!slotsOf(p, 'tank').length) return 'Zuerst ein Tanklager bauen'; }
+  if (type === 'bahn' && !slotsOf(p, 'container').length) return 'Zuerst ein Containerterminal bauen';
   if (B.max && slotsOf(p, type).length >= B.max) return 'Gibt es nur einmal';
   if (g.money < B.cost) return `Braucht ${B.cost.toLocaleString('de-CH')} CHF`;
   return g.status === 'playing' ? null : 'Spiel beendet';
@@ -3679,10 +3695,10 @@ function demolish(g, slot) { // Abriss: Lagerinhalt, der nicht mehr reinpasst, w
 
 // Von Hand kaufen/verkaufen (Tonnen)
 // Marktwirkung: grosse Käufe treiben den Preis der Karte hoch, grosse Verkäufe drücken ihn (je 1000 t); die Abweichung klingt täglich ab
-const IMPACT = { kies: 0.12, oel: 0.05, container: 0.04 };
+const IMPACT = { kies: 0.18, oel: 0.075, container: 0.06 };
 function marketImpact(g, id, tons, dir) {
   const K = CONFIG.market, m = g.market; if (!m?.dev || !(id in IMPACT)) return;
-  m.dev[id] = Math.min(K.maxRatio - 1, Math.max(K.minRatio - 1, (m.dev[id] ?? 0) + dir * (tons / 1000) * IMPACT[id]));
+  m.imp ??= {}; m.imp[id] = Math.min(0.6, Math.max(-0.6, (m.imp[id] ?? 0) + dir * (tons / 1000) * IMPACT[id])); // wirkt nur kurz: erholt sich täglich um impactRecover
 }
 function buy(g, id, tons) {
   const p = g.port; if (!hasKai(g) || !PORT.commodities[id]) return 0;
@@ -3801,6 +3817,21 @@ function updatePort(g, dt) {
 // Tagesende: automatischer Handel nach den eingestellten Schwellen
 function portDay(g) {
   const p = g.port; if (!hasKai(g)) return;
+  // Eigenproduktion: Ölfeld (Förderpumpen) und Bahnterminal liefern täglich Ware ins Lager; Kosten je Tonne werden sofort bezahlt und gehen in den Einstand ein
+  const prod = (id, amt, unitCost) => {
+    let q = Math.min(amt, capacity(g, id) - p.stock[id], Math.floor(Math.max(0, g.money - PORT.reserve) / Math.max(1, unitCost)));
+    if (!(q > 0)) return 0;
+    const c = q * unitCost; p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q; g.money -= c; p.spent += c; g.today.costs += c;
+    return q;
+  };
+  const oil = slotsOf(p, 'oelfeld')[0], oi = oilInfo(g);
+  if (oil && oi.left > 0) { const q = prod('oel', Math.min(PORT.buildings.oelfeld.rate[oil.level - 1], oi.left), PORT.ownCost.oel * cargoBase('oel')); g.maps[g.mapIdx].oilLeft -= q; g.totals.oilProduced = (g.totals.oilProduced ?? 0) + q; }
+  const rail = slotsOf(p, 'bahn')[0];
+  if (rail) { const q = prod('container', PORT.buildings.bahn.rate[rail.level - 1], PORT.ownCost.container * cargoBase('container')); g.totals.railDelivered = (g.totals.railDelivered ?? 0) + q; }
+  for (const id of Object.keys(PORT.commodities)) { // Einlagerkosten
+    const c = (p.stock[id] ?? 0) * (PORT.storageCost[id] ?? 0); if (c <= 0) continue;
+    g.money -= c; p.spent += c; g.today.costs += c; g.totals.storageCost = (g.totals.storageCost ?? 0) + c;
+  }
   for (const id of Object.keys(PORT.commodities)) {
     const a = p.auto[id], cap = capacity(g, id); if (!a.on || cap <= 0) continue;
     const r = ratioOf(g.market, id);
@@ -3808,8 +3839,9 @@ function portDay(g) {
     else if (r >= a.sellAbove) sell(g, id, p.stock[id] * 0.5);
   }
 }
+const cargoBase = (id) => CARGOS.find((c) => c.id === id)?.base ?? 1;
 
-return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, bridgeLevel: bridgeLevel, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, oilInfo: oilInfo, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, bridgeLevel: bridgeLevel, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 
@@ -3964,14 +3996,14 @@ const gauss = (rng) => Math.sqrt(-2 * Math.log(Math.max(1e-9, rng()))) * Math.co
 
 // bias: dauerhafter Preisaufschlag/-abschlag je Fracht (regionale Knappheit, Endlos-Karten); priceOf = Basis × (1 + Abweichung + Bias)
 function createMarket(bias = {}) {
-  const m = { dev: {}, history: {}, bias: { ...bias }, glut: 0 }; // glut: Preisabschlag, wenn Schiffe nicht fahren können (Niedrigwasser, Sperrung)
-  for (const c of CARGOS) { m.dev[c.id] = 0; m.history[c.id] = [c.base]; }
+  const m = { dev: {}, imp: {}, history: {}, bias: { ...bias }, glut: 0 }; // glut: Preisabschlag, wenn Schiffe nicht fahren können (Niedrigwasser, Sperrung)
+  for (const c of CARGOS) { m.dev[c.id] = 0; m.imp[c.id] = 0; m.history[c.id] = [c.base]; }
   return m;
 }
 
 const priceOf = (m, id) => {
   const c = CARGOS.find((x) => x.id === id), K = CONFIG.market;
-  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0) + (m.bias?.[id] ?? 0) - (m.glut ?? 0)));
+  return c.base * Math.min(K.maxRatio, Math.max(K.minRatio, 1 + (m.dev[id] ?? 0) + (m.imp?.[id] ?? 0) + (m.bias?.[id] ?? 0) - (m.glut ?? 0)));
 };
 const ratioOf = (m, id) => priceOf(m, id) / CARGOS.find((x) => x.id === id).base;
 
@@ -3981,6 +4013,7 @@ function stepMarket(m, rng) {
   for (const c of CARGOS) {
     m.dev[c.id] += (0 - m.dev[c.id]) * K.revert + K.sigma * gauss(rng);
     m.dev[c.id] = Math.min(K.maxRatio - 1, Math.max(K.minRatio - 1, m.dev[c.id]));
+    if (m.imp) m.imp[c.id] = (m.imp[c.id] ?? 0) * (1 - K.impactRecover); // eigene Käufe und Verkäufe drücken den Preis vor Ort, er erholt sich in einigen Tagen
     const h = m.history[c.id];
     h.push(priceOf(m, c.id));
     if (h.length > K.history) h.shift();
@@ -4001,6 +4034,28 @@ function trend(m, id) {
 }
 
 return { createMarket: createMarket, priceOf: priceOf, ratioOf: ratioOf, stepMarket: stepMarket, shockMarket: shockMarket, trend: trend };
+},
+function(){
+
+// Kleiner seedbarer Zufallsgenerator (mulberry32) -> reproduzierbare Tests & Seeds
+function createRng(seed = 1) {
+  let a = seed >>> 0;
+  const next = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  next.range = (min, max) => min + next() * (max - min);
+  next.int = (min, max) => Math.floor(next.range(min, max + 1));
+  next.chance = (p) => next() < p;
+  next.getState = () => a; // für Spielstände: Zufallsfolge an derselben Stelle weiterführen
+  next.setState = (v) => { a = v >>> 0; };
+  return next;
+}
+
+return { createRng: createRng };
 },
 function(){
 
@@ -4038,14 +4093,14 @@ return { RANK_ORDER: RANK_ORDER, UNLOCK: UNLOCK, RANK_INFO: RANK_INFO, NEED: NEE
 },
 function(){
 const { CONFIG, UPGRADES, SHIPS, KIND, ENDLESS, DEPOSITS, levelById } = __m(2);
-const { toolAvailable } = __m(11);
+const { toolAvailable } = __m(12);
 const { River } = __m(5);
-const { rankOf, PLANT_IDS, plantUnlocked, upgradeRank, computeRank, rankName, RANK_INFO, NEED } = __m(9);
+const { rankOf, PLANT_IDS, plantUnlocked, upgradeRank, computeRank, rankName, RANK_INFO, NEED } = __m(10);
 const { carveFairway, analyzeFairway, zonePlan } = __m(3);
-const { DredgeSim } = __m(12);
-const { EVENTS } = __m(13);
-const { computeStats, upgradeCost } = __m(14);
-const { createRng } = __m(15);
+const { DredgeSim } = __m(13);
+const { EVENTS } = __m(14);
+const { computeStats, upgradeCost } = __m(15);
+const { createRng } = __m(9);
 const { createMarket, stepMarket } = __m(8);
 const { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } = __m(6);
 const { createShipping, updateShipping } = __m(1);
@@ -4080,6 +4135,7 @@ function endlessRiver(seed, k) {
   for (let i = 0; i < ridgeN; i++) ridges.push({ x: Math.round(((i + 1) * 44) / (ridgeN + 1) + r.range(-3, 3)), w: +r.range(3, 5).toFixed(1), depth: +Math.max(3.1, 4.3 - 0.22 * k + r.range(-0.2, 0.2)).toFixed(2) });
   const kinds = ['kiesbank', 'quarz', 'seife'], deposits = ['kiesbank'];
   for (let i = 0; i < 2 + (k >= 2 ? 1 : 0); i++) deposits.push(kinds[r.int(0, 2)]);
+  if (k >= 1) deposits.push('delta'); // jede weitere Karte hat ein grosses Kies-Flussdelta (erkunden und Konzession kaufen)
   return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
     bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
 }
@@ -4332,7 +4388,8 @@ class Game {
     const D = CONFIG.deposits;
     for (const m of this.maps) {
       const r = m.river, name = this.maps.length > 1 ? `${m.name}: ` : '';
-      for (const d of r.deposits) if (!d.depleted && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
+      for (const d of r.deposits) if (d.regen && !d.depleted) for (let i = 0; i < r.dep.length; i++) if (r.dep[i] === d.id) r.depLeft[i] = Math.min(1.5, r.depLeft[i] + d.regen, Math.max(0, r.top[i] - r.rock[i])); // Flussdelta wächst täglich nach
+      for (const d of r.deposits) if (!d.depleted && !d.regen && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
       const active = r.deposits.filter((d) => !d.depleted).length;
       if (active < D.maxActive && this.rng() < D.spawnChance) {
         const T = DEPOSITS[Math.floor(this.rng() * DEPOSITS.length)], d = r.spawnDeposit(this.rng, T);
@@ -4859,7 +4916,7 @@ return { SLICE: SLICE, TOOLS: TOOLS, toolAvailable: toolAvailable, toolName: too
 },
 function(){
 const { CONFIG, KIND } = __m(2);
-const { SliceSim, TOOLS, toolAvailable, toolName } = __m(11);
+const { SliceSim, TOOLS, toolAvailable, toolName } = __m(12);
 
 
 
@@ -5094,28 +5151,6 @@ function upgradeCost(id, level) {
 }
 
 return { computeStats: computeStats, upgradeCost: upgradeCost };
-},
-function(){
-
-// Kleiner seedbarer Zufallsgenerator (mulberry32) -> reproduzierbare Tests & Seeds
-function createRng(seed = 1) {
-  let a = seed >>> 0;
-  const next = () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  next.range = (min, max) => min + next() * (max - min);
-  next.int = (min, max) => Math.floor(next.range(min, max + 1));
-  next.chance = (p) => next() < p;
-  next.getState = () => a; // für Spielstände: Zufallsfolge an derselben Stelle weiterführen
-  next.setState = (v) => { a = v >>> 0; };
-  return next;
-}
-
-return { createRng: createRng };
 },
 function(){
 const { reserveBerth, dockShip } = __m(6);
@@ -5493,9 +5528,9 @@ function updateContracts(g) {
 return { makeContract: makeContract, acceptContract: acceptContract, creditContracts: creditContracts, updateContracts: updateContracts, shipById: shipById };
 },
 function(){
-const { fleetMax } = __m(9);
+const { fleetMax } = __m(10);
 const { CONFIG, SHIPS, KIND, shipById } = __m(2);
-const { toolAvailable } = __m(11);
+const { toolAvailable } = __m(12);
 const { zoneSupports } = __m(16);
 const { HARBOR, harborTarget } = __m(4);
 const { kaiLevel } = __m(6);
@@ -6359,7 +6394,7 @@ return { TowSim: TowSim, groundedNear: groundedNear };
 },
 function(){
 const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(2);
-const { upgradeCost } = __m(14);
+const { upgradeCost } = __m(15);
 const { waitingByClass, bayCapacity, activeClasses } = __m(16);
 const { ratioOf } = __m(8);
 const { hireBlock, nextHireCost } = __m(18);
@@ -6524,8 +6559,8 @@ class Advisor {
 return { Advisor: Advisor };
 },
 function(){
-const { Game, endlessRiver } = __m(10);
-const { createRng } = __m(15);
+const { Game, endlessRiver } = __m(11);
+const { createRng } = __m(9);
 const { createMarket } = __m(8);
 const { createPort, ensurePort } = __m(6);
 const { ensureHarbor } = __m(4);
@@ -6796,8 +6831,10 @@ const { CONFIG, SHIPS, shipById } = __m(2);
 const { needDepth, minNeedDepth } = __m(3);
 const { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } = __m(7);
 const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel, waitsOf, cycleWaitCargo, cyclePriority } = __m(6);
+const { oilInfo } = __m(6);
 const { priceOf, ratioOf } = __m(8);
 const { HARBOR } = __m(4);
+
 
 
 
@@ -6808,6 +6845,15 @@ const { HARBOR } = __m(4);
 // Hafen-Seite: Vollbild-Overlay mit Bauplätzen, Lagern, Handel und Automatik. Die Simulation läuft im Hintergrund weiter.
 const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
 const t = (n) => `${Math.round(n).toLocaleString('de-CH')} t`;
+
+function regionTag(g, id) {
+  const b = g.market.bias?.[id] ?? 0;
+  return Math.abs(b) < 0.06 ? '' : b < 0 ? ` <small class="tr-down">· hier günstig (${Math.round(b * 100)} %)</small>` : ` <small class="tr-up">· hier teuer (+${Math.round(b * 100)} %)</small>`;
+}
+function sourcesNote(g) {
+  const o = oilInfo(g), delta = g.river.deposits.some((d) => d.regen > 0);
+  return `Eigene Quellen auf dieser Karte: ${o.has ? `Ölvorkommen (${t(o.left)} von ${t(o.start)} übrig, Ölfeld bauen)` : 'kein Öl'} · ${delta ? 'Kies-Delta mit schneller Regeneration' : 'kein Kies-Delta'} · Container per Bahnterminal. Eigene Ware spart den Einkauf, Einlagerung kostet täglich.`;
+}
 
 function setupPort(root, getGame, onChange) {
   let sig = '', pick = null, siteOpen = null, phase = 0, zone = 0.5, flashMsg = '', flashT = 0; // pick = Bauplatz, für den das Baumenü offen ist
@@ -6894,8 +6940,8 @@ function setupPort(root, getGame, onChange) {
           const cap = capacity(g, id), st = p.stock[id], r = ratioOf(g.market, id), a = p.auto[id];
           if (cap <= 0) { h += `<div class="port-card"><b>${C.icon} ${C.name}</b><small> braucht: ${PORT.buildings[PORT.storage[id]].name}</small></div>`; continue; }
           const gain = p.cost[id] > 0 ? st * (sellPrice(g, id) - p.cost[id]) : 0;
-          h += `<div class="port-card"><b>${C.icon} ${C.name}</b> <span class="${r > 1.1 ? 'tr-up' : r < 0.9 ? 'tr-down' : ''}">${Math.round(priceOf(g.market, id))} CHF/t (${Math.round(r * 100)} %)</span>
-            <div class="bar"><i style="width:${(st / cap) * 100}%"></i></div><small>Lager ${t(st)} von ${t(cap)}${p.cost[id] > 0 ? ` · Einstand ${Math.round(p.cost[id])} CHF/t · ${gain >= 0 ? 'Gewinn' : 'Verlust'} bei Verkauf ${chf(Math.abs(gain))}` : ''}</small>
+          h += `<div class="port-card"><b>${C.icon} ${C.name}</b> <span class="${r > 1.1 ? 'tr-up' : r < 0.9 ? 'tr-down' : ''}">${Math.round(priceOf(g.market, id))} CHF/t (${Math.round(r * 100)} %)</span>${regionTag(g, id)}
+            <div class="bar"><i style="width:${(st / cap) * 100}%"></i></div><small>Lager ${t(st)} von ${t(cap)}${st > 0 && PORT.storageCost[id] ? ` · Einlagerung ${chf(st * PORT.storageCost[id])}/Tag` : ''}${p.cost[id] > 0 ? ` · Einstand ${Math.round(p.cost[id])} CHF/t · ${gain >= 0 ? 'Gewinn' : 'Verlust'} bei Verkauf ${chf(Math.abs(gain))}` : ''}</small>
             <div class="row"><button data-act="buy" data-id="${id}" data-n="${C.lot}">Kaufen ${C.lot} t · ${chf(C.lot * buyPrice(g, id))}</button><button data-act="sell" data-id="${id}" data-n="${C.lot}" ${st <= 0 ? 'disabled' : ''}>Verkaufen ${C.lot} t · ${chf(C.lot * sellPrice(g, id))}</button><button data-act="sell" data-id="${id}" data-n="999999" ${st <= 0 ? 'disabled' : ''}>Alles verkaufen</button></div>
             <div class="row auto"><label><input type="checkbox" data-act="auto" data-id="${id}" ${a.on ? 'checked' : ''}> 🤖 Automatisch</label>
               <label>kaufen unter <input type="range" min="50" max="100" step="5" value="${Math.round(a.buyBelow * 100)}" data-act="lo" data-id="${id}"> <b>${Math.round(a.buyBelow * 100)} %</b></label>
@@ -6905,7 +6951,7 @@ function setupPort(root, getGame, onChange) {
       }
       h += `<div class="port-card"><small>Schiffe mit Kies oder Öl laden bei Preis ≥ 100 % aus deinem Lager (du verkaufst, mit Aufschlag) und entladen bei tieferem Preis (du kaufst günstig); der Kai verdient pro Schiff zusätzlich eine Umschlaggebühr.<br>
         Bisher: ${p.ships} Schiffe umgeschlagen · ${t(p.handled)} · Handelserlös ${chf(p.earned)} · Einkäufe/Bauten ${chf(p.spent)} · Gebühren ${chf(p.fees)}${refundFrac(g) > 0 ? ` · Sanierung spart ${chf(p.refunded ?? 0)}` : ''}</small></div>
-        <div class="port-card"><small>Demnächst: eigene Lagerhallen, Verträge mit Reedereien.</small></div>`;
+        <div class="port-card"><small>${sourcesNote(g)}</small></div>`;
     }
     root.innerHTML = h;
   };
@@ -7117,7 +7163,7 @@ function createAudio() {
 return { createAudio: createAudio };
 },
 function(){
-const { SLICE } = __m(11);
+const { SLICE } = __m(12);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
 const { shipPos, queuePos, bayCapacity } = __m(16);
 const { needDepth, minNeedDepth, trasseY } = __m(3);

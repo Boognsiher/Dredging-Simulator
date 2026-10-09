@@ -2,12 +2,22 @@ import { CONFIG, SHIPS, shipById } from '../config.js';
 import { needDepth, minNeedDepth } from '../sim/fairway.js';
 import { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } from '../sim/land.js';
 import { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel, waitsOf, cycleWaitCargo, cyclePriority } from '../sim/port.js';
+import { oilInfo } from '../sim/port.js';
 import { priceOf, ratioOf } from '../sim/market.js';
 import { HARBOR } from '../sim/harbor.js';
 
 // Hafen-Seite: Vollbild-Overlay mit Bauplätzen, Lagern, Handel und Automatik. Die Simulation läuft im Hintergrund weiter.
 const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
 const t = (n) => `${Math.round(n).toLocaleString('de-CH')} t`;
+
+function regionTag(g, id) {
+  const b = g.market.bias?.[id] ?? 0;
+  return Math.abs(b) < 0.06 ? '' : b < 0 ? ` <small class="tr-down">· hier günstig (${Math.round(b * 100)} %)</small>` : ` <small class="tr-up">· hier teuer (+${Math.round(b * 100)} %)</small>`;
+}
+function sourcesNote(g) {
+  const o = oilInfo(g), delta = g.river.deposits.some((d) => d.regen > 0);
+  return `Eigene Quellen auf dieser Karte: ${o.has ? `Ölvorkommen (${t(o.left)} von ${t(o.start)} übrig, Ölfeld bauen)` : 'kein Öl'} · ${delta ? 'Kies-Delta mit schneller Regeneration' : 'kein Kies-Delta'} · Container per Bahnterminal. Eigene Ware spart den Einkauf, Einlagerung kostet täglich.`;
+}
 
 export function setupPort(root, getGame, onChange) {
   let sig = '', pick = null, siteOpen = null, phase = 0, zone = 0.5, flashMsg = '', flashT = 0; // pick = Bauplatz, für den das Baumenü offen ist
@@ -94,8 +104,8 @@ export function setupPort(root, getGame, onChange) {
           const cap = capacity(g, id), st = p.stock[id], r = ratioOf(g.market, id), a = p.auto[id];
           if (cap <= 0) { h += `<div class="port-card"><b>${C.icon} ${C.name}</b><small> braucht: ${PORT.buildings[PORT.storage[id]].name}</small></div>`; continue; }
           const gain = p.cost[id] > 0 ? st * (sellPrice(g, id) - p.cost[id]) : 0;
-          h += `<div class="port-card"><b>${C.icon} ${C.name}</b> <span class="${r > 1.1 ? 'tr-up' : r < 0.9 ? 'tr-down' : ''}">${Math.round(priceOf(g.market, id))} CHF/t (${Math.round(r * 100)} %)</span>
-            <div class="bar"><i style="width:${(st / cap) * 100}%"></i></div><small>Lager ${t(st)} von ${t(cap)}${p.cost[id] > 0 ? ` · Einstand ${Math.round(p.cost[id])} CHF/t · ${gain >= 0 ? 'Gewinn' : 'Verlust'} bei Verkauf ${chf(Math.abs(gain))}` : ''}</small>
+          h += `<div class="port-card"><b>${C.icon} ${C.name}</b> <span class="${r > 1.1 ? 'tr-up' : r < 0.9 ? 'tr-down' : ''}">${Math.round(priceOf(g.market, id))} CHF/t (${Math.round(r * 100)} %)</span>${regionTag(g, id)}
+            <div class="bar"><i style="width:${(st / cap) * 100}%"></i></div><small>Lager ${t(st)} von ${t(cap)}${st > 0 && PORT.storageCost[id] ? ` · Einlagerung ${chf(st * PORT.storageCost[id])}/Tag` : ''}${p.cost[id] > 0 ? ` · Einstand ${Math.round(p.cost[id])} CHF/t · ${gain >= 0 ? 'Gewinn' : 'Verlust'} bei Verkauf ${chf(Math.abs(gain))}` : ''}</small>
             <div class="row"><button data-act="buy" data-id="${id}" data-n="${C.lot}">Kaufen ${C.lot} t · ${chf(C.lot * buyPrice(g, id))}</button><button data-act="sell" data-id="${id}" data-n="${C.lot}" ${st <= 0 ? 'disabled' : ''}>Verkaufen ${C.lot} t · ${chf(C.lot * sellPrice(g, id))}</button><button data-act="sell" data-id="${id}" data-n="999999" ${st <= 0 ? 'disabled' : ''}>Alles verkaufen</button></div>
             <div class="row auto"><label><input type="checkbox" data-act="auto" data-id="${id}" ${a.on ? 'checked' : ''}> 🤖 Automatisch</label>
               <label>kaufen unter <input type="range" min="50" max="100" step="5" value="${Math.round(a.buyBelow * 100)}" data-act="lo" data-id="${id}"> <b>${Math.round(a.buyBelow * 100)} %</b></label>
@@ -105,7 +115,7 @@ export function setupPort(root, getGame, onChange) {
       }
       h += `<div class="port-card"><small>Schiffe mit Kies oder Öl laden bei Preis ≥ 100 % aus deinem Lager (du verkaufst, mit Aufschlag) und entladen bei tieferem Preis (du kaufst günstig); der Kai verdient pro Schiff zusätzlich eine Umschlaggebühr.<br>
         Bisher: ${p.ships} Schiffe umgeschlagen · ${t(p.handled)} · Handelserlös ${chf(p.earned)} · Einkäufe/Bauten ${chf(p.spent)} · Gebühren ${chf(p.fees)}${refundFrac(g) > 0 ? ` · Sanierung spart ${chf(p.refunded ?? 0)}` : ''}</small></div>
-        <div class="port-card"><small>Demnächst: eigene Lagerhallen, Verträge mit Reedereien.</small></div>`;
+        <div class="port-card"><small>${sourcesNote(g)}</small></div>`;
     }
     root.innerHTML = h;
   };
