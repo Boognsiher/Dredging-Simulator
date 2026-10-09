@@ -3,6 +3,7 @@ import { SLICE } from '../sim/slice.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
 import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth, minNeedDepth, trasseY } from '../sim/fairway.js';
+import { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } from './gfx.js';
 import { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } from '../sim/port.js';
 import { HARBOR, berthPos, waitPos } from '../sim/harbor.js';
 import { areaWork, wallSpans } from '../sim/fleet.js';
@@ -58,20 +59,15 @@ function cellColor(river, i, pal) {
 
 export function drawMap(ctx, game, sim, ui = {}) {
   const r = game.river, pal = game.level.palette, { cols, rows } = r;
-  ctx.fillStyle = rgb(pal.land); ctx.fillRect(0, 0, W, H);
-  for (let y = 0; y < rows; y++) {
-    for (let x = -MARGIN; x < cols + MARGIN; x++) {
-      const cx = Math.min(cols - 1, Math.max(0, x)), i = y * cols + cx;
-      ctx.fillStyle = rgb(cellColor(r, i, pal));
-      ctx.fillRect(OX + x * CELL, y * CELL, CELL + 0.5, CELL + 0.5);
-    }
-  }
+  if (drawTerrain(ctx, game)) drawWaterFx(ctx, ui); // weiches Gelände und Wasser (gfx.js)
+  else { ctx.fillStyle = rgb(pal.land); ctx.fillRect(0, 0, W, H);
+    for (let y = 0; y < rows; y++) for (let x = -MARGIN; x < cols + MARGIN; x++) { const cx = Math.min(cols - 1, Math.max(0, x)), i = y * cols + cx; ctx.fillStyle = rgb(cellColor(r, i, pal)); ctx.fillRect(OX + x * CELL, y * CELL, CELL + 0.5, CELL + 0.5); } }
   // Baggerkorridor: ausserhalb (Ufer und Flachwasser) liegt die Naturschutzzone
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const i = y * cols + x;
-      if (r.isWater(i) && !r.zone[i]) { ctx.fillStyle = 'rgba(70,230,110,.38)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); if ((x + y) % 2 === 0) { ctx.fillStyle = 'rgba(200,255,200,.22)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } }
-      else if (!r.isWater(i) && r.ext[i] === 1) { ctx.fillStyle = 'rgba(235,200,70,.30)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } // Ausbaustreifen am Ufer (Löffelbagger)
+      if (r.isWater(i) && !r.zone[i]) { ctx.fillStyle = 'rgba(70,230,110,.2)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); if ((x + y) % 2 === 0) { ctx.fillStyle = 'rgba(200,255,200,.22)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } }
+      else if (!r.isWater(i) && r.ext[i] === 1) { ctx.fillStyle = 'rgba(235,200,70,.16)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } // Ausbaustreifen am Ufer (Löffelbagger)
     }
   }
   // Materialhinweise: Altlasten orange, Fels grau, harte Schichten schraffiert, Fremdstoffe weiss
@@ -110,7 +106,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   drawAreas(ctx, game, ui);
   drawLandSide(ctx, game, ui);
   drawShips(ctx, game, ui);
-  drawFleet(ctx, game);
+  drawFleet(ctx, game, ui);
   if (sim) drawPontoon(ctx, game, sim, ui);
   // schwebende Beträge
   ctx.font = font(15); ctx.textAlign = 'center';
@@ -120,6 +116,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
     ctx.fillStyle = '#000a'; ctx.fillText(f.text, p.x + 1, p.y + 1); ctx.fillStyle = f.color; ctx.fillText(f.text, p.x, p.y);
   }
   ctx.globalAlpha = 1; ctx.textAlign = 'start';
+  drawAmbient(ctx, game, ui);
   drawMapHud(ctx, game);
   if (sim) turbidityVeil(ctx, sim);
 }
@@ -197,17 +194,8 @@ function drawShips(ctx, game, ui) {
 }
 
 function drawShip(ctx, cls, ship, p, game, ui) {
-  const q = mapPx(p.x, p.y), L = cls.len * CELL, B = cls.beam * CELL * 0.78;
-  ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(p.angle); if (ship.state === 'dock') ctx.scale(0.5, 0.5); // im Hafenbecken kleiner gezeichnet
-  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(1, 3, L / 2 + 2, B / 2 + 1, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = cls.color; ctx.strokeStyle = '#10202c'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(-L / 2, -B / 2); ctx.lineTo(L / 2 - B * 0.6, -B / 2); ctx.lineTo(L / 2, 0); ctx.lineTo(L / 2 - B * 0.6, B / 2); ctx.lineTo(-L / 2, B / 2); ctx.closePath(); ctx.fill(); ctx.stroke();
-  const cargo = cargoById(ship.cargo);
-  ctx.fillStyle = cargo?.color ?? '#999'; // Ladung
-  if (cls.id === 'container') { for (let k = 0; k < 4; k++) for (let m = 0; m < 2; m++) { ctx.fillStyle = ['#e0803a', '#3a7ae0', '#d94a4a', '#e0c33a'][(k + m) % 4]; ctx.fillRect(-L / 2 + 4 + k * (L - B) / 4.4, -B / 2 + 3 + m * (B - 6) / 2, (L - B) / 4.6, (B - 6) / 2 - 1); } }
-  else ctx.fillRect(-L / 2 + 4, -B / 2 + 3, L - B * 0.9 - 6, B - 6);
-  ctx.fillStyle = '#f4f4f0'; ctx.fillRect(L / 2 - B * 0.95, -B * 0.28, B * 0.34, B * 0.56); // Brücke
-  ctx.restore();
+  const q = mapPx(p.x, p.y), L = cls.len * CELL;
+  drawShipSprite(ctx, cls, ship, p, ui, game, cargoById(ship.cargo)?.color);
   if (ship.state === 'grounded') {
     const pulse = 0.5 + 0.5 * Math.sin((ui.t ?? 0) * 5), near = ui.towShip === ship.id;
     ctx.strokeStyle = near ? `rgba(120,255,160,${0.5 + 0.4 * pulse})` : `rgba(255,120,100,${0.35 + 0.4 * pulse})`; ctx.lineWidth = 2.5;
@@ -232,13 +220,7 @@ function drawPontoon(ctx, game, sim, ui) {
     ctx.strokeStyle = sim.slice.suctioning ? '#ffd24d' : '#7fe3ffcc'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(bx - 3, sy); ctx.lineTo(bx + bw + 3, sy); ctx.stroke();
   }
-  // Ponton (Boot mit Kran), quer zum Fluss gedreht
-  ctx.save(); ctx.translate(px, py);
-  ctx.fillStyle = '#e8c33a'; ctx.strokeStyle = '#3b2f08'; ctx.lineWidth = 1.5;
-  ctx.fillRect(-CELL * 1.4, -CELL * 0.9, CELL * 2.8, CELL * 1.8); ctx.strokeRect(-CELL * 1.4, -CELL * 0.9, CELL * 2.8, CELL * 1.8);
-  ctx.fillStyle = '#2b2b2b'; ctx.fillRect(-CELL * 0.5, -CELL * 0.5, CELL, CELL);
-  if (sim.mode === 'slice') { ctx.fillStyle = sim.pumpOn ? '#7bd88f' : '#ff7a6b'; ctx.beginPath(); ctx.arc(CELL * 0.9, -CELL * 0.5, 4, 0, Math.PI * 2); ctx.fill(); }
-  ctx.restore();
+  drawPontoonSprite(ctx, px, py, true, sim.mode === 'slice' && sim.slice.suctioning, ui);
   if (ui.mapTarget && sim.mode === 'map') {
     const t = mapPx(ui.mapTarget.x, ui.mapTarget.y);
     ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
@@ -561,7 +543,7 @@ export function drawHarborScene(ctx, game, ui = {}) {
   tag(`Liegeplätze ${(p.jobs ?? []).filter((q) => !q.wait).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
 }
 
-function drawFleet(ctx, game) {
+function drawFleet(ctx, game, ui = {}) {
   for (const u of game.fleet?.units ?? []) {
     if ((u.loc ?? 'main') !== (game.isHarborView ? 'harbor' : 'main')) continue; // Pontons im Hafen erscheinen nur auf der Hafenkarte
     const px = OX + u.x * CELL, py = u.y * CELL, sim = u.sim;
@@ -572,11 +554,7 @@ function drawFleet(ctx, game) {
       const sy = sl.x0 * CELL + (sl.x - sl.x0) * CELL;
       ctx.strokeStyle = sl.suctioning ? '#ffd24d' : '#7fe3ff99'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(OX + sl.c0 * CELL, sy); ctx.lineTo(OX + (sl.c0 + B) * CELL, sy); ctx.stroke();
     }
-    ctx.save(); ctx.translate(px, py);
-    ctx.fillStyle = '#4fc3d9'; ctx.strokeStyle = '#08323c'; ctx.lineWidth = 1.5;
-    ctx.fillRect(-CELL * 1.1, -CELL * 0.7, CELL * 2.2, CELL * 1.4); ctx.strokeRect(-CELL * 1.1, -CELL * 0.7, CELL * 2.2, CELL * 1.4);
-    ctx.fillStyle = '#1b2a33'; ctx.fillRect(-CELL * 0.35, -CELL * 0.35, CELL * 0.7, CELL * 0.7);
-    ctx.restore();
+    drawPontoonSprite(ctx, px, py, false, sim?.mode === 'slice' && sim.slice.suctioning, ui);
     ctx.font = font(11); ctx.textAlign = 'center'; const nw = ctx.measureText(u.name).width + 4, ndy = labelDy(px - nw / 2, py - CELL - fs(11), nw, fs(11) + 3);
     ctx.fillStyle = '#000b'; ctx.fillText(u.name, px + 1, py - CELL + 1 + ndy); ctx.fillStyle = '#d9f7ff'; ctx.fillText(u.name, px, py - CELL + ndy); ctx.textAlign = 'start';
   }

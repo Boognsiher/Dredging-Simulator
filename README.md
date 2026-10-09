@@ -221,3 +221,11 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 **Kreuzungsstellen:** Schiffe wechseln nur noch seitlich auf ihre Spur, wo der Grund für ihren Tiefgang reicht (auch einen Schritt voraus); sonst bleiben sie in der Hauptrinne. Vorher liefen sie beim Spurwechsel vor und nach der Kreuzungsstelle auf (Auffahrt nicht ausgebaggert).
 
 **Kreuzungsstellen mit Ein- und Ausfahrt:** Eine Kreuzungsstelle umfasst den Kern (3 Spalten) und je 2 Spalten Einfahrt und Ausfahrt. Beide Spuren liegen in allen Spalten auf denselben Zeilen; bereit ist die Stelle erst, wenn alles tief genug ist. Auf der Karte zeigen Einfahrt und Ausfahrt je ✓ oder die fehlende Menge, und die Flotte baggert sie mit aus.
+
+## Grafik
+
+- **Gelände und Wasser:** Die Karte wird weich gezeichnet (interpolierte Höhen, einfache Hangschattierung, Sandstrand, Wiese und Wald, tiefenabhängige Wasserfarbe, Schaum am Ufer, Sand im Flachwasser). Das Zwischenbild wird nur bei Änderungen des Flussbetts neu berechnet (`src/ui/gfx.js`); dazu glitzert das Wasser leicht.
+- **Schiffe:** Rumpf mit Aufbau, Ladeluken in der Frachtfarbe (Container bunt), Schatten und Kielwasser (Schaumspur plus zwei auslaufende Heckwellen).
+- **Pontons:** Kabine, Kran und Saugrohr; beim Saugen Sedimentwolke und schwingender Ausleger.
+- **Tag und Nacht:** langsamer Zyklus (6 Minuten Spielzeit) mit Dämmerung und Lichtkegeln an Schiffen und Pontons; abschaltbar im Menü («Tag- und Nachtlicht auf der Karte»). Dazu eine leichte Vignette.
+- **Icons:** Linien-Icons statt Emojis in den Knopfleisten (`src/ui/icons.js`); die Texte im Spiel bleiben unverändert.

@@ -3,6 +3,7 @@ import { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit
 import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } from './sim/land.js';
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
 import { Game } from './sim/game.js';
+import { startIcons } from './ui/icons.js';
 import { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } from './sim/rank.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
@@ -1451,4 +1452,11 @@ addEventListener('pagehide', saveGame);
 addEventListener('beforeunload', saveGame);
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
 requestAnimationFrame(frame);
+startIcons();
+{ // Tag-/Nachtlicht (Einstellung bleibt im Browser)
+  const KEY = 'dredging.daynight', box = $('chk-daynight');
+  try { ui.dayNight = localStorage.getItem(KEY) !== '0'; } catch { ui.dayNight = true; }
+  box.checked = ui.dayNight !== false;
+  box.onchange = () => { ui.dayNight = box.checked; try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch { /* egal */ } };
+}
 globalThis.__dbg = () => ({ game, sim, ui });
