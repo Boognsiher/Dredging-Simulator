@@ -233,3 +233,5 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 **Kreuzungsstelle als verbreiterte Rinne:** Auf der Karte erscheint sie als ein einziges Band, das sich aus der Rinne aufweitet, zwei Spuren bietet und wieder zuläuft (gestrichelt gelb = noch nicht tief genug, grün = bereit). Fehlende Zellen sind rot getönt. Die Schiffe fahren immer auf der Linie der Fahrrinne und weichen nur in der Kreuzungsstelle auf ihre Spur aus.
 
 **Pontons neben der Rinne:** Arbeitet ein Ponton (Flotte oder dein eigener im Querschnitt) in der Fahrrinne, sitzt er in der Darstellung daneben (auf der Seite mit Wasser), und ein Saugrohr führt zur Arbeitsstelle. Gebaggert wird an der echten Stelle; die Schiffe fahren so nicht durch den Ponton.
+
+**Hafenkarte im neuen Look:** Betonblöcke für Kaimauern (auch auf der Hauptkarte), Betonpier mit Pollern, gepflasterter Hof unter den Bauplätzen, Gebäude mit Schatten, Dach und Stufenpunkten, abgerundete Liegeplätze mit Nummernplaketten und Warteräume sowie Beschriftungen als Plaketten.

@@ -87,9 +87,11 @@ export function drawMap(ctx, game, sim, ui = {}) {
         if (r.hard[i] > 1) { ctx.moveTo(px, py); ctx.lineTo(px + CELL, py + CELL); }
         ctx.stroke();
       }
-      if (r.armor[i] > 0) { // Beton: hellgrau mit Kreuzschraffur
-        ctx.fillStyle = 'rgba(205,208,214,.5)'; ctx.fillRect(px, py, CELL, CELL);
-        ctx.strokeStyle = 'rgba(90,95,105,.65)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px + 2, py + 2); ctx.lineTo(px + CELL - 2, py + CELL - 2); ctx.moveTo(px + CELL - 2, py + 2); ctx.lineTo(px + 2, py + CELL - 2); ctx.stroke();
+      if (r.armor[i] > 0) { // Beton: Betonblock mit hellem Rand oben links und Schatten unten rechts
+        const bg = ctx.createLinearGradient(px, py, px + CELL, py + CELL); bg.addColorStop(0, 'rgba(214,217,222,.82)'); bg.addColorStop(1, 'rgba(150,155,162,.82)');
+        ctx.fillStyle = bg; ctx.fillRect(px, py, CELL, CELL);
+        ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.fillRect(px, py, CELL, 1.5); ctx.fillRect(px, py, 1.5, CELL);
+        ctx.fillStyle = 'rgba(40,46,54,.35)'; ctx.fillRect(px, py + CELL - 1.5, CELL, 1.5); ctx.fillRect(px + CELL - 1.5, py, 1.5, CELL);
       }
       if (r.debris[i]) { ctx.fillStyle = '#f2f2f2'; ctx.fillRect(px + 5, py + 5, 6, 6); ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(px + 5.5, py + 5.5, 5, 5); }
     }
@@ -487,31 +489,55 @@ function drawZones(ctx, game, ui) {
 
 // Gemietete Pontons der Flotte: kleiner, cyan, mit Name; beim Baggern mit gestricheltem Kasten
 // Hafenkarte: Zufahrt, Becken mit Kaimauer, Bauplätze mit den gebauten Gebäuden und die angelegten Schiffe an ihren Liegeplätzen
+
+// Hafengelände: gepflasterter Hof unter den Bauplätzen, Gebäude mit Schatten, Dach und Tor
+function harborYard(ctx, game) {
+  if (!game.port?.open) return;
+  ctx.save(); ctx.fillStyle = 'rgba(150,152,150,.22)';
+  for (const pl of HARBOR.plots) { const q = { x: OX + pl[0] * CELL, y: pl[1] * CELL }; ctx.beginPath(); ctx.roundRect(q.x - 6, q.y - 6, HARBOR.plotW * CELL + 12, HARBOR.plotH * CELL + 12, 10); ctx.fill(); }
+  ctx.restore();
+}
+function harborBuilding(ctx, x, y, w, h, type, level) {
+  const roof = { kies: '#c9b27a', tank: '#b86a5a', kran: '#e0a63a', container: '#e0803a', werk: '#8f8f9a', kai: '#9aa0a8', cbruecke: '#e9a23b', sanierung: '#6fa05a' }[type] ?? '#b79b6e';
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.roundRect(x + 4, y + 5, w, h, 6); ctx.fill();
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#d8c39a'); g.addColorStop(1, '#a58a5c');
+  ctx.fillStyle = g; ctx.strokeStyle = '#4a3b22'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = roof; ctx.beginPath(); ctx.roundRect(x + 4, y + 4, w - 8, h * 0.45, 4); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 1; for (let k = 1; k < 6; k++) { ctx.beginPath(); ctx.moveTo(x + 4 + ((w - 8) * k) / 6, y + 6); ctx.lineTo(x + 4 + ((w - 8) * k) / 6, y + 2 + h * 0.45); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect(x + w / 2 - 9, y + h - 15, 18, 11); // Tor
+  ctx.fillStyle = '#ffe9a0'; for (let k = 0; k < (level ?? 1); k++) { ctx.beginPath(); ctx.arc(x + 9 + k * 9, y + h * 0.5, 2.6, 0, 7); ctx.fill(); } // Stufe
+}
 export function drawHarborScene(ctx, game, ui = {}) {
   const g = game, p = g.port, B = HARBOR.basin, E = HARBOR.entrance, L = (x, y) => ({ x: OX + x * CELL, y: y * CELL });
   LABELS = [];
-  const tag = (text, cx, cy, color = '#fff') => { ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(text).width + 10, dy = labelDy(cx - tw / 2, cy - fs(12), tw, fs(12) + 5); ctx.fillStyle = '#000b'; ctx.fillRect(cx - tw / 2, cy - fs(12) - 1 + dy, tw, fs(12) + 5); ctx.fillStyle = color; ctx.fillText(text, cx, cy + dy + 2); ctx.textAlign = 'start'; };
+  const tag = (text, cx, cy, color = '#fff') => { ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(text).width + 10, dy = labelDy(cx - tw / 2, cy - fs(12), tw, fs(12) + 5); ctx.fillStyle = 'rgba(10,28,44,.82)'; ctx.beginPath(); ctx.roundRect(cx - tw / 2, cy - fs(12) - 1 + dy, tw, fs(12) + 5, (fs(12) + 5) / 2); ctx.fill(); ctx.fillStyle = color; ctx.fillText(text, cx, cy + dy + 2); ctx.textAlign = 'start'; };
   // Becken: Rahmen gelb (zu flach) oder grün (bereit)
   const depth = bayDepth(g), ready = bayReady(g), a = L(B.x0, B.y0);
-  ctx.strokeStyle = ready ? '#7be39a' : '#ffc94a'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [7, 5]); ctx.strokeRect(a.x + 1, a.y + 1, (B.x1 - B.x0 + 1) * CELL - 2, (B.y1 - B.y0 + 1) * CELL - 2); ctx.setLineDash([]);
+  harborYard(ctx, game);
+  ctx.strokeStyle = ready ? 'rgba(123,227,154,.85)' : 'rgba(255,201,74,.85)'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [7, 5]); ctx.beginPath(); ctx.roundRect(a.x + 1, a.y + 1, (B.x1 - B.x0 + 1) * CELL - 2, (B.y1 - B.y0 + 1) * CELL - 2, 6); ctx.stroke(); ctx.setLineDash([]);
   tag(ready ? `⚓ Hafenbecken ${depth.toFixed(1)} m ✓` : `⚓ Hafenbecken ${depth.toFixed(1)}/${bayTarget(g).toFixed(1)} m: ausbaggern`, a.x + ((B.x1 - B.x0 + 1) * CELL) / 2, (B.y1 + 1) * CELL + 16, ready ? '#b9f5c9' : '#ffe08a');
   const en = L(E.x0, E.y0); tag('Zufahrt vom Fluss ➜', en.x + 70, E.y0 * CELL - 8, '#bfeaff');
   // Kai: Pier an der Nordseite des Beckens
   const hasKai = (p.slots ?? []).some((s) => s?.type === 'kai'), nb = berthsOf(g);
   if (hasKai) {
-    const px0 = L(B.x0, B.y0 - 1.4);
-    ctx.fillStyle = '#9aa0a8'; ctx.fillRect(px0.x, px0.y, (B.x1 - B.x0 + 1) * CELL, CELL * 1.4); ctx.strokeStyle = '#4b5057'; ctx.lineWidth = 2; ctx.strokeRect(px0.x, px0.y, (B.x1 - B.x0 + 1) * CELL, CELL * 1.4);
+    const px0 = L(B.x0, B.y0 - 1.4), pw = (B.x1 - B.x0 + 1) * CELL, ph = CELL * 1.4;
+    const pg = ctx.createLinearGradient(0, px0.y, 0, px0.y + ph); pg.addColorStop(0, '#c4c9ce'); pg.addColorStop(1, '#8f959b');
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(px0.x + 2, px0.y + ph, pw, 4); ctx.fillStyle = pg; ctx.beginPath(); ctx.roundRect(px0.x, px0.y, pw, ph, 4); ctx.fill(); ctx.strokeStyle = '#5c6268'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(px0.x + 3, px0.y + 2, pw - 6, 2);
+    for (let x = px0.x + CELL; x < px0.x + pw - 4; x += CELL * 2) { ctx.fillStyle = '#3d4249'; ctx.beginPath(); ctx.arc(x, px0.y + ph - 5, 2.6, 0, 7); ctx.fill(); } // Poller
     for (let k = 0; k < HARBOR.berthX.length; k++) { // Liegeplätze: markiert, gesperrte grau
       const bp = berthPos(k), x = OX + (bp.x - 2) * CELL, y = B.y0 * CELL, on = k < nb;
-      ctx.strokeStyle = on ? '#ffe9a0' : '#ffffff44'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [] : [3, 4]); ctx.strokeRect(x + 1, y + 1, 4 * CELL - 2, CELL * 3.2); ctx.setLineDash([]);
-      ctx.fillStyle = on ? '#ffe9a0' : '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(on ? `${k + 1}` : '🔒', x + 2 * CELL, y - CELL * 0.35); ctx.textAlign = 'start';
+      ctx.strokeStyle = on ? 'rgba(255,233,160,.9)' : 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [] : [3, 4]); ctx.beginPath(); ctx.roundRect(x + 1, y + 1, 4 * CELL - 2, CELL * 3.2, 5); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = on ? 'rgba(255,233,160,.1)' : 'rgba(255,255,255,.04)'; ctx.fill();
+      ctx.fillStyle = 'rgba(10,28,44,.8)'; ctx.beginPath(); ctx.arc(x + 2 * CELL, y - CELL * 0.55, 8, 0, 7); ctx.fill();
+      ctx.fillStyle = on ? '#ffe9a0' : '#ffffff77'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(on ? `${k + 1}` : '🔒', x + 2 * CELL, y - CELL * 0.55 + 4); ctx.textAlign = 'start';
     }
   }
   // Warteräume im südlichen Becken: Rahmen je Raum mit zugewiesener Fracht, wartende Schiffe mit Sanduhr
   const nw = waitsOf(g);
   for (let k = 0; k < HARBOR.waitX.length; k++) {
     const wp = waitPos(k), x = OX + (wp.x - 2) * CELL, y = (wp.y - 1.5) * CELL, on = k < nw, cg = p.waitCargo?.[k];
-    ctx.strokeStyle = on ? '#9be0ff' : '#ffffff33'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [5, 4] : [3, 5]); ctx.strokeRect(x + 1, y + 1, 4 * CELL - 2, 3 * CELL - 2); ctx.setLineDash([]);
+    ctx.strokeStyle = on ? 'rgba(155,224,255,.85)' : 'rgba(255,255,255,.2)'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [5, 4] : [3, 5]); ctx.beginPath(); ctx.roundRect(x + 1, y + 1, 4 * CELL - 2, 3 * CELL - 2, 8); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = on ? 'rgba(155,224,255,.07)' : 'rgba(255,255,255,.03)'; ctx.fill();
     ctx.fillStyle = on ? '#bfeaff' : '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center';
     ctx.fillText(on ? `⏳ Warteraum ${k + 1}: ${cg ? PORT.commodities[cg].icon + ' ' + PORT.commodities[cg].name.split(' ')[0] : 'alle'}` : '🔒', x + 2 * CELL, y + 3 * CELL + 13); ctx.textAlign = 'start';
   }
@@ -524,11 +550,11 @@ export function drawHarborScene(ctx, game, ui = {}) {
   // Bauplätze und Gebäude
   (p.slots ?? []).forEach((sl, i) => {
     const pl = HARBOR.plots[i]; if (!pl) return; const q = L(pl[0], pl[1]), w = HARBOR.plotW * CELL, h = HARBOR.plotH * CELL;
-    if (!sl) { ctx.strokeStyle = '#ffffff33'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeRect(q.x, q.y, w, h); ctx.setLineDash([]); ctx.fillStyle = '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(`Bauplatz ${i + 1}`, q.x + w / 2, q.y + h / 2 + 4); ctx.textAlign = 'start'; return; }
+    if (!sl) { ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.roundRect(q.x, q.y, w, h, 8); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(`Bauplatz ${i + 1}`, q.x + w / 2, q.y + h / 2 + 4); ctx.textAlign = 'start'; return; }
     const Bd = PORT.buildings[sl.type];
-    ctx.fillStyle = '#b79b6e'; ctx.fillRect(q.x, q.y, w, h); ctx.strokeStyle = '#4a3b22'; ctx.lineWidth = 2; ctx.strokeRect(q.x + 1, q.y + 1, w - 2, h - 2);
+    harborBuilding(ctx, q.x, q.y, w, h, sl.type, sl.level);
     ctx.font = font(22); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(Bd.icon, q.x + w / 2, q.y + h / 2 + 4);
-    ctx.font = font(11); ctx.fillStyle = '#fff'; const fill = Bd.commodity ? ` · ${Math.round(p.stock[Bd.commodity] ?? 0)} t` : ''; ctx.fillText(`${Bd.name.split(' ')[0]} ${sl.level}${fill}`, q.x + w / 2, q.y + h - 5); ctx.textAlign = 'start';
+    ctx.font = font(11); ctx.fillStyle = '#fff'; ctx.shadowColor = '#000a'; ctx.shadowBlur = 4; const fill = Bd.commodity ? ` · ${Math.round(p.stock[Bd.commodity] ?? 0)} t` : ''; ctx.fillText(`${Bd.name.split(' ')[0]} ${sl.level}${fill}`, q.x + w / 2, q.y + h - 5); ctx.shadowBlur = 0; ctx.textAlign = 'start';
   });
   // angelegte Schiffe an den Liegeplätzen, mit Ladefortschritt
   const docked = (p.jobs ?? []).filter((j) => isDocked(j) && j.shipId != null);
