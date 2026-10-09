@@ -1040,6 +1040,8 @@ function setSpeed(v) {
   game.pumpSpeed = sim.pumpSpeed;
   $('spd').value = sim.pumpSpeed; $('spd-val').textContent = pct(sim.pumpSpeed);
 }
+let ffSpeed = 1;
+function cycleFF() { ffSpeed = ffSpeed === 1 ? 2 : ffSpeed === 2 ? 4 : 1; for (const [id, long] of [['btn-ff', true], ['btn-ff2', false]]) { const b = $(id); b.textContent = ffSpeed === 1 ? (long ? '⏩ Zeitraffer (V)' : '⏩') : `⏩ ×${ffSpeed}${long ? ' (V)' : ''}`; b.classList.toggle('on', ffSpeed > 1); } }
 function togglePause() {
   paused = !paused;
   $('btn-pause').textContent = paused ? '▶ Weiter (P)' : '⏸ Pause (P)';
@@ -1188,6 +1190,8 @@ let resizeT = 0;
 addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { resetBars(); fitCanvas(); placeToast(); }, 120); }); // gebündelt: Adressleisten und Tastatur lösen viele Resize-Ereignisse aus
 addEventListener('orientationchange', () => setTimeout(() => { resetBars(); fitCanvas(); }, 250));
 $('btn-pause2').onclick = togglePause;
+$('btn-ff2').onclick = cycleFF; $('btn-ff').onclick = cycleFF;
+
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
 $('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
@@ -1279,8 +1283,9 @@ function frame(now) {
   if (portOpen() && readInput.tap('Escape')) togglePort();
   if (portOpen()) { portUi.render(); portUi.tick(dt); }
   if (readInput.tap('KeyP')) togglePause();
+  if (readInput.tap('KeyV')) cycleFF();
   if (readInput.tap('KeyB') && !overlayOpen()) setFritz(!advisor.enabled);
-  const running = !paused && !sheetOpen && !overlayOpen() && !tipOpen && game.status === 'playing';
+  const running = !paused && !overlayOpen() && !tipOpen && game.status === 'playing';
   touch?.setMode(curMode());
 
   if (!running) audio.hum(false, 0);
@@ -1386,7 +1391,7 @@ function frame(now) {
     $('s-open').textContent = sim.mode === 'slice' ? `${sim.slice.restCount()} offen` : '';
     $('s-turbzone').textContent = sim.mode === 'slice' ? ({ channel: 'Rinne: Busse kaum', altlast: '☢ Altlast: Busse', nature: '🌿 Naturschutz: Busse sehr hoch!' })[sim.turbZone] : '';
     fx.update(dt);
-    game.update(dt);
+    for (let k = 0; k < ffSpeed; k++) game.update(dt); // Zeitraffer: mehrere Welt-Schritte je Bild (Ponton und Eingabe bleiben in Echtzeit)
     for (const f of game.flash.splice(0)) ui.floaters.push({ ...f, life: 1.6 });
     for (const f of ui.floaters) f.life -= dt;
     ui.floaters = ui.floaters.filter((f) => f.life > 0);
@@ -1436,7 +1441,7 @@ function showIntro() {
     <p>Du betreibst einen Flussabschnitt. Schiffe brauchen eine <b>Fahrrinne</b> mit genug Wasser unter dem Kiel (Tiefgang + 0,3 m) und genug Breite. Am Anfang kommen nur Lastkähne durch. Wer die Flusssohle <b>ausbaggert</b>, lässt grössere Schiffe und mehr Schiffe durch: für jedes gibt es eine <b>Gebühr</b> und einen Anteil am <b>Frachtwert</b> (die Frachtpreise schwanken). Baggergut wird in der Anlage an Land aufbereitet: Kies und Sand bringen Geld, Schlick und Altlasten kosten Entsorgung.
     Erreichst du das <b>Verkehrsziel</b> (Tonnen Fracht) und hast am Ende Gewinn, schaltest du das nächste Fluss frei. Gewonnen hat, wer am Ende am meisten Geld hat.</p>
     <details ${isTouch ? 'open' : ''}><summary>Steuerung am Handy</summary>
-      <p><b>Stick</b> links fährt den Ponton auf der Karte, ein <b>Tipp auf die Karte</b> fährt hin und ankert. Der grosse Knopf wirft den Anker bzw. schaltet im Querschnitt die <b>Pumpe</b> ein und aus. Im Querschnitt steuerst du die Pumpe mit den <b>Pfeil-Knöpfen</b> (halten = fahren) und stellst <b>Tempo</b> und <b>Solltiefe</b> mit den Reglern ein. Oben wählst du eine <b>Schiffsklasse</b>: rote Stellen auf der Karte sind Engstellen (lila = Fels), die gestrichelte Linie ist die günstigste Rinne. Der Shop liegt unten im Fach; solange es offen ist, steht das Spiel still.</p></details>
+      <p><b>Stick</b> links fährt den Ponton auf der Karte, ein <b>Tipp auf die Karte</b> fährt hin und ankert. Der grosse Knopf wirft den Anker bzw. schaltet im Querschnitt die <b>Pumpe</b> ein und aus. Im Querschnitt steuerst du die Pumpe mit den <b>Pfeil-Knöpfen</b> (halten = fahren) und stellst <b>Tempo</b> und <b>Solltiefe</b> mit den Reglern ein. Oben wählst du eine <b>Schiffsklasse</b>: rote Stellen auf der Karte sind Engstellen (lila = Fels), die gestrichelte Linie ist die günstigste Rinne. Der Shop liegt unten im Fach; das Spiel läuft dabei weiter. Der Knopf ⏩ (Taste V) schaltet den Zeitraffer ×2 / ×4.</p></details>
     <details ${isTouch ? '' : 'open'}><summary>Steuerung am Computer</summary>
       <p>Karte: WASD / Pfeile (oder Maus gedrückt) fahren, <b>E</b> / Leertaste wirft den Anker, <b>1–5</b> wählen die Schiffsklasse. Querschnitt: A/D fährt die Pumpe quer zum Fluss, W/S zieht sie hoch oder lässt sie runter, <b>Leertaste</b> schaltet die Pumpe ein und aus (saugt nach rechts und im Stillstand, rückwärts nie), <b>1–5</b> setzen die Solltiefe für eine Klasse, <b>F/G</b> ändern sie, <b>Z/X</b> Tempo, <b>T</b> Automatik, <b>R</b> Reset, <b>Q</b> zurück zur Karte, <b>P</b> Pause.</p></details>
     <details><summary>Regeln im Fluss</summary>

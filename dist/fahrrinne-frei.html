@@ -51,7 +51,7 @@ button#btn-drone, button#btn-wait { width:100%; margin-top:6px; }
 /* ---------- Touch & kleine Bildschirme ---------- */
 button { touch-action: manipulation; }
 #stage { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-#touch-ui[hidden], #btn-pause2, #panel-handle { display: none; }
+#touch-ui[hidden], #btn-pause2, #btn-ff2, #panel-handle { display: none; }
 #touch-ui { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 20px; }
 #stick { position: relative; width: 132px; height: 132px; border-radius: 50%; background: #ffffff12; border: 2px solid #ffffff30; touch-action: none; flex: none; }
 #stick::before, #stick::after { content: ''; position: absolute; background: #ffffff22; }
@@ -60,6 +60,7 @@ button { touch-action: manipulation; }
 #knob { position: absolute; left: 38px; top: 38px; width: 56px; height: 56px; border-radius: 50%; background: var(--accent); opacity: .9; pointer-events: none; }
 #act { width: 160px; height: 100px; border-radius: 50px; font-size: 19px; margin: 0; touch-action: none; }
 #act.held { background: #7fe3ff; box-shadow: 0 0 0 6px #7fe3ff55; }
+body.touch #btn-ff2 { display: block; position: absolute; top: 8px; right: 62px; z-index: 5; height: 48px; min-width: 48px; padding: 0 8px; font-size: 16px; border-radius: 24px; } body.touch #btn-ff2.on, #btn-ff.on { background: #e0a82e; color: #1a1a1a; }
 body.touch #btn-pause2 { display: block; position: absolute; top: 8px; right: 8px; z-index: 5; width: 48px; height: 48px; padding: 0; font-size: 20px; border-radius: 50%; }
 body.touch button { min-height: 44px; }
 body.touch #shift-actions button { padding: 10px 14px; }
@@ -305,6 +306,7 @@ body.touch #classbar { padding-right: 58px; }
 @media (max-width: 860px) { #legend { display: none; } }
 #topbar { display: flex; align-items: center; gap: 6px; }
 #topbar #classbar { flex: 1; min-width: 0; }
+body.touch #topbar #btn-ff2 { position: static; flex: none; height: 46px; margin: 0 2px 0 0; }
 body.touch #topbar #btn-pause2 { position: static; flex: none; width: 46px; height: 46px; margin: 0 2px 0 0; }
 body.touch #classbar { padding-right: 4px; }
 /* Flotte */
@@ -395,7 +397,7 @@ body.mode-map #panel-handle { display: none; }
 body.mode-map #btn-menu-close { display: block; position: sticky; top: 0; z-index: 2; width: 100%; margin: 0 0 6px; padding: 12px; border-radius: 0 0 10px 10px; background: #1d3650; font-weight: 600; }
 body.mode-map #scrim { display: block; position: fixed; inset: 0; z-index: 24; background: #0006; } body.mode-map #scrim[hidden] { display: none; }
 body.mode-map #touch-ui { bottom: 8px; }
-body.touch.mode-map #topbar #btn-pause2 { display: block; }
+body.touch.mode-map #topbar #btn-pause2, body.touch.mode-map #topbar #btn-ff2 { display: block; }
 @media (max-width: 860px) {
   body.mode-map header { padding: 3px 8px; } body.mode-map #hud { font-size: 12px; gap: 0 10px; } body.mode-map header h1 { display: none; }
   body.mode-map #shift-actions { top: calc(var(--hdr-h) + 58px); }
@@ -571,7 +573,7 @@ body.cam-free #stage canvas { touch-action: none; }
   <div id="scrim" hidden></div>
   <main>
     <section id="stage">
-      <div id="topbar"><div id="classbar" aria-label="Schiffsklassen"></div><button id="btn-pause2" aria-label="Pause">⏸</button></div>
+      <div id="topbar"><div id="classbar" aria-label="Schiffsklassen"></div><button id="btn-ff2" aria-label="Zeitraffer" title="Zeitraffer (V)">⏩</button><button id="btn-pause2" aria-label="Pause">⏸</button></div>
       <canvas id="canvas"></canvas>
       <div id="shift-hud" hidden>
         <span id="s-mode"></span>
@@ -697,7 +699,7 @@ body.cam-free #stage canvas { touch-action: none; }
         <div class="row"><button id="btn-import">⬆ Importieren (Datei)</button><input type="file" id="file-import" accept=".json,application/json,text/plain" hidden></div>
         <small id="save-msg"></small>
       </details>
-        <div class="row"><button id="btn-pause">⏸ Pause (P)</button><button id="btn-sound2">🔊 Ton an (M)</button></div>
+        <div class="row"><button id="btn-pause">⏸ Pause (P)</button><button id="btn-ff">⏩ Zeitraffer (V)</button><button id="btn-sound2">🔊 Ton an (M)</button></div>
       </div>
     </aside>
   </main>
@@ -1774,6 +1776,8 @@ function setSpeed(v) {
   game.pumpSpeed = sim.pumpSpeed;
   $('spd').value = sim.pumpSpeed; $('spd-val').textContent = pct(sim.pumpSpeed);
 }
+let ffSpeed = 1;
+function cycleFF() { ffSpeed = ffSpeed === 1 ? 2 : ffSpeed === 2 ? 4 : 1; for (const [id, long] of [['btn-ff', true], ['btn-ff2', false]]) { const b = $(id); b.textContent = ffSpeed === 1 ? (long ? '⏩ Zeitraffer (V)' : '⏩') : `⏩ ×${ffSpeed}${long ? ' (V)' : ''}`; b.classList.toggle('on', ffSpeed > 1); } }
 function togglePause() {
   paused = !paused;
   $('btn-pause').textContent = paused ? '▶ Weiter (P)' : '⏸ Pause (P)';
@@ -1922,6 +1926,8 @@ let resizeT = 0;
 addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { resetBars(); fitCanvas(); placeToast(); }, 120); }); // gebündelt: Adressleisten und Tastatur lösen viele Resize-Ereignisse aus
 addEventListener('orientationchange', () => setTimeout(() => { resetBars(); fitCanvas(); }, 250));
 $('btn-pause2').onclick = togglePause;
+$('btn-ff2').onclick = cycleFF; $('btn-ff').onclick = cycleFF;
+
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
 $('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
@@ -2013,8 +2019,9 @@ function frame(now) {
   if (portOpen() && readInput.tap('Escape')) togglePort();
   if (portOpen()) { portUi.render(); portUi.tick(dt); }
   if (readInput.tap('KeyP')) togglePause();
+  if (readInput.tap('KeyV')) cycleFF();
   if (readInput.tap('KeyB') && !overlayOpen()) setFritz(!advisor.enabled);
-  const running = !paused && !sheetOpen && !overlayOpen() && !tipOpen && game.status === 'playing';
+  const running = !paused && !overlayOpen() && !tipOpen && game.status === 'playing';
   touch?.setMode(curMode());
 
   if (!running) audio.hum(false, 0);
@@ -2120,7 +2127,7 @@ function frame(now) {
     $('s-open').textContent = sim.mode === 'slice' ? `${sim.slice.restCount()} offen` : '';
     $('s-turbzone').textContent = sim.mode === 'slice' ? ({ channel: 'Rinne: Busse kaum', altlast: '☢ Altlast: Busse', nature: '🌿 Naturschutz: Busse sehr hoch!' })[sim.turbZone] : '';
     fx.update(dt);
-    game.update(dt);
+    for (let k = 0; k < ffSpeed; k++) game.update(dt); // Zeitraffer: mehrere Welt-Schritte je Bild (Ponton und Eingabe bleiben in Echtzeit)
     for (const f of game.flash.splice(0)) ui.floaters.push({ ...f, life: 1.6 });
     for (const f of ui.floaters) f.life -= dt;
     ui.floaters = ui.floaters.filter((f) => f.life > 0);
@@ -2170,7 +2177,7 @@ function showIntro() {
     <p>Du betreibst einen Flussabschnitt. Schiffe brauchen eine <b>Fahrrinne</b> mit genug Wasser unter dem Kiel (Tiefgang + 0,3 m) und genug Breite. Am Anfang kommen nur Lastkähne durch. Wer die Flusssohle <b>ausbaggert</b>, lässt grössere Schiffe und mehr Schiffe durch: für jedes gibt es eine <b>Gebühr</b> und einen Anteil am <b>Frachtwert</b> (die Frachtpreise schwanken). Baggergut wird in der Anlage an Land aufbereitet: Kies und Sand bringen Geld, Schlick und Altlasten kosten Entsorgung.
     Erreichst du das <b>Verkehrsziel</b> (Tonnen Fracht) und hast am Ende Gewinn, schaltest du das nächste Fluss frei. Gewonnen hat, wer am Ende am meisten Geld hat.</p>
     <details ${isTouch ? 'open' : ''}><summary>Steuerung am Handy</summary>
-      <p><b>Stick</b> links fährt den Ponton auf der Karte, ein <b>Tipp auf die Karte</b> fährt hin und ankert. Der grosse Knopf wirft den Anker bzw. schaltet im Querschnitt die <b>Pumpe</b> ein und aus. Im Querschnitt steuerst du die Pumpe mit den <b>Pfeil-Knöpfen</b> (halten = fahren) und stellst <b>Tempo</b> und <b>Solltiefe</b> mit den Reglern ein. Oben wählst du eine <b>Schiffsklasse</b>: rote Stellen auf der Karte sind Engstellen (lila = Fels), die gestrichelte Linie ist die günstigste Rinne. Der Shop liegt unten im Fach; solange es offen ist, steht das Spiel still.</p></details>
+      <p><b>Stick</b> links fährt den Ponton auf der Karte, ein <b>Tipp auf die Karte</b> fährt hin und ankert. Der grosse Knopf wirft den Anker bzw. schaltet im Querschnitt die <b>Pumpe</b> ein und aus. Im Querschnitt steuerst du die Pumpe mit den <b>Pfeil-Knöpfen</b> (halten = fahren) und stellst <b>Tempo</b> und <b>Solltiefe</b> mit den Reglern ein. Oben wählst du eine <b>Schiffsklasse</b>: rote Stellen auf der Karte sind Engstellen (lila = Fels), die gestrichelte Linie ist die günstigste Rinne. Der Shop liegt unten im Fach; das Spiel läuft dabei weiter. Der Knopf ⏩ (Taste V) schaltet den Zeitraffer ×2 / ×4.</p></details>
     <details ${isTouch ? '' : 'open'}><summary>Steuerung am Computer</summary>
       <p>Karte: WASD / Pfeile (oder Maus gedrückt) fahren, <b>E</b> / Leertaste wirft den Anker, <b>1–5</b> wählen die Schiffsklasse. Querschnitt: A/D fährt die Pumpe quer zum Fluss, W/S zieht sie hoch oder lässt sie runter, <b>Leertaste</b> schaltet die Pumpe ein und aus (saugt nach rechts und im Stillstand, rückwärts nie), <b>1–5</b> setzen die Solltiefe für eine Klasse, <b>F/G</b> ändern sie, <b>Z/X</b> Tempo, <b>T</b> Automatik, <b>R</b> Reset, <b>Q</b> zurück zur Karte, <b>P</b> Pause.</p></details>
     <details><summary>Regeln im Fluss</summary>

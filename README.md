@@ -248,3 +248,4 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Regional günstige/teure Fracht wird im Hafen markiert.
 - Eigene Quellen: Ölfeld (Ölvorkommen der Karte), Kies-Delta (regeneriert schnell), Bahnterminal für Container.
 - Reederei: Schiffe warten am Ziel ohne Limit, bis du ablädst oder der Wunschpreis erreicht ist.
+- Menü und Fach pausieren das Spiel nicht mehr; Zeitraffer ⏩ (Taste V) mit ×2 / ×4.

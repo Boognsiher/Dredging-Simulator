@@ -37,7 +37,7 @@ button#btn-drone, button#btn-wait { width:100%; margin-top:6px; }
 /* ---------- Touch & kleine Bildschirme ---------- */
 button { touch-action: manipulation; }
 #stage { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-#touch-ui[hidden], #btn-pause2, #panel-handle { display: none; }
+#touch-ui[hidden], #btn-pause2, #btn-ff2, #panel-handle { display: none; }
 #touch-ui { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 20px; }
 #stick { position: relative; width: 132px; height: 132px; border-radius: 50%; background: #ffffff12; border: 2px solid #ffffff30; touch-action: none; flex: none; }
 #stick::before, #stick::after { content: ''; position: absolute; background: #ffffff22; }
@@ -46,6 +46,7 @@ button { touch-action: manipulation; }
 #knob { position: absolute; left: 38px; top: 38px; width: 56px; height: 56px; border-radius: 50%; background: var(--accent); opacity: .9; pointer-events: none; }
 #act { width: 160px; height: 100px; border-radius: 50px; font-size: 19px; margin: 0; touch-action: none; }
 #act.held { background: #7fe3ff; box-shadow: 0 0 0 6px #7fe3ff55; }
+body.touch #btn-ff2 { display: block; position: absolute; top: 8px; right: 62px; z-index: 5; height: 48px; min-width: 48px; padding: 0 8px; font-size: 16px; border-radius: 24px; } body.touch #btn-ff2.on, #btn-ff.on { background: #e0a82e; color: #1a1a1a; }
 body.touch #btn-pause2 { display: block; position: absolute; top: 8px; right: 8px; z-index: 5; width: 48px; height: 48px; padding: 0; font-size: 20px; border-radius: 50%; }
 body.touch button { min-height: 44px; }
 body.touch #shift-actions button { padding: 10px 14px; }
@@ -291,6 +292,7 @@ body.touch #classbar { padding-right: 58px; }
 @media (max-width: 860px) { #legend { display: none; } }
 #topbar { display: flex; align-items: center; gap: 6px; }
 #topbar #classbar { flex: 1; min-width: 0; }
+body.touch #topbar #btn-ff2 { position: static; flex: none; height: 46px; margin: 0 2px 0 0; }
 body.touch #topbar #btn-pause2 { position: static; flex: none; width: 46px; height: 46px; margin: 0 2px 0 0; }
 body.touch #classbar { padding-right: 4px; }
 /* Flotte */
@@ -381,7 +383,7 @@ body.mode-map #panel-handle { display: none; }
 body.mode-map #btn-menu-close { display: block; position: sticky; top: 0; z-index: 2; width: 100%; margin: 0 0 6px; padding: 12px; border-radius: 0 0 10px 10px; background: #1d3650; font-weight: 600; }
 body.mode-map #scrim { display: block; position: fixed; inset: 0; z-index: 24; background: #0006; } body.mode-map #scrim[hidden] { display: none; }
 body.mode-map #touch-ui { bottom: 8px; }
-body.touch.mode-map #topbar #btn-pause2 { display: block; }
+body.touch.mode-map #topbar #btn-pause2, body.touch.mode-map #topbar #btn-ff2 { display: block; }
 @media (max-width: 860px) {
   body.mode-map header { padding: 3px 8px; } body.mode-map #hud { font-size: 12px; gap: 0 10px; } body.mode-map header h1 { display: none; }
   body.mode-map #shift-actions { top: calc(var(--hdr-h) + 58px); }
