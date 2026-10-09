@@ -225,6 +225,7 @@ function hose(ctx, from, to, ui) {
   const pulse = 0.5 + 0.5 * Math.sin((ui.t ?? 0) * 5); ctx.strokeStyle = `rgba(255,214,90,${0.5 + 0.4 * pulse})`; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(to.x, to.y, 4 + pulse * 2, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
 }
 function drawPontoon(ctx, game, sim, ui) {
+  if ((game.fleet?.units ?? []).some((u) => u.self)) return; // dein Ponton arbeitet für die Flotte: gezeichnet wird er als Flottenponton (nicht doppelt)
   const r = game.river, px = OX + sim.x * CELL, py = sim.y * CELL;
   const B = CONFIG.box.cols;
   let c0, x0;
@@ -238,8 +239,9 @@ function drawPontoon(ctx, game, sim, ui) {
     ctx.strokeStyle = sim.slice.suctioning ? '#ffd24d' : '#7fe3ffcc'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(bx - 3, sy); ctx.lineTo(bx + bw + 3, sy); ctx.stroke();
   }
+  const lent = (game.fleet?.units ?? []).some((u) => u.self); // dein Ponton arbeitet für die Flotte: dort wird er gezeichnet (nicht doppelt)
   const bl = sim.mode === 'slice' ? besideLane(game, sim.x, sim.y) : { moved: false };
-  if (bl.moved) { const q = mapPx(bl.x, bl.y); hose(ctx, q, { x: px, y: py }, ui); drawPontoonSprite(ctx, q.x, q.y, true, sim.slice.suctioning, ui); }
+  if (lent) { /* gezeichnet von drawFleet */ } else if (bl.moved) { const q = mapPx(bl.x, bl.y); hose(ctx, q, { x: px, y: py }, ui); drawPontoonSprite(ctx, q.x, q.y, true, sim.slice.suctioning, ui); }
   else drawPontoonSprite(ctx, px, py, true, sim.mode === 'slice' && sim.slice.suctioning, ui);
   if (ui.mapTarget && sim.mode === 'map') {
     const t = mapPx(ui.mapTarget.x, ui.mapTarget.y);
@@ -575,7 +577,7 @@ function drawFleet(ctx, game, ui = {}) {
     }
     const bl = sim?.mode === 'slice' ? besideLane(game, u.x, u.y) : { moved: false }, q = bl.moved ? mapPx(bl.x, bl.y) : { x: px, y: py };
     if (bl.moved) hose(ctx, q, { x: px, y: py }, ui);
-    drawPontoonSprite(ctx, q.x, q.y, false, sim?.mode === 'slice' && sim.slice.suctioning, ui);
+    drawPontoonSprite(ctx, q.x, q.y, !!u.self, sim?.mode === 'slice' && sim.slice.suctioning, ui);
     ctx.font = font(11); ctx.textAlign = 'center'; const nw = ctx.measureText(u.name).width + 4, ndy = labelDy(q.x - nw / 2, q.y - CELL - fs(11), nw, fs(11) + 3);
     ctx.fillStyle = '#000b'; ctx.fillText(u.name, q.x + 1, q.y - CELL + 1 + ndy); ctx.fillStyle = '#d9f7ff'; ctx.fillText(u.name, q.x, q.y - CELL + ndy); ctx.textAlign = 'start';
   }
