@@ -229,3 +229,5 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - **Pontons:** Kabine, Kran und Saugrohr; beim Saugen Sedimentwolke und schwingender Ausleger.
 - **Tag und Nacht:** langsamer Zyklus (6 Minuten Spielzeit) mit Dämmerung und Lichtkegeln an Schiffen und Pontons; abschaltbar im Menü («Tag- und Nachtlicht auf der Karte»). Dazu eine leichte Vignette.
 - **Icons:** Linien-Icons statt Emojis in den Knopfleisten (`src/ui/icons.js`); die Texte im Spiel bleiben unverändert.
+
+**Kreuzungsstelle als verbreiterte Rinne:** Auf der Karte erscheint sie als ein einziges Band, das sich aus der Rinne aufweitet, zwei Spuren bietet und wieder zuläuft (gestrichelt gelb = noch nicht tief genug, grün = bereit). Fehlende Zellen sind rot getönt. Die Schiffe fahren immer auf der Linie der Fahrrinne und weichen nur in der Kreuzungsstelle auf ihre Spur aus.

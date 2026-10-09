@@ -6238,6 +6238,13 @@ function startIcons() {
   const run = () => { queued = false; obs.disconnect(); for (const el of roots) iconify(el); watch(); };
   const obs = new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(run); } });
   const watch = () => { for (const el of roots) obs.observe(el, { childList: true, characterData: true, subtree: true }); };
+  // Zuweisungen mit unverändertem Text ändern nichts: verhindert Flackern, wenn der Spielcode Knopftexte jedes Bild neu setzt
+  const desc = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+  for (const el of roots) for (const b of [el, ...el.querySelectorAll('button')]) {
+    if (b.tagName !== 'BUTTON' || b.__raw !== undefined) continue;
+    b.__raw = null;
+    Object.defineProperty(b, 'textContent', { configurable: true, get() { return desc.get.call(this); }, set(v) { if (this.__raw === String(v)) return; this.__raw = String(v); desc.set.call(this, v); } });
+  }
   run();
 }
 
@@ -7406,12 +7413,13 @@ function drawDeposits(ctx, game) {
 
 // Kreuzungsstellen: bereit = grün gestrichelt, geplant = gelb mit rot markierten Zellen, die noch ausgetragen werden müssen.
 // Im Setz-Modus zeigt jede Spalte, ob (grün) und wie viel (gelb bis orange) fehlt; unter der Maus steht die Zahl.
-function drawZoneWindows(ctx, game, plan, alpha = 0.45) {
+function drawZoneWindows(ctx, game, plan, alpha = 0.45, outline = true) {
   const r = game.river;
   for (const w of plan.wins ?? []) for (const a of [w.a, w.b]) for (let k = a; k < a + plan.beam; k++) {
     const i = k * r.cols + w.x;
     if (r.top[i] > plan.needTop || !r.zone[i]) { ctx.fillStyle = `rgba(255,70,60,${alpha})`; ctx.fillRect(OX + w.x * CELL, k * CELL, CELL, CELL); }
   }
+  if (!outline) return;
   ctx.strokeStyle = 'rgba(255,230,120,.9)'; ctx.lineWidth = 1.5;
   for (const w of plan.wins ?? []) for (const a of [w.a, w.b]) ctx.strokeRect(OX + w.x * CELL + 1, a * CELL + 1, CELL - 2, plan.beam * CELL - 2);
 }
@@ -7527,20 +7535,18 @@ function drawZones(ctx, game, ui) {
   }
   for (const z of game.zones ?? []) {
     const zc = z.cls ?? cid, p = game.zonePlanFor(z.x, zc), ready = p.ready, c = shipById(zc), x0 = OX + (z.x - z.w / 2 + 0.5) * CELL;
-    if (!ready) drawZoneWindows(ctx, game, p);
-    ctx.fillStyle = ready ? 'rgba(160,230,90,.13)' : 'rgba(255,200,70,.12)'; ctx.fillRect(x0, 0, z.w * CELL, H);
-    ctx.strokeStyle = ready ? '#a6e65a' : '#ffc94d'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
-    ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.moveTo(x0 + z.w * CELL, 0); ctx.lineTo(x0 + z.w * CELL, H); ctx.stroke(); ctx.setLineDash([]);
-    const R = CONFIG.zones.ramp ?? 0, rv = p.rampVolume ?? [0, 0];
-    if (R > 0) for (const [side, rx] of [[0, x0 - R * CELL], [1, x0 + z.w * CELL]]) { // Einfahrt (links) und Ausfahrt (rechts): grün = tief genug, orange = fehlt noch
-      const okR = p.wins && rv[side] <= 1e-6;
-      ctx.fillStyle = okR ? 'rgba(160,230,90,.08)' : 'rgba(255,150,60,.14)'; ctx.fillRect(rx, 0, R * CELL, H);
-      ctx.strokeStyle = okR ? '#a6e65a99' : '#ff9a4acc'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 5]);
-      ctx.beginPath(); ctx.moveTo(rx, 0); ctx.lineTo(rx, H); ctx.moveTo(rx + R * CELL, 0); ctx.lineTo(rx + R * CELL, H); ctx.stroke(); ctx.setLineDash([]);
-      ctx.font = font(11); ctx.textAlign = 'center'; const rl = `${side ? 'Ausfahrt' : 'Einfahrt'} ${okR ? '✓' : p.wins ? `−${Math.round(rv[side])} m³` : '?'}`, rw = ctx.measureText(rl).width + 8;
-      ctx.fillStyle = '#000a'; ctx.fillRect(rx + R * CELL / 2 - rw / 2, H - fs(11) - 8, rw, fs(11) + 5); ctx.fillStyle = okR ? '#d6f5a8' : '#ffc08a'; ctx.fillText(rl, rx + R * CELL / 2, H - 6); ctx.textAlign = 'start';
+    if (!ready) drawZoneWindows(ctx, game, p, 0.4, false); // nur die fehlenden Zellen rot, ohne Rahmen
+    // Kreuzungsstelle = verbreiterte Rinne: ein einziges Band, das sich aus der Rinne aufweitet (Einfahrt), zwei Spuren bietet und wieder zuläuft (Ausfahrt)
+    const R = CONFIG.zones.ramp ?? 0, f = game.fair?.[zc], wn = p.wins ?? [];
+    if (wn.length && f?.path) {
+      const top = Math.min(...wn.map((w) => w.a)) * CELL, bot = (Math.max(...wn.map((w) => w.b)) + p.beam) * CELL;
+      let yc = (top + bot) / 2; for (const q of f.path.points) if (q.x >= z.x + 0.5) { yc = q.y * CELL; break; }
+      const bw = c.beam * CELL * 0.9, xl = x0 - R * CELL, xr = x0 + z.w * CELL + R * CELL, x1 = x0 + z.w * CELL;
+      ctx.beginPath(); ctx.moveTo(xl, yc - bw / 2); ctx.lineTo(x0, top); ctx.lineTo(x1, top); ctx.lineTo(xr, yc - bw / 2); ctx.lineTo(xr, yc + bw / 2); ctx.lineTo(x1, bot); ctx.lineTo(x0, bot); ctx.lineTo(xl, yc + bw / 2); ctx.closePath();
+      ctx.fillStyle = ready ? 'rgba(160,230,90,.16)' : 'rgba(255,200,70,.15)'; ctx.fill();
+      ctx.strokeStyle = ready ? 'rgba(166,230,90,.9)' : 'rgba(255,201,77,.9)'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [7, 5]); ctx.stroke(); ctx.setLineDash([]);
     }
-    const label = ready ? `Kreuzung ${c.icon} ✓` : `Kreuzung ${c.icon}: fehlt ${p.volume === Infinity ? '?' : Math.round(p.volume) + ' m³'}`;
+    const rv = p.rampVolume ?? [0, 0], label = ready ? `Kreuzung ${c.icon} ✓` : `Kreuzung ${c.icon}: fehlt ${p.volume === Infinity ? '?' : Math.round(p.volume) + ' m³'}${p.wins && (rv[0] > 1e-6 || rv[1] > 1e-6) ? ` (Zufahrt ${Math.round(rv[0] + rv[1])})` : ''}`;
     ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(label).width + 10;
     const zdy = labelDy(x0 + z.w * CELL / 2 - tw / 2, 3, tw, fs(12) + 6);
     ctx.fillStyle = '#000b'; ctx.fillRect(x0 + z.w * CELL / 2 - tw / 2, 3 + zdy, tw, fs(12) + 6); ctx.fillStyle = ready ? '#d6f5a8' : '#ffe08a'; ctx.fillText(label, x0 + z.w * CELL / 2, 4 + fs(12) + zdy); ctx.textAlign = 'start';

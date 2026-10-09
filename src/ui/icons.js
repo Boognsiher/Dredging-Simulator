@@ -51,5 +51,12 @@ export function startIcons() {
   const run = () => { queued = false; obs.disconnect(); for (const el of roots) iconify(el); watch(); };
   const obs = new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(run); } });
   const watch = () => { for (const el of roots) obs.observe(el, { childList: true, characterData: true, subtree: true }); };
+  // Zuweisungen mit unverändertem Text ändern nichts: verhindert Flackern, wenn der Spielcode Knopftexte jedes Bild neu setzt
+  const desc = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+  for (const el of roots) for (const b of [el, ...el.querySelectorAll('button')]) {
+    if (b.tagName !== 'BUTTON' || b.__raw !== undefined) continue;
+    b.__raw = null;
+    Object.defineProperty(b, 'textContent', { configurable: true, get() { return desc.get.call(this); }, set(v) { if (this.__raw === String(v)) return; this.__raw = String(v); desc.set.call(this, v); } });
+  }
   run();
 }
