@@ -1,4 +1,4 @@
-import { CONFIG, shipById } from '../config.js';
+import { CONFIG, CARGOS, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
 import { ensureHarbor, harborAccepts } from './harbor.js';
 import { PORT, hasKai, capacity, bayDepth, kaiLevel, bridgeLevel, buy as portBuy, buyPrice, sellPrice, marketImpact } from './port.js';
@@ -34,14 +34,14 @@ export function buyShip(g, type) {
   if (shipBlock(g, type)) return null;
   const T = SHIPPING.types[type], S = g.shipping;
   g.money -= T.cost;
-  const s = { id: ++S.seq, type, name: `${T.name} ${S.seq}`, from: 0, to: Math.min(1, g.maps.length - 1), cargo: T.cargos[0], autoBuy: true, toStock: false, backhaul: true, minMargin: 1, state: 'idle', leg: 'out', t: 0, dur: 0, load: 0, basis: 0, trips: 0, profit: 0, note: 'startet' };
+  const s = { id: ++S.seq, type, name: `${T.name} ${S.seq}`, from: 0, to: Math.min(1, g.maps.length - 1), cargo: T.cargos[0], autoBuy: true, toStock: false, backhaul: true, unload: 'manual', unloadMin: 0, minMargin: 1, state: 'idle', leg: 'out', t: 0, dur: 0, load: 0, basis: 0, trips: 0, profit: 0, note: 'startet' };
   S.ships.push(s);
   g.say(`${s.name} gekauft (−${T.cost.toLocaleString('de-CH')} CHF): Route im Menü unter «Reederei» einstellen.`, 'upgrade');
   return s;
 }
 export function sellShip(g, id) {
   const S = g.shipping, i = S.ships.findIndex((s) => s.id === id);
-  if (i < 0 || S.ships[i].state === 'sail') return false;
+  if (i < 0 || S.ships[i].state === 'sail' || S.ships[i].state === 'hold') return false;
   g.money += Math.round(SHIPPING.types[S.ships[i].type].cost * SHIPPING.sellShare); S.ships.splice(i, 1);
   return true;
 }
@@ -53,6 +53,8 @@ export function setRoute(g, id, r) {
   if (r.toStock !== undefined) s.toStock = !!r.toStock;
   if (r.backhaul !== undefined) s.backhaul = !!r.backhaul;
   if (r.minMargin !== undefined) s.minMargin = Math.max(-50, Math.min(200, +r.minMargin || 0));
+  if (r.unload !== undefined && ['now', 'manual', 'limit'].includes(r.unload)) { s.unload = r.unload; if (r.unload === 'limit' && !s.unloadMin) s.unloadMin = Math.round(withMap(g, s.to, () => sellPrice(g, s.cargo)) * 1.1); }
+  if (r.unloadMin !== undefined) s.unloadMin = Math.max(0, Math.min(5000, +r.unloadMin || 0));
   if (r.cargo !== undefined && SHIPPING.types[s.type].cargos.includes(r.cargo)) s.cargo = r.cargo;
   return true;
 }
@@ -114,6 +116,34 @@ function deliver(g, s, at) {
   s.load = 0;
 }
 
+// Ankunft am Ziel der aktuellen Teilstrecke: abladen, Rückfracht prüfen, weiter
+function arrive(g, s) {
+  if (s.leg === 'out') {
+    deliver(g, s, s.to);
+    s.state = 'sail'; s.leg = 'back'; s.t = 0;
+    if (s.backhaul !== false) { // Rückfracht: in die Gegenrichtung laden, wenn sich das lohnt
+      const rev = { ...s, from: s.to, to: s.from }, ri = routeInfo(g, rev);
+      if (ri.ok && ri.margin >= (s.minMargin ?? 0)) { const q = loadAt(g, rev, s.to, ri); if (q > 0) { s.load = q; s.basis = rev.basis; s.note += ` · Rückfracht ${Math.round(q)} t`; } }
+    }
+  } else {
+    if (s.load > 0) deliver(g, s, s.from);
+    s.state = 'idle'; s.leg = 'out'; s.t = 0;
+  }
+}
+// Von Hand abladen: ein wartendes Schiff liefert jetzt zum aktuellen Preis
+export function unloadNow(g, id) {
+  const s = g.shipping.ships.find((q) => q.id === id);
+  if (!s || s.state !== 'hold') return false;
+  arrive(g, s); return true;
+}
+// Entscheidungshilfe für ein wartendes Schiff: Preis jetzt, Einkauf, Gewinn, Preis im Vergleich zum Durchschnitt der letzten Tage
+export function holdInfo(g, s) {
+  const at = s.leg === 'out' ? s.to : s.from, m = g.maps[at].market, id = s.cargo;
+  const price = withMap(g, at, () => sellPrice(g, id)), h = m.history[id] ?? [], avg = h.length ? h.reduce((a, b) => a + b, 0) / h.length : price;
+  const base = CARGOS.find((c) => c.id === id)?.base ?? price, trend = h.length > 1 ? h[h.length - 1] / h[h.length - 2] - 1 : 0;
+  return { at, price, basis: s.basis ?? 0, gain: (price - (s.basis ?? 0)) * s.load, avg, vsAvg: avg > 0 ? price / avg - 1 : 0, trend, base };
+}
+
 export function updateShipping(g, dt) {
   const S = g.shipping; if (!S?.ships.length) return;
   const day = CONFIG.daySeconds;
@@ -128,20 +158,20 @@ export function updateShipping(g, dt) {
       if (q <= 0) { s.note = 'Zu wenig Ware im Lager (kaufen oder Auto-Einkauf, Geld/Lagerplatz prüfen)'; continue; }
       s.load = q; s.state = 'sail'; s.leg = 'out'; s.t = 0; s.dur = info.days * day;
       s.note = `fährt ${Math.round(q)} t ${g.maps[s.to].name}`;
+    } else if (s.state === 'hold') { // am Ziel angekommen, Ware noch an Bord: Abladen von Hand oder ab dem eingestellten Preis
+      s.holdT = (s.holdT ?? 0) + dt;
+      const at = s.leg === 'out' ? s.to : s.from, price = withMap(g, at, () => sellPrice(g, s.cargo)), basis = s.basis ?? 0;
+      if ((s.unload ?? 'manual') === 'limit' && price >= (s.unloadMin ?? 0)) arrive(g, s);
+      else s.note = `wartet im Hafen ${g.maps[at].name} mit ${Math.round(s.load)} t ${PORT.label[s.cargo]}: Preis ${Math.round(price)} (Einkauf ${Math.round(basis)})${(s.unload ?? 'manual') === 'limit' ? ` · lädt ab ${Math.round(s.unloadMin ?? 0)}` : ''}`;
     } else if (s.state === 'sail') {
       s.t += dt;
       if (s.t < s.dur) continue;
-      if (s.leg === 'out') {
-        deliver(g, s, s.to);
-        s.leg = 'back'; s.t = 0;
-        if (s.backhaul !== false) { // Rückfracht: in die Gegenrichtung laden, wenn sich das lohnt
-          const rev = { ...s, from: s.to, to: s.from }, ri = routeInfo(g, rev);
-          if (ri.ok && ri.margin >= (s.minMargin ?? 0)) { const q = loadAt(g, rev, s.to, ri); if (q > 0) { s.load = q; s.basis = rev.basis; s.note += ` · Rückfracht ${Math.round(q)} t`; } }
-        }
-      } else {
-        if (s.load > 0) deliver(g, s, s.from);
-        s.state = 'idle'; s.leg = 'out'; s.t = 0;
+      if ((s.unload ?? 'now') !== 'now' && s.load > 0) { // Ankunft: abladen oder warten (später, wenn der Preis besser ist)
+        s.state = 'hold'; s.holdT = 0;
+        g.notify?.(`${s.name} ist angekommen: abladen oder auf einen besseren Preis warten`, 'info');
+        continue;
       }
+      arrive(g, s);
     }
   }
 }

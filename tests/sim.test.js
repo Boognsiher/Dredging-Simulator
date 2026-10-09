@@ -1439,7 +1439,7 @@ test('Regionale Preise: jede Karte hat einen eigenen Markt', () => {
 test('Eigene Reederei: Route zwischen Karten, Ladung hängt von der Rinne ab, Niedrigwasser macht Fracht teurer', () => {
   const g = twoPorts();
   assert.equal(buyShip(g, 'tank') !== null, true);
-  const s = buyShip(g, 'kahn'); setRoute(g, s.id, { from: 0, to: 1, cargo: 'kies' });
+  const s = buyShip(g, 'kahn'); setRoute(g, s.id, { from: 0, to: 1, cargo: 'kies', unload: 'now' });
   const hi = routeInfo(g, s); assert.ok(hi.ok, hi.reason); assert.ok(hi.eff > 0 && hi.perT > 0);
   // Niedrigwasser: Teilbeladung sinkt, Fracht je Tonne steigt
   const lf = g.maps.map((m) => m.fair.kahn.loadFactor); for (const m of g.maps) m.fair.kahn.loadFactor = Math.max(0.3, lf[0] * 0.5);
@@ -1473,7 +1473,7 @@ test('Flotte: Naturschutzzonen und Altlastenbereiche lassen sich sperren', () =>
 test('Container-Fracht: Terminal, Lager, eigenes Containerschiff, alte Stände werden nachgerüstet', () => {
   const g = twoPorts();
   for (let i = 0; i < 2; i++) { g.maps[i].port.slots[3] = { type: 'container', level: 1 }; Object.assign(g.maps[i].fair.container, { passable: true, loadFactor: 0.8 }); g.maps[i].market.bias.container = i ? 0.25 : -0.25; }
-  const s = buyShip(g, 'container'); assert.ok(s && s.cargo === 'container');
+  const s = buyShip(g, 'container'); assert.ok(s && s.cargo === 'container'); setRoute(g, s.id, { unload: 'now' });
   const info = routeInfo(g, s); assert.ok(info.ok, info.reason); assert.ok(info.eff > 500 && info.eff < 650);
   for (let i = 0; i < 14 * 14 * 20; i++) updateShipping(g, 0.05);
   assert.ok(s.trips >= 1, 'Containerschiff fährt');
@@ -1976,4 +1976,19 @@ test('Kreuzungsstelle: Ein- und Ausfahrt gehören zum Plan, gemeinsame Spurzeile
   g.analyze(true);
   const p3 = g.zonePlanFor(x, 'kahn');
   assert.equal(p3.ready, false); assert.ok(p3.rampVolume[0] > 0);
+});
+
+import { unloadNow, holdInfo } from '../src/sim/shipping.js';
+test('Reederei: Ankunft mit Wahl: abladen oder warten, Abladen ab Preis, Wartezeit kostet Unterhalt', () => {
+  const g = new Game(8, 'endlos'); g.eventsOn = false; g.money = 1e8;
+  // zwei Karten mit Hafen vorbereiten wie im bestehenden Reederei-Test
+  const base = g.maps[0]; void base;
+  const S = g.shipping; S.ships.push({ id: 1, type: 'kahn', name: 'T', from: 0, to: 1, cargo: 'kies', autoBuy: false, toStock: false, backhaul: false, unload: 'manual', unloadMin: 0, minMargin: 0, state: 'sail', leg: 'out', t: 10, dur: 10, load: 100, basis: 10, profit: 0, trips: 0, note: '' });
+  g.maps.push({ ...g.maps[0], market: { ...g.maps[0].market, history: { kies: [18, 19, 20] } } });
+  g.update(0.05); const s = S.ships[0];
+  assert.equal(s.state, 'hold', 'angekommen: wartet auf Entscheidung');
+  const m0 = g.money; for (let i = 0; i < 100; i++) g.update(0.05);
+  assert.equal(s.state, 'hold'); assert.ok(g.money < m0, 'Wartezeit kostet Unterhalt');
+  const info = holdInfo(g, s); assert.ok(info.price > 0 && Number.isFinite(info.gain));
+  assert.equal(unloadNow(g, 1), true); assert.ok(s.state !== 'hold' && s.load === 0 || s.state === 'sail');
 });
