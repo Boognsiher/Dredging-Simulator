@@ -231,3 +231,5 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - **Icons:** Linien-Icons statt Emojis in den Knopfleisten (`src/ui/icons.js`); die Texte im Spiel bleiben unverändert.
 
 **Kreuzungsstelle als verbreiterte Rinne:** Auf der Karte erscheint sie als ein einziges Band, das sich aus der Rinne aufweitet, zwei Spuren bietet und wieder zuläuft (gestrichelt gelb = noch nicht tief genug, grün = bereit). Fehlende Zellen sind rot getönt. Die Schiffe fahren immer auf der Linie der Fahrrinne und weichen nur in der Kreuzungsstelle auf ihre Spur aus.
+
+**Pontons neben der Rinne:** Arbeitet ein Ponton (Flotte oder dein eigener im Querschnitt) in der Fahrrinne, sitzt er in der Darstellung daneben (auf der Seite mit Wasser), und ein Saugrohr führt zur Arbeitsstelle. Gebaggert wird an der echten Stelle; die Schiffe fahren so nicht durch den Ponton.

@@ -206,6 +206,24 @@ function drawShip(ctx, cls, ship, p, game, ui) {
   }
 }
 
+
+// Ponton neben der Rinne zeichnen: liegt der Arbeitspunkt in der Fahrrinne, sitzt der Ponton daneben (auf der Seite mit Wasser) und das Saugrohr führt zur Arbeitsstelle.
+// Nur die Darstellung: gebaggert wird an der echten Stelle, Schiffe fahren so nicht durch den Ponton.
+function besideLane(game, x, y) {
+  const r = game.river, cls = [...SHIPS].reverse().find((c) => game.level.classes.includes(c.id) && game.fair?.[c.id]?.passable) ?? SHIPS[0], pts = game.fair?.[cls.id]?.path?.points;
+  if (!pts?.length || x < 0 || x > r.cols) return { x, y, moved: false };
+  let best = pts[0]; for (const q of pts) if (Math.abs(q.x - x) < Math.abs(best.x - x)) best = q;
+  const half = cls.beam / 2 + 1.6;
+  if (Math.abs(y - best.y) >= half) return { x, y, moved: false };
+  const water = (yy) => yy > 0.6 && yy < r.rows - 0.6 && r.depthAt(r.idx(Math.min(r.cols - 1, Math.max(0, Math.floor(x))), Math.floor(yy))) >= 0.8;
+  const first = y >= best.y ? 1 : -1;
+  for (const sg of [first, -first]) { const ny = best.y + sg * half; if (water(ny)) return { x, y: ny, moved: true }; }
+  return { x, y, moved: false };
+}
+function hose(ctx, from, to, ui) {
+  ctx.save(); ctx.strokeStyle = '#2b2f33'; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.quadraticCurveTo((from.x + to.x) / 2 + 6, (from.y + to.y) / 2, to.x, to.y); ctx.stroke();
+  const pulse = 0.5 + 0.5 * Math.sin((ui.t ?? 0) * 5); ctx.strokeStyle = `rgba(255,214,90,${0.5 + 0.4 * pulse})`; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(to.x, to.y, 4 + pulse * 2, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+}
 function drawPontoon(ctx, game, sim, ui) {
   const r = game.river, px = OX + sim.x * CELL, py = sim.y * CELL;
   const B = CONFIG.box.cols;
@@ -220,7 +238,9 @@ function drawPontoon(ctx, game, sim, ui) {
     ctx.strokeStyle = sim.slice.suctioning ? '#ffd24d' : '#7fe3ffcc'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(bx - 3, sy); ctx.lineTo(bx + bw + 3, sy); ctx.stroke();
   }
-  drawPontoonSprite(ctx, px, py, true, sim.mode === 'slice' && sim.slice.suctioning, ui);
+  const bl = sim.mode === 'slice' ? besideLane(game, sim.x, sim.y) : { moved: false };
+  if (bl.moved) { const q = mapPx(bl.x, bl.y); hose(ctx, q, { x: px, y: py }, ui); drawPontoonSprite(ctx, q.x, q.y, true, sim.slice.suctioning, ui); }
+  else drawPontoonSprite(ctx, px, py, true, sim.mode === 'slice' && sim.slice.suctioning, ui);
   if (ui.mapTarget && sim.mode === 'map') {
     const t = mapPx(ui.mapTarget.x, ui.mapTarget.y);
     ctx.strokeStyle = '#7fe3ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
@@ -553,9 +573,11 @@ function drawFleet(ctx, game, ui = {}) {
       const sy = sl.x0 * CELL + (sl.x - sl.x0) * CELL;
       ctx.strokeStyle = sl.suctioning ? '#ffd24d' : '#7fe3ff99'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(OX + sl.c0 * CELL, sy); ctx.lineTo(OX + (sl.c0 + B) * CELL, sy); ctx.stroke();
     }
-    drawPontoonSprite(ctx, px, py, false, sim?.mode === 'slice' && sim.slice.suctioning, ui);
-    ctx.font = font(11); ctx.textAlign = 'center'; const nw = ctx.measureText(u.name).width + 4, ndy = labelDy(px - nw / 2, py - CELL - fs(11), nw, fs(11) + 3);
-    ctx.fillStyle = '#000b'; ctx.fillText(u.name, px + 1, py - CELL + 1 + ndy); ctx.fillStyle = '#d9f7ff'; ctx.fillText(u.name, px, py - CELL + ndy); ctx.textAlign = 'start';
+    const bl = sim?.mode === 'slice' ? besideLane(game, u.x, u.y) : { moved: false }, q = bl.moved ? mapPx(bl.x, bl.y) : { x: px, y: py };
+    if (bl.moved) hose(ctx, q, { x: px, y: py }, ui);
+    drawPontoonSprite(ctx, q.x, q.y, false, sim?.mode === 'slice' && sim.slice.suctioning, ui);
+    ctx.font = font(11); ctx.textAlign = 'center'; const nw = ctx.measureText(u.name).width + 4, ndy = labelDy(q.x - nw / 2, q.y - CELL - fs(11), nw, fs(11) + 3);
+    ctx.fillStyle = '#000b'; ctx.fillText(u.name, q.x + 1, q.y - CELL + 1 + ndy); ctx.fillStyle = '#d9f7ff'; ctx.fillText(u.name, q.x, q.y - CELL + ndy); ctx.textAlign = 'start';
   }
 }
 
