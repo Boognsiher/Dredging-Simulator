@@ -235,3 +235,7 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 **Pontons neben der Rinne:** Arbeitet ein Ponton (Flotte oder dein eigener im Querschnitt) in der Fahrrinne, sitzt er in der Darstellung daneben (auf der Seite mit Wasser), und ein Saugrohr führt zur Arbeitsstelle. Gebaggert wird an der echten Stelle; die Schiffe fahren so nicht durch den Ponton.
 
 **Hafenkarte im neuen Look:** Betonblöcke für Kaimauern (auch auf der Hauptkarte), Betonpier mit Pollern, gepflasterter Hof unter den Bauplätzen, Gebäude mit Schatten, Dach und Stufenpunkten, abgerundete Liegeplätze mit Nummernplaketten und Warteräume sowie Beschriftungen als Plaketten.
+
+**Rinne dauerhaft sichtbar:** Die Fahrrinne der grössten befahrbaren Klasse ist immer schwach eingezeichnet (grün = befahrbar, weiss = noch nicht); mit gewählter Klasse wie bisher kräftig.
+
+**Freie Kamera:** Arbeitet dein Ponton für die Flotte, lässt sich die Karte verschieben (Wischen, Stick oder Pfeiltasten). Nimmst du ihn aus der Flotte, folgt die Karte wieder dem Ponton.

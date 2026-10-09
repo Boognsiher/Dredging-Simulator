@@ -101,7 +101,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   drawDeposits(ctx, game, ui);
   // Auswahl einer Schiffsklasse: wo fehlt Tiefe, wo läuft die günstigste Rinne
   const sel = ui.classSel && game.fair?.[ui.classSel] ? shipById(ui.classSel) : null;
-  if (sel) drawClassOverlay(ctx, game, sel);
+  if (sel) drawClassOverlay(ctx, game, sel); else drawLaneFaint(ctx, game);
   drawZones(ctx, game, ui);
   drawHarbor(ctx, game);
   drawPiles(ctx, game, ui); drawTrasse(ctx, game);
@@ -123,6 +123,16 @@ export function drawMap(ctx, game, sim, ui = {}) {
   if (sim) turbidityVeil(ctx, sim);
 }
 
+
+// Rinne dauerhaft schwach: die Fahrrinne der grössten befahrbaren Klasse (sonst der kleinsten) als zarter Streifen mit feiner Mittellinie
+function drawLaneFaint(ctx, game) {
+  const cls = [...SHIPS].reverse().find((c) => game.level.classes.includes(c.id) && game.fair?.[c.id]?.passable) ?? SHIPS[0], f = game.fair?.[cls.id], pts = f?.path?.points;
+  if (!pts?.length) return;
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = f.passable ? 'rgba(120,255,160,.10)' : 'rgba(255,255,255,.08)'; ctx.lineWidth = cls.beam * CELL * 0.9;
+  ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); ctx.stroke();
+  ctx.strokeStyle = f.passable ? 'rgba(123,240,160,.35)' : 'rgba(255,255,255,.3)'; ctx.lineWidth = 1.4; ctx.setLineDash([8, 8]); ctx.stroke(); ctx.restore();
+}
 function drawClassOverlay(ctx, game, cls) {
   const r = game.river, f = game.fair[cls.id], needTop = game.wl - f.need, stage2 = f.passable; // bis passierbar: Mindesttiefe (rot), danach Volllast-Tiefe (gelb)
   const lo = Math.floor((cls.beam - 1) / 2), hi = cls.beam - 1 - lo, lane = new Set();

@@ -62,6 +62,7 @@ let paused = false, endShown = false;
 const readInput = createInput(canvas);
 sizeCanvas(canvas);
 let mapTarget = null;
+let camFocus = null; // freie Kamera, solange dein Ponton für die Flotte arbeitet (Wischen oder Stick verschiebt die Karte); sonst folgt sie dem Ponton
 let harborView = false, mainSim = null, harborSim = null; // Hafenkarte: eigener Ponton fährt im Becken, die Hauptkarte pausiert für ihn
 let classSel = null; // gewählte Schiffsklasse: Engstellen auf Karte und Querschnitt
 let sheetOpen = false, menuOpen = false, mapFull = false, panYm = 0;
@@ -759,7 +760,7 @@ function panCanvas(dt) {
   if (sig !== layoutSig) { layoutSig = sig; fitCanvas(); }
   const stageW = $('stage').clientWidth, cw = parseFloat(canvas.style.width) || stageW, ch = parseFloat(canvas.style.height) || 0;
   if (mapFull) {
-    const AW = innerWidth, AH = innerHeight, fx0 = pileMode ? planFocus : sim, fxp = tow ? cw / 2 : ((OX + fx0.x * CELL) / canvas.logicalW) * cw;
+    const AW = innerWidth, AH = innerHeight, fx0 = pileMode ? planFocus : camFocus ?? sim, fxp = tow ? cw / 2 : ((OX + fx0.x * CELL) / canvas.logicalW) * cw;
     const want = cw <= AW ? (AW - cw) / 2 : Math.min(0, Math.max(AW - cw, AW / 2 - fxp));
     panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1);
     const fyp = tow ? ch / 2 : ((fx0.y * CELL) / canvas.logicalH) * ch, wantY = ch <= AH ? (AH - ch) / 2 : Math.min(0, Math.max(AH - ch, AH / 2 - fyp));
@@ -769,7 +770,7 @@ function panCanvas(dt) {
     return;
   }
   if (zoom > 1 && sim.mode === 'map' && !tow && !pileMode) {
-    const fxp = ((OX + sim.x * CELL) / canvas.logicalW) * cw, want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
+    const cf = camFocus ?? sim, fxp = ((OX + cf.x * CELL) / canvas.logicalW) * cw, want = Math.min(Math.max(0, fxp - stageW / 2), Math.max(0, cw - stageW));
     panX += (want - panX) * (dt > 0 ? Math.min(1, dt * 6) : 1); canvas.style.marginLeft = `${-panX}px`;
   } else if (zoom > 1 && tow) canvas.style.marginLeft = `${-Math.max(0, cw - stageW) / 2}px`;
   else if (zoom > 1 && pileMode) {
@@ -1189,10 +1190,11 @@ $('map-select').onchange = (e) => changeMap(+e.target.value);
 $('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
 addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
 
-readInput.onDrag((dx, dy) => { // Planungsmodus: Karte mit dem Finger verschieben
-  if (!pileMode || sim.mode !== 'map' || tow || paused || sheetOpen || overlayOpen()) return;
+readInput.onDrag((dx, dy) => { // Karte mit dem Finger verschieben: im Planungsmodus oder bei freier Kamera (Ponton in der Flotte)
+  const foc = pileMode ? planFocus : sim.mode === 'map' ? camFocus : null;
+  if (!foc || sim.mode !== 'map' || tow || paused || sheetOpen || overlayOpen()) return;
   const r = canvas.getBoundingClientRect(), k = canvas.logicalW / CELL / r.width, ky = canvas.logicalH / CELL / r.height;
-  planFocus.x = Math.min(game.river.cols, Math.max(0, planFocus.x - dx * k)); planFocus.y = Math.min(game.river.rows, Math.max(0, planFocus.y - dy * ky));
+  foc.x = Math.min(game.river.cols, Math.max(0, foc.x - dx * k)); foc.y = Math.min(game.river.rows, Math.max(0, foc.y - dy * ky));
 });
 const touch = isTouch ? setupTouch(readInput, { anchor, togglePump }) : null;
 readInput.onTap((px, py) => {
@@ -1287,6 +1289,9 @@ function frame(now) {
     const cur = inMap ? { x: OX + sim.x * CELL, y: sim.y * CELL } : sliceHeadScreen(sim.slice);
     const inp = readInput.read(cur, { holdToMove: true });
     if (lentUnit(game) && sim.mode === 'map') { const lu = lentUnit(game); sim.x = lu.x; sim.y = lu.y; } // der eigene Ponton fährt als Flottenschiff mit
+    { const lent = !!lentUnit(game) && sim.mode === 'map'; // freie Kamera, solange der eigene Ponton in der Flotte arbeitet
+      if (lent && !camFocus) { camFocus = { x: sim.x, y: sim.y }; document.body.classList.add('cam-free'); } else if (!lent && camFocus) { camFocus = null; document.body.classList.remove('cam-free'); }
+      if (camFocus && !pileMode && !areaMode && !landMode && !zoneMode) { camFocus.x = Math.min(game.river.cols, Math.max(0, camFocus.x + inp.dx * dt * 16)); camFocus.y = Math.min(game.river.rows, Math.max(0, camFocus.y + inp.dy * dt * 16)); } }
     if (pileMode) { planFocus.x = Math.min(game.river.cols, Math.max(0, planFocus.x + inp.dx * dt * 16)); planFocus.y = Math.min(game.river.rows, Math.max(0, planFocus.y + inp.dy * dt * 16)); }
     if (tow || zoneMode || areaMode || landMode || pileMode || lentUnit(game)) { inp.dx = 0; inp.dy = 0; mapTarget = null; } // beim Schleppen liegt der Ponton still
     if (pileMode) syncPileButton();
