@@ -545,13 +545,14 @@ function harborBuilding(ctx, x, y, w, h, type, level) {
 export function drawHarborScene(ctx, game, ui = {}) {
   const g = game, p = g.port, B = HARBOR.basin, E = HARBOR.entrance, L = (x, y) => ({ x: OX + x * CELL, y: y * CELL });
   LABELS = [];
-  const tag = (text, cx, cy, color = '#fff') => { ctx.font = font(12); ctx.textAlign = 'center'; const tw = ctx.measureText(text).width + 10, dy = labelDy(cx - tw / 2, cy - fs(12), tw, fs(12) + 5); ctx.fillStyle = 'rgba(10,28,44,.82)'; ctx.beginPath(); ctx.roundRect(cx - tw / 2, cy - fs(12) - 1 + dy, tw, fs(12) + 5, (fs(12) + 5) / 2); ctx.fill(); ctx.fillStyle = color; ctx.fillText(text, cx, cy + dy + 2); ctx.textAlign = 'start'; };
+  const cf = view.s < 0.8, mn = cf ? 8.5 : 12, F = (n, bold = true) => font(n, bold, mn); // kleine Anzeige (Handy hochkant): kompaktere Beschriftungen
+  const tag = (text, cx, cy, color = '#fff') => { ctx.font = F(12); ctx.textAlign = 'center'; const tw = ctx.measureText(text).width + 10, dy = labelDy(cx - tw / 2, cy - fs(12, mn), tw, fs(12, mn) + 5); ctx.fillStyle = 'rgba(10,28,44,.82)'; ctx.beginPath(); ctx.roundRect(cx - tw / 2, cy - fs(12, mn) - 1 + dy, tw, fs(12, mn) + 5, (fs(12, mn) + 5) / 2); ctx.fill(); ctx.fillStyle = color; ctx.fillText(text, cx, cy + dy + 2); ctx.textAlign = 'start'; };
   // Becken: Rahmen gelb (zu flach) oder grün (bereit)
   const depth = bayDepth(g), ready = bayReady(g), a = L(B.x0, B.y0);
   harborYard(ctx, game);
   ctx.strokeStyle = ready ? 'rgba(123,227,154,.85)' : 'rgba(255,201,74,.85)'; ctx.lineWidth = 2; ctx.setLineDash(ready ? [] : [7, 5]); ctx.beginPath(); ctx.roundRect(a.x + 1, a.y + 1, (B.x1 - B.x0 + 1) * CELL - 2, (B.y1 - B.y0 + 1) * CELL - 2, 6); ctx.stroke(); ctx.setLineDash([]);
-  tag(ready ? `⚓ Hafenbecken ${depth.toFixed(1)} m ✓` : `⚓ Hafenbecken ${depth.toFixed(1)}/${bayTarget(g).toFixed(1)} m: ausbaggern`, a.x + ((B.x1 - B.x0 + 1) * CELL) / 2, (B.y1 + 1) * CELL + 16, ready ? '#b9f5c9' : '#ffe08a');
-  const en = L(E.x0, E.y0); tag('Zufahrt vom Fluss ➜', en.x + 70, E.y0 * CELL - 8, '#bfeaff');
+  tag(ready ? `⚓ ${cf ? 'Becken' : 'Hafenbecken'} ${depth.toFixed(1)} m ✓` : `⚓ ${cf ? 'Becken' : 'Hafenbecken'} ${depth.toFixed(1)}/${bayTarget(g).toFixed(1)} m${cf ? '' : ': ausbaggern'}`, a.x + ((B.x1 - B.x0 + 1) * CELL) / 2, (B.y1 + 1) * CELL + 16, ready ? '#b9f5c9' : '#ffe08a');
+  const en = L(E.x0, E.y0); tag(cf ? 'Zufahrt ➜' : 'Zufahrt vom Fluss ➜', en.x + 70, E.y0 * CELL - 8, '#bfeaff');
   // Kai: Pier an der Nordseite des Beckens
   const hasKai = (p.slots ?? []).some((s) => s?.type === 'kai'), nb = berthsOf(g);
   if (hasKai) {
@@ -565,7 +566,7 @@ export function drawHarborScene(ctx, game, ui = {}) {
       ctx.strokeStyle = on ? 'rgba(255,233,160,.9)' : 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [] : [3, 4]); ctx.beginPath(); ctx.roundRect(x + 1, y + 1, 4 * CELL - 2, CELL * 3.2, 5); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = on ? 'rgba(255,233,160,.1)' : 'rgba(255,255,255,.04)'; ctx.fill();
       ctx.fillStyle = 'rgba(10,28,44,.8)'; ctx.beginPath(); ctx.arc(x + 2 * CELL, y - CELL * 0.55, 8, 0, 7); ctx.fill();
-      ctx.fillStyle = on ? '#ffe9a0' : '#ffffff77'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(on ? `${k + 1}` : '🔒', x + 2 * CELL, y - CELL * 0.55 + 4); ctx.textAlign = 'start';
+      ctx.fillStyle = on ? '#ffe9a0' : '#ffffff77'; ctx.font = F(11); ctx.textAlign = 'center'; ctx.fillText(on ? `${k + 1}` : '🔒', x + 2 * CELL, y - CELL * 0.55 + 4); ctx.textAlign = 'start';
     }
   }
   // Warteräume im südlichen Becken: Rahmen je Raum mit zugewiesener Fracht, wartende Schiffe mit Sanduhr
@@ -573,8 +574,8 @@ export function drawHarborScene(ctx, game, ui = {}) {
   for (let k = 0; k < HARBOR.waitX.length; k++) {
     const wp = waitPos(k), x = OX + (wp.x - 2) * CELL, y = (wp.y - 1.5) * CELL, on = k < nw, cg = p.waitCargo?.[k];
     ctx.strokeStyle = on ? 'rgba(155,224,255,.85)' : 'rgba(255,255,255,.2)'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [5, 4] : [3, 5]); ctx.beginPath(); ctx.roundRect(x + 1, y + 1, 4 * CELL - 2, 3 * CELL - 2, 8); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = on ? 'rgba(155,224,255,.07)' : 'rgba(255,255,255,.03)'; ctx.fill();
-    ctx.font = font(11); ctx.textAlign = 'center';
-    const wt = on ? `⏳ Warteraum ${k + 1}: ${cg ? PORT.commodities[cg].icon + ' ' + PORT.commodities[cg].name.split(' ')[0] : 'alle'}` : '🔒', wx = x + 2 * CELL, wy = y + 3 * CELL + 13, ww = ctx.measureText(wt).width + 10;
+    ctx.font = F(11); ctx.textAlign = 'center';
+    const wt = on ? `⏳ ${cf ? 'Warte' : 'Warteraum'} ${k + 1}: ${cg ? PORT.commodities[cg].icon + ' ' + PORT.commodities[cg].name.split(' ')[0] : 'alle'}` : '🔒', wx = x + 2 * CELL, wy = y + 3 * CELL + 13, ww = ctx.measureText(wt).width + 10;
     if (on) { ctx.fillStyle = 'rgba(8,24,40,.78)'; ctx.beginPath(); ctx.roundRect(wx - ww / 2, wy - fs(11) - 1, ww, fs(11) + 6, 5); ctx.fill(); } // dunkle Plakette: lesbar auch auf hellem Wasser
     ctx.fillStyle = on ? '#d8f3ff' : '#ffffff88'; ctx.fillText(wt, wx, wy); ctx.textAlign = 'start';
   }
@@ -587,11 +588,11 @@ export function drawHarborScene(ctx, game, ui = {}) {
   // Bauplätze und Gebäude
   (p.slots ?? []).forEach((sl, i) => {
     const pl = HARBOR.plots[i]; if (!pl) return; const q = L(pl[0], pl[1]), w = HARBOR.plotW * CELL, h = HARBOR.plotH * CELL;
-    if (!sl) { ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.roundRect(q.x, q.y, w, h, 8); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillText(`Bauplatz ${i + 1}`, q.x + w / 2, q.y + h / 2 + 4); ctx.textAlign = 'start'; return; }
+    if (!sl) { ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.roundRect(q.x, q.y, w, h, 8); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = F(11); ctx.textAlign = 'center'; ctx.fillText(`Bauplatz ${i + 1}`, q.x + w / 2, q.y + h / 2 + 4); ctx.textAlign = 'start'; return; }
     const Bd = PORT.buildings[sl.type];
     harborBuilding(ctx, q.x, q.y, w, h, sl.type, sl.level);
-    ctx.font = font(22); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(Bd.icon, q.x + w / 2, q.y + h / 2 + 4);
-    ctx.font = font(11); ctx.fillStyle = '#fff'; ctx.shadowColor = '#000a'; ctx.shadowBlur = 4; const fill = Bd.commodity ? ` · ${Math.round(p.stock[Bd.commodity] ?? 0)} t` : ''; ctx.fillText(`${Bd.name.split(' ')[0]} ${sl.level}${fill}`, q.x + w / 2, q.y + h - 5); ctx.shadowBlur = 0; ctx.textAlign = 'start';
+    ctx.font = F(22); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(Bd.icon, q.x + w / 2, q.y + h / 2 + 4);
+    ctx.font = F(11); ctx.fillStyle = '#fff'; ctx.shadowColor = '#000a'; ctx.shadowBlur = 4; const fill = Bd.commodity ? ` · ${Math.round(p.stock[Bd.commodity] ?? 0)} t` : ''; ctx.fillText(`${cf ? Bd.name.split(' ')[0].replace(/lager|terminal|kran/i, '') : Bd.name.split(' ')[0]} ${sl.level}${cf ? fill.replace(' t', '') : fill}`, q.x + w / 2, q.y + h - 5); ctx.shadowBlur = 0; ctx.textAlign = 'start';
   });
   // angelegte Schiffe an den Liegeplätzen, mit Ladefortschritt
   const docked = (p.jobs ?? []).filter((j) => isDocked(j) && j.shipId != null);
@@ -601,7 +602,7 @@ export function drawHarborScene(ctx, game, ui = {}) {
     drawShip(ctx, cls, { ...ship, state: 'harbor' }, bp, g, ui);
     const q = mapPx(bp.x, bp.y), wBar = 3 * CELL;
     ctx.fillStyle = '#000b'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar, 5); ctx.fillStyle = '#7bd88f'; ctx.fillRect(q.x - wBar / 2, q.y + CELL * 1.2, wBar * Math.min(1, j.done / j.tons), 5);
-    ctx.font = font(11); ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(`${PORT.commodities[j.cargo].icon} ${j.out ? 'lädt' : 'entlädt'}`, q.x, q.y + CELL * 1.2 + 16); ctx.textAlign = 'start';
+    ctx.font = F(11); ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(`${PORT.commodities[j.cargo].icon} ${j.out ? 'lädt' : 'entlädt'}`, q.x, q.y + CELL * 1.2 + 16); ctx.textAlign = 'start';
   });
   // Umschlag: Kran bzw. Radlader fährt zwischen Lager und Schiff, Ladung wandert über den Kai (laden: Lager → Schiff, entladen: Schiff → Lager)
   const t = ui.t ?? 0, M = PORT.machines[(p.slots ?? []).some((s) => s?.type === 'kran') ? 'kran' : 'radlader'], pierY = (B.y0 - 0.7) * CELL;
@@ -621,10 +622,10 @@ export function drawHarborScene(ctx, game, ui = {}) {
       ctx.fillRect(bx - w, topY, 5, pierY - topY + 4); ctx.fillRect(bx + w - 5, topY, 5, pierY - topY + 4);
       ctx.strokeStyle = '#222'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(bx, topY + 3); ctx.lineTo(bx, ty); ctx.stroke();
       ctx.fillStyle = ['#e0803a', '#3a7ae0', '#d94a4a', '#e0c33a'][(k + Math.floor(t)) % 4]; ctx.fillRect(bx - 7, ty - 4, 14, 9); ctx.strokeStyle = '#10202c'; ctx.strokeRect(bx - 7, ty - 4, 14, 9);
-    } else { ctx.font = font(18); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(M.icon, bx, pierY - 3); ctx.textAlign = 'start'; } // Gerät am Liegeplatz
+    } else { ctx.font = F(18); ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(M.icon, bx, pierY - 3); ctx.textAlign = 'start'; } // Gerät am Liegeplatz
   });
   const res = (p.jobs ?? []).filter((j) => j.state === 'reserved').length;
-  tag(`Liegeplätze ${(p.jobs ?? []).filter((q) => !q.wait).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`, OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
+  tag((cf ? `Plätze ${(p.jobs ?? []).filter((q) => !q.wait).length}/${nb}${res ? ` · +${res}` : ''}` : `Liegeplätze ${(p.jobs ?? []).filter((q) => !q.wait).length}/${nb}${res ? ` · ${res} Schiff${res > 1 ? 'e' : ''} unterwegs` : ''} · Kai ${kaiLevel(g) || '–'}`), OX + 10 * CELL, 34 * CELL + 8, '#e8d9a0');
 }
 
 function drawFleet(ctx, game, ui = {}) {
