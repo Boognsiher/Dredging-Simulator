@@ -138,20 +138,45 @@ export class River {
     for (let n = 0; n < (cfg.tribs ?? 0); n++) {
       let x = rng.int(9, r.cols - 12); const side = rng.chance(0.5) ? -1 : 1;
       const bx = Math.round(r.cols * 0.62) - 1; if (x >= bx - 4 && x <= bx + 7) x = 9 + (x % 8); // nicht in den Hafenbereich (Einfahrt) münden
-      let my = -1; for (let k = 0; k < r.rows; k++) { const y = side < 0 ? k : r.rows - 1 - k; if (r.zone[y * r.cols + x]) { my = y; break; } }
-      if (my < 0) continue;
-      const cx = x + 2.2, cy = my - side * 1.6, rx = 5, ry = 3.4, cells = [], w = [];
-      for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(r.rows - 1, Math.ceil(cy + ry)); y++) for (let xx = Math.max(0, Math.floor(cx - rx)); xx <= Math.min(r.cols - 1, Math.ceil(cx + rx)); xx++) {
-        const i = y * r.cols + xx, d = Math.hypot((xx + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
-        if (d < 1 && r.zone[i] && water[i]) { cells.push(i); w.push(+(1 - d).toFixed(2)); }
-      }
-      r.tribs.push({ x, side, my, cells, w, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
+      const spot = r.tribSpot(x, side, water); if (!spot) continue;
+      r.tribs.push({ x, side, ...spot, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
     }
     return r;
   }
 
   idx(x, y) { return y * this.cols + x; }
   isWater(i) { return this.top[i] < this.wl - 0.05; }
+  // Mündungsstelle eines Baches an Spalte x und Seite side: erste Zone-Zelle vom Rand her und die Zellen des Schwemmfächers (null, wenn die Spalte keine Rinne hat)
+  tribSpot(x, side, water = null) {
+    const isW = (i) => (water ? water[i] : this.isWater(i));
+    let my = -1; for (let k = 0; k < this.rows; k++) { const y = side < 0 ? k : this.rows - 1 - k; if (this.zone[y * this.cols + x]) { my = y; break; } }
+    if (my < 0) return null;
+    const cx = x + 2.2, cy = my - side * 1.6, rx = 5, ry = 3.4, cells = [], w = [];
+    for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(this.rows - 1, Math.ceil(cy + ry)); y++) for (let xx = Math.max(0, Math.floor(cx - rx)); xx <= Math.min(this.cols - 1, Math.ceil(cx + rx)); xx++) {
+      const i = y * this.cols + xx, d = Math.hypot((xx + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+      if (d < 1 && this.zone[i] && isW(i)) { cells.push(i); w.push(+(1 - d).toFixed(2)); }
+    }
+    return { my, cells, w };
+  }
+  // Bäche, die im Hafenbereich (Einfahrt) münden würden, an eine freie Stelle versetzen; findet sich keine, entfällt der Bach
+  moveTribsFromBay(bay) {
+    if (!bay?.cells?.length || !this.tribs?.length) return 0;
+    const near = (t) => t.side === bay.side && t.x >= bay.x0 - 5 && t.x <= bay.x1 + 4;
+    let moved = 0;
+    for (const t of this.tribs) {
+      if (!near(t)) continue;
+      let best = null;
+      for (let x = 9; x <= this.cols - 12; x++) {
+        if (x >= bay.x0 - 5 && x <= bay.x1 + 4) continue;
+        if (this.tribs.some((o) => o !== t && Math.abs(o.x - x) < 5 && o.side === t.side)) continue;
+        const sp = this.tribSpot(x, t.side); if (!sp) continue;
+        const dist = Math.abs(x - t.x); if (!best || dist < best.dist) best = { x, dist, sp };
+      }
+      if (best) { Object.assign(t, { x: best.x, ...best.sp }); moved++; } else t.dead = true;
+    }
+    this.tribs = this.tribs.filter((t) => !t.dead);
+    return moved;
+  }
   depthAt(i) { return this.wl - this.top[i]; }
   sedAt(i) { return Math.max(0, this.top[i] - this.rock[i]); }
 

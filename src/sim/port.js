@@ -43,7 +43,6 @@ export function carveBay(river, wl) {
   const cols = []; for (let x = bx; x < bx + B.w; x++) cols.push(x);
   const mid = edge(bx + 1), north = mid[0] - 1 - B.h >= 0, south = mid[1] + 1 + B.h < river.rows;
   const side = north && (!south || mid[0] >= river.rows - 1 - mid[1]) ? -1 : 1;
-  river.tribs = (river.tribs ?? []).filter((t) => t.side !== side || t.x < bx - 4 || t.x > bx + B.w + 3); // kein Bach mündet im Hafenbereich
   const cells = [];
   for (const x of cols) {
     const [a, b] = edge(x);
@@ -69,6 +68,7 @@ export function carveBay(river, wl) {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, side]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= river.cols || ny >= river.rows) continue; const j = ny * river.cols + nx; if (!river.bay[j] && !river.zone[j]) river.armor[j] = rimArmor; }
   }
   const xs = cells.map((i) => i % river.cols), ys = cells.map((i) => (i / river.cols) | 0);
+  river.moveTribsFromBay?.({ cells, side, x0: Math.min(...xs), x1: Math.max(...xs) }); // kein Bach mündet im Hafenbereich
   return { cells, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), side };
 }
 // Tiefe, die 80 % des Hafenbeckens mindestens haben (m unter Wasser)

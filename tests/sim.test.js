@@ -2062,3 +2062,13 @@ test('Pontons haben Eigennamen, nie doppelt, umbenennbar', () => {
   assert.equal(renameUnit(g, g.fleet.units[0].id, '  Möwe  '), true); assert.equal(g.fleet.units[0].name, 'Möwe');
   assert.equal(renameUnit(g, g.fleet.units[0].id, '   '), false);
 });
+
+test('Bäche werden aus dem Hafenbereich versetzt (auch bestehende)', () => {
+  const g = new Game(11, 'endlos'); g.eventsOn = false; g.money = 1e12; g.unlocked.motor = true; g.addMap();
+  const m = g.maps[1], bay = m.port.bay, r = m.river;
+  const sp = r.tribSpot(bay.x0, bay.side); assert.ok(sp);
+  r.tribs = [{ x: bay.x0, side: bay.side, ...sp, kind: 1, rate: 0.008 }];
+  assert.equal(r.moveTribsFromBay(bay), 1);
+  assert.ok(r.tribs.length === 1 && (r.tribs[0].x < bay.x0 - 5 || r.tribs[0].x > bay.x1 + 4));
+  assert.equal(r.moveTribsFromBay(bay), 0);
+});

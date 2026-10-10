@@ -333,7 +333,7 @@ function drawPiles(ctx, game, ui) {
 function drawTribs(ctx, game, ui) {
   const r = game.river, t0 = ui?.t ?? 0;
   for (const t of r.tribs ?? []) {
-    const y0 = t.side < 0 ? 0 : r.rows * CELL, y1 = (t.side < 0 ? t.my : t.my + 1) * CELL, x0 = OX + (t.x + 0.5) * CELL, dir = y1 >= y0 ? 1 : -1;
+    const y0 = t.side < 0 ? 0 : r.rows * CELL, dir = t.side < 0 ? 1 : -1, y1 = (t.side < 0 ? t.my : t.my + 1) * CELL + dir * 0.6 * CELL, x0 = OX + (t.x + 0.5) * CELL; // Mündung reicht etwas ins Wasser
     const pt = (f) => ({ x: x0 + Math.sin(f * 7 + t.x) * 7 * (1 - f * 0.35) + Math.sin(f * 17 + t.x * 2) * 1.5, y: y0 + (y1 - y0) * f, w: 4 + f * f * 9 }); // Bach: schmal an der Quelle, breit an der Mündung
     const N = 18, P = Array.from({ length: N + 1 }, (_, k) => pt(k / N));
     const mouth = P[N], sand = t.kind === KIND.kies ? '176,168,150' : '226,196,120';
@@ -345,6 +345,10 @@ function drawTribs(ctx, game, ui) {
     // Ufer des Baches: dunkler feuchter Rand, dann Wasser, dann helle Mitte
     const stroke = (wf, style) => { ctx.strokeStyle = style; ctx.beginPath(); P.forEach((q, k) => { ctx.lineWidth = q.w * wf; if (k) { ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.beginPath(); } ctx.moveTo(q.x, q.y); }); };
     stroke(1.75, 'rgba(70,90,50,.55)'); stroke(1.3, 'rgba(210,190,130,.8)'); stroke(1, '#3f95c2'); stroke(0.55, '#7cc6e8');
+    // Mündungstrichter: der Bach weitet sich beim Eintritt in die Rinne und geht weich ins Flusswasser über
+    const flare = ctx.createRadialGradient(mouth.x, mouth.y + dir * 0.4 * CELL, 1, mouth.x, mouth.y + dir * 0.4 * CELL, 1.9 * CELL);
+    flare.addColorStop(0, 'rgba(94,170,208,.85)'); flare.addColorStop(0.55, 'rgba(94,170,208,.4)'); flare.addColorStop(1, 'rgba(94,170,208,0)');
+    ctx.fillStyle = flare; ctx.beginPath(); ctx.ellipse(mouth.x, mouth.y + dir * 0.4 * CELL, 1.9 * CELL, 1.5 * CELL, 0, 0, 7); ctx.fill();
     // Strömung: wandernde helle Striche flussabwärts (zur Mündung), nahe der Mündung schaumig
     ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.4;
     for (let k = 0; k < 9; k++) { const f = ((k / 9 + t0 * 0.12 + t.x * 0.05) % 1), a = pt(Math.min(1, f)), b = pt(Math.min(1, f + 0.05)); ctx.globalAlpha = 0.25 + 0.5 * Math.sin(f * Math.PI); ctx.beginPath(); ctx.moveTo(a.x + (k % 3 - 1) * a.w * 0.2, a.y); ctx.lineTo(b.x + (k % 3 - 1) * b.w * 0.2, b.y); ctx.stroke(); }

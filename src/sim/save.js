@@ -62,6 +62,7 @@ export function restoreGame(text) {
       river.centerY = ref.centerY; river.halfW = ref.halfW;
       m.river = river; m.site = null; m.fair = null;
       m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort(); ensurePort(m.port);
+      river.moveTribsFromBay?.(m.port?.bay); // ältere Stände: Bäche aus dem Hafenbereich versetzen
       m.fairClock = m.fairClock ?? 0; m.sedClock = m.sedClock ?? 0;
       const hs = s.harborRivers?.[i];
       if (hs && m.port.harbor) { const hr = new River(hs.cols, hs.rows); for (const [k, v] of Object.entries(hs)) hr[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v; m.port.harbor.river = hr; hr.wl = game.wl; } else if (m.port.harbor) m.port.harbor = null; // kaputter Stand: neu anlegen lassen

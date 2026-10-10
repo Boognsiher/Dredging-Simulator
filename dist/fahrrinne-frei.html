@@ -3166,20 +3166,45 @@ class River {
     for (let n = 0; n < (cfg.tribs ?? 0); n++) {
       let x = rng.int(9, r.cols - 12); const side = rng.chance(0.5) ? -1 : 1;
       const bx = Math.round(r.cols * 0.62) - 1; if (x >= bx - 4 && x <= bx + 7) x = 9 + (x % 8); // nicht in den Hafenbereich (Einfahrt) münden
-      let my = -1; for (let k = 0; k < r.rows; k++) { const y = side < 0 ? k : r.rows - 1 - k; if (r.zone[y * r.cols + x]) { my = y; break; } }
-      if (my < 0) continue;
-      const cx = x + 2.2, cy = my - side * 1.6, rx = 5, ry = 3.4, cells = [], w = [];
-      for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(r.rows - 1, Math.ceil(cy + ry)); y++) for (let xx = Math.max(0, Math.floor(cx - rx)); xx <= Math.min(r.cols - 1, Math.ceil(cx + rx)); xx++) {
-        const i = y * r.cols + xx, d = Math.hypot((xx + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
-        if (d < 1 && r.zone[i] && water[i]) { cells.push(i); w.push(+(1 - d).toFixed(2)); }
-      }
-      r.tribs.push({ x, side, my, cells, w, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
+      const spot = r.tribSpot(x, side, water); if (!spot) continue;
+      r.tribs.push({ x, side, ...spot, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
     }
     return r;
   }
 
   idx(x, y) { return y * this.cols + x; }
   isWater(i) { return this.top[i] < this.wl - 0.05; }
+  // Mündungsstelle eines Baches an Spalte x und Seite side: erste Zone-Zelle vom Rand her und die Zellen des Schwemmfächers (null, wenn die Spalte keine Rinne hat)
+  tribSpot(x, side, water = null) {
+    const isW = (i) => (water ? water[i] : this.isWater(i));
+    let my = -1; for (let k = 0; k < this.rows; k++) { const y = side < 0 ? k : this.rows - 1 - k; if (this.zone[y * this.cols + x]) { my = y; break; } }
+    if (my < 0) return null;
+    const cx = x + 2.2, cy = my - side * 1.6, rx = 5, ry = 3.4, cells = [], w = [];
+    for (let y = Math.max(0, Math.floor(cy - ry)); y <= Math.min(this.rows - 1, Math.ceil(cy + ry)); y++) for (let xx = Math.max(0, Math.floor(cx - rx)); xx <= Math.min(this.cols - 1, Math.ceil(cx + rx)); xx++) {
+      const i = y * this.cols + xx, d = Math.hypot((xx + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+      if (d < 1 && this.zone[i] && isW(i)) { cells.push(i); w.push(+(1 - d).toFixed(2)); }
+    }
+    return { my, cells, w };
+  }
+  // Bäche, die im Hafenbereich (Einfahrt) münden würden, an eine freie Stelle versetzen; findet sich keine, entfällt der Bach
+  moveTribsFromBay(bay) {
+    if (!bay?.cells?.length || !this.tribs?.length) return 0;
+    const near = (t) => t.side === bay.side && t.x >= bay.x0 - 5 && t.x <= bay.x1 + 4;
+    let moved = 0;
+    for (const t of this.tribs) {
+      if (!near(t)) continue;
+      let best = null;
+      for (let x = 9; x <= this.cols - 12; x++) {
+        if (x >= bay.x0 - 5 && x <= bay.x1 + 4) continue;
+        if (this.tribs.some((o) => o !== t && Math.abs(o.x - x) < 5 && o.side === t.side)) continue;
+        const sp = this.tribSpot(x, t.side); if (!sp) continue;
+        const dist = Math.abs(x - t.x); if (!best || dist < best.dist) best = { x, dist, sp };
+      }
+      if (best) { Object.assign(t, { x: best.x, ...best.sp }); moved++; } else t.dead = true;
+    }
+    this.tribs = this.tribs.filter((t) => !t.dead);
+    return moved;
+  }
   depthAt(i) { return this.wl - this.top[i]; }
   sedAt(i) { return Math.max(0, this.top[i] - this.rock[i]); }
 
@@ -3524,7 +3549,6 @@ function carveBay(river, wl) {
   const cols = []; for (let x = bx; x < bx + B.w; x++) cols.push(x);
   const mid = edge(bx + 1), north = mid[0] - 1 - B.h >= 0, south = mid[1] + 1 + B.h < river.rows;
   const side = north && (!south || mid[0] >= river.rows - 1 - mid[1]) ? -1 : 1;
-  river.tribs = (river.tribs ?? []).filter((t) => t.side !== side || t.x < bx - 4 || t.x > bx + B.w + 3); // kein Bach mündet im Hafenbereich
   const cells = [];
   for (const x of cols) {
     const [a, b] = edge(x);
@@ -3550,6 +3574,7 @@ function carveBay(river, wl) {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, side]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= river.cols || ny >= river.rows) continue; const j = ny * river.cols + nx; if (!river.bay[j] && !river.zone[j]) river.armor[j] = rimArmor; }
   }
   const xs = cells.map((i) => i % river.cols), ys = cells.map((i) => (i / river.cols) | 0);
+  river.moveTribsFromBay?.({ cells, side, x0: Math.min(...xs), x1: Math.max(...xs) }); // kein Bach mündet im Hafenbereich
   return { cells, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), side };
 }
 // Tiefe, die 80 % des Hafenbeckens mindestens haben (m unter Wasser)
@@ -6683,6 +6708,7 @@ function restoreGame(text) {
       river.centerY = ref.centerY; river.halfW = ref.halfW;
       m.river = river; m.site = null; m.fair = null;
       m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort(); ensurePort(m.port);
+      river.moveTribsFromBay?.(m.port?.bay); // ältere Stände: Bäche aus dem Hafenbereich versetzen
       m.fairClock = m.fairClock ?? 0; m.sedClock = m.sedClock ?? 0;
       const hs = s.harborRivers?.[i];
       if (hs && m.port.harbor) { const hr = new River(hs.cols, hs.rows); for (const [k, v] of Object.entries(hs)) hr[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v; m.port.harbor.river = hr; hr.wl = game.wl; } else if (m.port.harbor) m.port.harbor = null; // kaputter Stand: neu anlegen lassen
@@ -7562,7 +7588,7 @@ function drawPiles(ctx, game, ui) {
 function drawTribs(ctx, game, ui) {
   const r = game.river, t0 = ui?.t ?? 0;
   for (const t of r.tribs ?? []) {
-    const y0 = t.side < 0 ? 0 : r.rows * CELL, y1 = (t.side < 0 ? t.my : t.my + 1) * CELL, x0 = OX + (t.x + 0.5) * CELL, dir = y1 >= y0 ? 1 : -1;
+    const y0 = t.side < 0 ? 0 : r.rows * CELL, dir = t.side < 0 ? 1 : -1, y1 = (t.side < 0 ? t.my : t.my + 1) * CELL + dir * 0.6 * CELL, x0 = OX + (t.x + 0.5) * CELL; // Mündung reicht etwas ins Wasser
     const pt = (f) => ({ x: x0 + Math.sin(f * 7 + t.x) * 7 * (1 - f * 0.35) + Math.sin(f * 17 + t.x * 2) * 1.5, y: y0 + (y1 - y0) * f, w: 4 + f * f * 9 }); // Bach: schmal an der Quelle, breit an der Mündung
     const N = 18, P = Array.from({ length: N + 1 }, (_, k) => pt(k / N));
     const mouth = P[N], sand = t.kind === KIND.kies ? '176,168,150' : '226,196,120';
@@ -7574,6 +7600,10 @@ function drawTribs(ctx, game, ui) {
     // Ufer des Baches: dunkler feuchter Rand, dann Wasser, dann helle Mitte
     const stroke = (wf, style) => { ctx.strokeStyle = style; ctx.beginPath(); P.forEach((q, k) => { ctx.lineWidth = q.w * wf; if (k) { ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.beginPath(); } ctx.moveTo(q.x, q.y); }); };
     stroke(1.75, 'rgba(70,90,50,.55)'); stroke(1.3, 'rgba(210,190,130,.8)'); stroke(1, '#3f95c2'); stroke(0.55, '#7cc6e8');
+    // Mündungstrichter: der Bach weitet sich beim Eintritt in die Rinne und geht weich ins Flusswasser über
+    const flare = ctx.createRadialGradient(mouth.x, mouth.y + dir * 0.4 * CELL, 1, mouth.x, mouth.y + dir * 0.4 * CELL, 1.9 * CELL);
+    flare.addColorStop(0, 'rgba(94,170,208,.85)'); flare.addColorStop(0.55, 'rgba(94,170,208,.4)'); flare.addColorStop(1, 'rgba(94,170,208,0)');
+    ctx.fillStyle = flare; ctx.beginPath(); ctx.ellipse(mouth.x, mouth.y + dir * 0.4 * CELL, 1.9 * CELL, 1.5 * CELL, 0, 0, 7); ctx.fill();
     // Strömung: wandernde helle Striche flussabwärts (zur Mündung), nahe der Mündung schaumig
     ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.4;
     for (let k = 0; k < 9; k++) { const f = ((k / 9 + t0 * 0.12 + t.x * 0.05) % 1), a = pt(Math.min(1, f)), b = pt(Math.min(1, f + 0.05)); ctx.globalAlpha = 0.25 + 0.5 * Math.sin(f * Math.PI); ctx.beginPath(); ctx.moveTo(a.x + (k % 3 - 1) * a.w * 0.2, a.y); ctx.lineTo(b.x + (k % 3 - 1) * b.w * 0.2, b.y); ctx.stroke(); }
