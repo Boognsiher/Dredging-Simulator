@@ -7560,14 +7560,27 @@ function drawPiles(ctx, game, ui) {
 function drawTribs(ctx, game, ui) {
   const r = game.river, t0 = ui?.t ?? 0;
   for (const t of r.tribs ?? []) {
-    for (let k = 0; k < t.cells.length; k++) { const i = t.cells[k], x = i % r.cols, y = (i / r.cols) | 0; ctx.fillStyle = `rgba(226,196,120,${0.1 + 0.26 * t.w[k]})`; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); }
-    const y0 = t.side < 0 ? 0 : r.rows * CELL, y1 = (t.side < 0 ? t.my : t.my + 1) * CELL, x0 = OX + (t.x + 0.5) * CELL;
+    const y0 = t.side < 0 ? 0 : r.rows * CELL, y1 = (t.side < 0 ? t.my : t.my + 1) * CELL, x0 = OX + (t.x + 0.5) * CELL, dir = y1 >= y0 ? 1 : -1;
+    const pt = (f) => ({ x: x0 + Math.sin(f * 7 + t.x) * 7 * (1 - f * 0.35) + Math.sin(f * 17 + t.x * 2) * 1.5, y: y0 + (y1 - y0) * f, w: 4 + f * f * 9 }); // Bach: schmal an der Quelle, breit an der Mündung
+    const N = 18, P = Array.from({ length: N + 1 }, (_, k) => pt(k / N));
+    const mouth = P[N], sand = t.kind === KIND.kies ? '176,168,150' : '226,196,120';
     ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#2f77a8'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x0, y0);
-    for (let s = 1; s <= 8; s++) { const f = s / 8; ctx.lineTo(x0 + Math.sin(f * 7 + t.x) * 6 * (1 - f * 0.4), y0 + (y1 - y0) * f); } ctx.stroke();
-    ctx.strokeStyle = '#8fd0f5'; ctx.lineWidth = 3; ctx.setLineDash([6, 8]); ctx.lineDashOffset = -t0 * 14 * (t.side < 0 ? 1 : -1) * -1;
-    ctx.beginPath(); ctx.moveTo(x0, y0);
-    for (let s = 1; s <= 8; s++) { const f = s / 8; ctx.lineTo(x0 + Math.sin(f * 7 + t.x) * 6 * (1 - f * 0.4), y0 + (y1 - y0) * f); } ctx.stroke(); ctx.restore();
+    // Schwemmfächer an der Mündung: Sand/Kies, den der Bach in die Rinne trägt (nach Fracht-/Sedimentrate getönt)
+    const fan = ctx.createRadialGradient(mouth.x, mouth.y, 2, mouth.x, mouth.y, 5 * CELL);
+    fan.addColorStop(0, `rgba(${sand},.7)`); fan.addColorStop(0.5, `rgba(${sand},.28)`); fan.addColorStop(1, `rgba(${sand},0)`);
+    ctx.fillStyle = fan; ctx.beginPath(); ctx.ellipse(mouth.x, mouth.y, 5 * CELL, 3.2 * CELL, 0, 0, 7); ctx.fill();
+    // Ufer des Baches: dunkler feuchter Rand, dann Wasser, dann helle Mitte
+    const stroke = (wf, style) => { ctx.strokeStyle = style; ctx.beginPath(); P.forEach((q, k) => { ctx.lineWidth = q.w * wf; if (k) { ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.beginPath(); } ctx.moveTo(q.x, q.y); }); };
+    stroke(1.75, 'rgba(70,90,50,.55)'); stroke(1.3, 'rgba(210,190,130,.8)'); stroke(1, '#3f95c2'); stroke(0.55, '#7cc6e8');
+    // Strömung: wandernde helle Striche flussabwärts (zur Mündung), nahe der Mündung schaumig
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.4;
+    for (let k = 0; k < 9; k++) { const f = ((k / 9 + t0 * 0.12 + t.x * 0.05) % 1), a = pt(Math.min(1, f)), b = pt(Math.min(1, f + 0.05)); ctx.globalAlpha = 0.25 + 0.5 * Math.sin(f * Math.PI); ctx.beginPath(); ctx.moveTo(a.x + (k % 3 - 1) * a.w * 0.2, a.y); ctx.lineTo(b.x + (k % 3 - 1) * b.w * 0.2, b.y); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+    // Zusammenfluss: Schaumsaum und Trübungsfahne, die im Hauptfluss nach rechts (flussabwärts) auslaufen
+    ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.ellipse(mouth.x, mouth.y + dir * 3, mouth.w * 0.9, 4, 0, 0, 7); ctx.fill();
+    const plume = ctx.createLinearGradient(mouth.x, 0, mouth.x + 9 * CELL, 0); plume.addColorStop(0, `rgba(${sand},.38)`); plume.addColorStop(1, `rgba(${sand},0)`);
+    ctx.fillStyle = plume; ctx.beginPath(); ctx.ellipse(mouth.x + 4 * CELL, mouth.y + dir * 1.2 * CELL, 5 * CELL, 1.3 * CELL, 0, 0, 7); ctx.fill();
+    ctx.restore();
   }
 }
 
