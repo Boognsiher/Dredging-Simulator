@@ -253,3 +253,4 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Karte: Bäume, Büsche und Schilf, Uferschatten, Strömungsstreifen; Naturschutz als zarte Tönung mit gestrichelter Grenze.
 - Pontons bekommen Eigennamen (Orts-/Flussnamen), umbenennbar mit ✎ im Flotte-Panel.
 - Zuflüsse (Bäche): geschwungenes Band mit Uferrand, Strömung, Schwemmfächer und Trübungsfahne an der Mündung.
+- Hafentiefe: «Ausbautiefe bis» im Hafenbecken-Panel (automatisch = tiefste Klasse des Kais); Hafenkarte zeigt hochkant den ganzen Hafen.

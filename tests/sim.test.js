@@ -2072,3 +2072,12 @@ test('Bäche werden aus dem Hafenbereich versetzt (auch bestehende)', () => {
   assert.ok(r.tribs.length === 1 && (r.tribs[0].x < bay.x0 - 5 || r.tribs[0].x > bay.x1 + 4));
   assert.equal(r.moveTribsFromBay(bay), 0);
 });
+
+import { setHarborGoal, bayTarget as bayT2 } from '../src/sim/port.js';
+test('Hafentiefe: Ausbauziel begrenzt die Solltiefe im Becken', () => {
+  const g = harborGame(); g.port.slots[0].level = 2; const auto = bayT2(g);
+  assert.equal(setHarborGoal(g, 'kahn'), true);
+  assert.ok(bayT2(g) < auto);
+  assert.equal(setHarborGoal(g, 'schub'), false);
+  assert.equal(setHarborGoal(g, null), true); assert.equal(bayT2(g), auto);
+});

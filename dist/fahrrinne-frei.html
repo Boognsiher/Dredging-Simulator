@@ -551,6 +551,7 @@ body.mode-map #shift-actions #btn-fleetmenu.open, body #shift-actions #btn-fleet
 
 body.cam-free #stage canvas { touch-action: none; }
 button.mini { padding: 0 6px; min-width: 0; min-height: 0; width: auto; font-size: 13px; line-height: 1.4; margin: 0 0 0 4px; vertical-align: baseline; }
+.port-card select { background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; border-radius: 6px; padding: 4px 6px; font: inherit; max-width: 100%; }
 
 </style>
 </head>
@@ -1554,6 +1555,7 @@ function fitCanvas() {
   if (mapFull) { // Karte und Schleppen: das Bild füllt den ganzen Bildschirm (hochkant: Höhe füllen, seitlich dem Ponton folgen)
     const AW = innerWidth, AH = innerHeight, aspect = lw / lh;
     if (AW / AH >= aspect) { w = AW; h = AW / aspect; } // breiter als die Karte: Breite füllen, in der Höhe dem Ponton folgen
+    else if (harborView) { w = AW; h = AW / aspect; } // Hafenkarte: der ganze Hafen soll sichtbar sein (Breite füllen)
     else { w = Math.min(AH * aspect, AW * 2.1); h = w / aspect; } // schmaler: Höhe füllen (bis 2,1-fach), seitlich dem Ponton folgen
     if (pileMode) { w *= pileZoom; h *= pileZoom; }
     canvas.style.position = 'absolute';
@@ -1568,6 +1570,7 @@ function fitCanvas() {
     zoom = Math.min(1.18, Math.max(1, visAvail / nat));
     w = stageW * zoom; h = w * (lh / lw);
   }
+  else if (portrait && harborView) { zoom = 1; w = stageW; h = w * (lh / lw); } // Hafenkarte im Hochformat: der ganze Hafen passt in die Breite
   else if (portrait && sim.mode === 'map') { // Karte im Hochformat: freie Höhe nutzen, seitlich dem Ponton folgen
     const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
     zoom = Math.min(2, Math.max(1, visAvail / nat));
@@ -3002,9 +3005,11 @@ function harborAccepts(p, wl, kaiLevel, clsId) {
   const d = harborDepth(p, wl); return d !== null && d >= HARBOR.need[clsId] - 0.02;
 }
 // Solltiefe für die Pontons im Becken: tief genug für die tiefste Klasse, die der Kai annimmt
-function harborTarget(kaiLevel) {
+function harborTarget(kaiLevel, goal = null) {
   const k = HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)];
-  return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => HARBOR.need[s.id])) + 0.1);
+  let cls = SHIPS.slice(0, k); const gi = goal ? cls.findIndex((s) => s.id === goal) : -1;
+  if (gi >= 0) cls = cls.slice(0, gi + 1); // Ausbauziel: nur bis zu dieser Klasse baggern (ohne Vorgabe: tiefste Klasse, die der Kai annimmt)
+  return Math.min(CONFIG.echolot.maxDepth, Math.max(...cls.map((s) => HARBOR.need[s.id])) + 0.1);
 }
 const waitPos = (i) => ({ x: HARBOR.waitX[Math.min(i, HARBOR.waitX.length - 1)], y: HARBOR.waitY, angle: 0 });
 // Liegeplatz i (Mitte des Schiffs, an der Nordkaimauer)
@@ -3498,7 +3503,7 @@ const CONFIG_BASE_FIRMNESS = 0.04;
 return { River: River };
 },
 function(){
-const { CONFIG, CARGOS, shipById } = __m(2);
+const { CONFIG, CARGOS, SHIPS, shipById } = __m(2);
 const { minNeedDepth } = __m(3);
 const { hallCapacity, roadFactor } = __m(7);
 const { priceOf, ratioOf } = __m(8);
@@ -3586,7 +3591,9 @@ function bayDepth(g) {
   return d[Math.floor(d.length * 0.2)];
 }
 const kaiLevel = (g) => slotsOf(g.port, 'kai')[0]?.level ?? 0;
-const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g))) : PORT.bay.target);
+const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g)), g.port.harborGoal) : PORT.bay.target);
+// Hafentiefe festlegen: bis zu welcher Schiffsklasse das Becken ausgebaggert wird (null = tiefste Klasse, die der Kai annimmt)
+function setHarborGoal(g, id) { const kc = HARBOR.kaiClasses[Math.max(0, kaiLevel(g) - 1)]; if (id && !SHIPS.slice(0, kc).some((s) => s.id === id)) return false; g.port.harborGoal = id || null; return true; }
 const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.12;
 
 function createPort() {
@@ -3880,7 +3887,7 @@ function portDay(g) {
 }
 const cargoBase = (id) => CARGOS.find((c) => c.id === id)?.base ?? 1;
 
-return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, oilInfo: oilInfo, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, bridgeLevel: bridgeLevel, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, setHarborGoal: setHarborGoal, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, oilInfo: oilInfo, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, bridgeLevel: bridgeLevel, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 
@@ -6130,7 +6137,7 @@ function pickMine(g, u) {
 // Hafenbecken ausbaggern: Spalten des Beckens, in denen die Sohle noch über der Solltiefe (Kai-Stufe) liegt
 function pickHarbor(g, u) {
   const h = g.port.harbor; if (!h) return { none: 'Kein Hafenbecken' };
-  const r = h.river, B = HARBOR.basin, target = harborTarget(Math.max(1, kaiLevel(g))), needTop = g.wl - target + 0.06, res = reservedBy(g, u), cols = CONFIG.box.cols;
+  const r = h.river, B = HARBOR.basin, target = harborTarget(Math.max(1, kaiLevel(g)), g.port.harborGoal), needTop = g.wl - target + 0.06, res = reservedBy(g, u), cols = CONFIG.box.cols;
   let note = 'Hafenbecken ist tief genug';
   for (let x = B.x0; x <= B.x1; x++) {
     let y0 = Infinity, y1 = -Infinity, rock = false;
@@ -6910,7 +6917,7 @@ function(){
 const { CONFIG, SHIPS, shipById } = __m(2);
 const { needDepth, minNeedDepth } = __m(3);
 const { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } = __m(7);
-const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel, waitsOf, cycleWaitCargo, cyclePriority } = __m(6);
+const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, setHarborGoal, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel, waitsOf, cycleWaitCargo, cyclePriority } = __m(6);
 const { oilInfo } = __m(6);
 const { priceOf, ratioOf } = __m(8);
 const { HARBOR } = __m(4);
@@ -6970,6 +6977,7 @@ function setupPort(root, getGame, onChange) {
     const view = { ...p, jobs: (p.jobs ?? []).map((j) => j.id + (j.state ?? '')), berths: berthsOf(g), sites: (p.sites ?? []).map((q) => q && { h: q.h, mx: q.mx, my: q.my, carry: q.carry, ready: q.ready }) };
     const s = JSON.stringify([view, siteOpen, Math.floor(g.money / 200), Object.keys(PORT.commodities).map((id) => Math.round(priceOf(g.market, id))), pick, !!g.unlocked.motor]);
     if (s === sig && !force) return;
+    if (!force && root.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return; // offene Auswahl nicht wegräumen
     sig = s;
     let h = `<div class="port-head"><h2>🏗 Hafen${g.endless ? " · " + g.map.name : ""}</h2><span class="port-money">${chf(g.money)}</span><button id="port-close">✕ Schliessen (H)</button></div>`;
     if (!p.open) {
@@ -7001,9 +7009,9 @@ function setupPort(root, getGame, onChange) {
       h += `</div>`;
       { const L = landOf(g), conn = connectedRoads(g);
         h += `<div class="port-card"><b>🛣 Landseite</b> <small>${L.roads.length} Strassenzellen (${conn.size} angebunden) · Umschlag ×${roadFactor(g).toFixed(2)} · Bau auf der Karte (L): Strassen ans Hafenbecken, Lagerhallen für Container und Kies</small>` +
-          (L.halls.length ? L.halls.map((hl) => { const ok = hallConnected(g, hl, conn), up = hl.level <= LAND.hall.up.length; return `<div class="row"><span>🏭 ${hl.id} · Stufe ${hl.level} · ${ok ? `+${LAND.hall.cap.container[hl.level - 1]} t Container, +${LAND.hall.cap.kies[hl.level - 1]} t Kies` : '<span class="warn">nicht angebunden</span>'}</span>${up ? `<button data-act="hallup" data-hall="${hl.id}" ${hallUpgradeBlock(g, hl.id) ? 'disabled' : ''}>Ausbauen · ${chf(LAND.hall.up[hl.level - 1])}</button>` : ''}</div>`; }).join('') : '<small>Noch keine Lagerhalle.</small>') + `</div>`; }
+          (L.halls.length ? L.halls.map((hl) => { const ok = hallConnected(g, hl, conn), up = hl.level <= LAND.hall.up.length; return `<div class="row"><span>🏭 ${hl.id} · Stufe ${hl.level} · ${ok ? `+${LAND.hall.cap.container[hl.level - 1]} t Container, +${LAND.hall.cap.kies[hl.level - 1]} t Kies` : '<span class="warn">nicht angebunden</span>'}</span>${up ? `<button data-act="hallup" data-hall="${hl.id}" ${hallUpgradeBlock(g, hl.id) ? 'disabled' : ''}>Ausbauen · ${chf(LAND.hall.up[hl.level - 1])}</button>` : ''}</div>`; }).join('') : '<br><small>Noch keine Lagerhalle.</small>') + `</div>`; }
       { const d = bayDepth(g), T = bayTarget(g), ok = d >= T - 0.05, kl = kaiLevel(g) || 1, kc = HARBOR.kaiClasses[kl - 1], names = SHIPS.slice(0, kc).map((c) => c.name).join(', ');
-        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>Becken ${ok ? `tief genug (${d.toFixed(1)} m)` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: noch ausbaggern`}. Der Kai (Stufe ${kl}) nimmt an: <b>${names}</b>${kc < SHIPS.length ? ' (weitere Klassen mit dem Kai-Ausbau)' : ''}; sie legen nur an, wenn das Becken tief genug ist: ${SHIPS.slice(0, kc).map((c) => `${c.name.split(' ')[0]} ${HARBOR.need[c.id].toFixed(1)} m`).join(', ')}${kc >= 4 ? '; Containerschiffe brauchen zusätzlich die Containerbrücke' : ''}. Das Becken liegt auf der eigenen <b>Hafenkarte</b> (Knopf «⚓ Hafenkarte», Y): dort selbst ankern und ausbaggern oder Pontons im Panel «Flotte» dem Hafen zuteilen.</small></div>`; }
+        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>Becken ${ok ? `tief genug (${d.toFixed(1)} m)` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: noch ausbaggern`}. Der Kai (Stufe ${kl}) nimmt an: <b>${names}</b>${kc < SHIPS.length ? ' (weitere Klassen mit dem Kai-Ausbau)' : ''}; sie legen nur an, wenn das Becken tief genug ist: ${SHIPS.slice(0, kc).map((c) => `${c.name.split(' ')[0]} ${HARBOR.need[c.id].toFixed(1)} m`).join(', ')}${kc >= 4 ? '; Containerschiffe brauchen zusätzlich die Containerbrücke' : ''}. Das Becken liegt auf der eigenen <b>Hafenkarte</b> (Knopf «⚓ Hafenkarte», Y): dort selbst ankern und ausbaggern oder Pontons im Panel «Flotte» dem Hafen zuteilen.</small><div class="row"><label>Ausbautiefe bis <select data-act="hgoal"><option value="">automatisch (${SHIPS[kc - 1].name.split(' ')[0]}, ${HARBOR.need[SHIPS[kc - 1].id].toFixed(1)} m)</option>${SHIPS.slice(0, kc).map((c) => `<option value="${c.id}" ${g.port.harborGoal === c.id ? 'selected' : ''}>${c.name.split(' ')[0]} (${HARBOR.need[c.id].toFixed(1)} m)</option>`).join('')}</select></label></div></div>`; }
       { const nw = waitsOf(g), cg = (c) => (c ? `${PORT.commodities[c].icon} ${PORT.commodities[c].name.split(' ')[0]}` : 'alle');
         h += `<div class="port-card"><b>⏳ Warteräume</b> <small>Ist kein Liegeplatz frei, wartet das Schiff in einem Warteraum im Becken (nicht im Fahrwasser) und rückt nach, sobald ein Platz frei wird; nach ${PORT.waitMax} s gibt es auf. Räume: <b>${nw}</b> (Kai ausbauen für mehr). Jedem Raum lässt sich eine Fracht zuweisen, dann warten dort nur Schiffe dieser Fracht.</small>` +
           (nw ? `<div class="row">${Array.from({ length: nw }, (_, k) => `<button data-act="waitcargo" data-slot="${k}">Raum ${k + 1}: ${cg(p.waitCargo?.[k])}</button>`).join('')}</div><div class="row"><button data-act="prio">Vorrang beim Nachrücken: ${p.priority ? cg(p.priority) : 'keiner (längste Wartezeit)'}</button></div>` : '<small> Noch keine Warteräume: Kai bauen.</small>') + '</div>'; }
@@ -7068,7 +7076,7 @@ function setupPort(root, getGame, onChange) {
     el.parentElement.querySelector('b').textContent = `${el.value} %`;
     sig = '';
   });
-  root.addEventListener('change', () => render(true));
+  root.addEventListener('change', (e) => { if (e.target.dataset?.act === 'hgoal') { setHarborGoal(getGame(), e.target.value); onChange?.(); } render(true); });
   return { render, tick };
 }
 

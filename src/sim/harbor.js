@@ -51,9 +51,11 @@ export function harborAccepts(p, wl, kaiLevel, clsId) {
   const d = harborDepth(p, wl); return d !== null && d >= HARBOR.need[clsId] - 0.02;
 }
 // Solltiefe für die Pontons im Becken: tief genug für die tiefste Klasse, die der Kai annimmt
-export function harborTarget(kaiLevel) {
+export function harborTarget(kaiLevel, goal = null) {
   const k = HARBOR.kaiClasses[Math.max(0, kaiLevel - 1)];
-  return Math.min(CONFIG.echolot.maxDepth, Math.max(...SHIPS.slice(0, k).map((s) => HARBOR.need[s.id])) + 0.1);
+  let cls = SHIPS.slice(0, k); const gi = goal ? cls.findIndex((s) => s.id === goal) : -1;
+  if (gi >= 0) cls = cls.slice(0, gi + 1); // Ausbauziel: nur bis zu dieser Klasse baggern (ohne Vorgabe: tiefste Klasse, die der Kai annimmt)
+  return Math.min(CONFIG.echolot.maxDepth, Math.max(...cls.map((s) => HARBOR.need[s.id])) + 0.1);
 }
 export const waitPos = (i) => ({ x: HARBOR.waitX[Math.min(i, HARBOR.waitX.length - 1)], y: HARBOR.waitY, angle: 0 });
 // Liegeplatz i (Mitte des Schiffs, an der Nordkaimauer)

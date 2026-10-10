@@ -1,4 +1,4 @@
-import { CONFIG, CARGOS, shipById } from '../config.js';
+import { CONFIG, CARGOS, SHIPS, shipById } from '../config.js';
 import { minNeedDepth } from './fairway.js';
 import { hallCapacity, roadFactor } from './land.js';
 import { priceOf, ratioOf } from './market.js';
@@ -79,7 +79,9 @@ export function bayDepth(g) {
   return d[Math.floor(d.length * 0.2)];
 }
 export const kaiLevel = (g) => slotsOf(g.port, 'kai')[0]?.level ?? 0;
-export const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g))) : PORT.bay.target);
+export const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g)), g.port.harborGoal) : PORT.bay.target);
+// Hafentiefe festlegen: bis zu welcher Schiffsklasse das Becken ausgebaggert wird (null = tiefste Klasse, die der Kai annimmt)
+export function setHarborGoal(g, id) { const kc = HARBOR.kaiClasses[Math.max(0, kaiLevel(g) - 1)]; if (id && !SHIPS.slice(0, kc).some((s) => s.id === id)) return false; g.port.harborGoal = id || null; return true; }
 export const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.12;
 
 export function createPort() {

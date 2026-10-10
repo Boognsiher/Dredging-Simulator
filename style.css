@@ -537,3 +537,4 @@ body.mode-map #shift-actions #btn-fleetmenu.open, body #shift-actions #btn-fleet
 
 body.cam-free #stage canvas { touch-action: none; }
 button.mini { padding: 0 6px; min-width: 0; min-height: 0; width: auto; font-size: 13px; line-height: 1.4; margin: 0 0 0 4px; vertical-align: baseline; }
+.port-card select { background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; border-radius: 6px; padding: 4px 6px; font: inherit; max-width: 100%; }

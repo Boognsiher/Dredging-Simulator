@@ -555,7 +555,7 @@ function pickMine(g, u) {
 // Hafenbecken ausbaggern: Spalten des Beckens, in denen die Sohle noch über der Solltiefe (Kai-Stufe) liegt
 function pickHarbor(g, u) {
   const h = g.port.harbor; if (!h) return { none: 'Kein Hafenbecken' };
-  const r = h.river, B = HARBOR.basin, target = harborTarget(Math.max(1, kaiLevel(g))), needTop = g.wl - target + 0.06, res = reservedBy(g, u), cols = CONFIG.box.cols;
+  const r = h.river, B = HARBOR.basin, target = harborTarget(Math.max(1, kaiLevel(g)), g.port.harborGoal), needTop = g.wl - target + 0.06, res = reservedBy(g, u), cols = CONFIG.box.cols;
   let note = 'Hafenbecken ist tief genug';
   for (let x = B.x0; x <= B.x1; x++) {
     let y0 = Infinity, y1 = -Infinity, rock = false;

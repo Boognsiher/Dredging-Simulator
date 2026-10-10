@@ -817,6 +817,7 @@ function fitCanvas() {
   if (mapFull) { // Karte und Schleppen: das Bild füllt den ganzen Bildschirm (hochkant: Höhe füllen, seitlich dem Ponton folgen)
     const AW = innerWidth, AH = innerHeight, aspect = lw / lh;
     if (AW / AH >= aspect) { w = AW; h = AW / aspect; } // breiter als die Karte: Breite füllen, in der Höhe dem Ponton folgen
+    else if (harborView) { w = AW; h = AW / aspect; } // Hafenkarte: der ganze Hafen soll sichtbar sein (Breite füllen)
     else { w = Math.min(AH * aspect, AW * 2.1); h = w / aspect; } // schmaler: Höhe füllen (bis 2,1-fach), seitlich dem Ponton folgen
     if (pileMode) { w *= pileZoom; h *= pileZoom; }
     canvas.style.position = 'absolute';
@@ -831,6 +832,7 @@ function fitCanvas() {
     zoom = Math.min(1.18, Math.max(1, visAvail / nat));
     w = stageW * zoom; h = w * (lh / lw);
   }
+  else if (portrait && harborView) { zoom = 1; w = stageW; h = w * (lh / lw); } // Hafenkarte im Hochformat: der ganze Hafen passt in die Breite
   else if (portrait && sim.mode === 'map') { // Karte im Hochformat: freie Höhe nutzen, seitlich dem Ponton folgen
     const visAvail = Math.max(60, innerHeight - docTop - below - 12), nat = (stageW * lh) / lw;
     zoom = Math.min(2, Math.max(1, visAvail / nat));
