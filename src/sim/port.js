@@ -43,6 +43,7 @@ export function carveBay(river, wl) {
   const cols = []; for (let x = bx; x < bx + B.w; x++) cols.push(x);
   const mid = edge(bx + 1), north = mid[0] - 1 - B.h >= 0, south = mid[1] + 1 + B.h < river.rows;
   const side = north && (!south || mid[0] >= river.rows - 1 - mid[1]) ? -1 : 1;
+  river.tribs = (river.tribs ?? []).filter((t) => t.side !== side || t.x < bx - 4 || t.x > bx + B.w + 3); // kein Bach mündet im Hafenbereich
   const cells = [];
   for (const x of cols) {
     const [a, b] = edge(x);

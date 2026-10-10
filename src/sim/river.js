@@ -136,7 +136,8 @@ export class River {
     r.slumpedTotal = 0;
     // Zuflüsse (nur wenn die Karte welche hat): am Ufer mündende Bäche, die täglich Sand und Kies in die Rinne tragen; sie als Letztes erzeugen, damit bestehende Flüsse unverändert bleiben
     for (let n = 0; n < (cfg.tribs ?? 0); n++) {
-      const x = rng.int(9, r.cols - 12), side = rng.chance(0.5) ? -1 : 1;
+      let x = rng.int(9, r.cols - 12); const side = rng.chance(0.5) ? -1 : 1;
+      const bx = Math.round(r.cols * 0.62) - 1; if (x >= bx - 4 && x <= bx + 7) x = 9 + (x % 8); // nicht in den Hafenbereich (Einfahrt) münden
       let my = -1; for (let k = 0; k < r.rows; k++) { const y = side < 0 ? k : r.rows - 1 - k; if (r.zone[y * r.cols + x]) { my = y; break; } }
       if (my < 0) continue;
       const cx = x + 2.2, cy = my - side * 1.6, rx = 5, ry = 3.4, cells = [], w = [];
