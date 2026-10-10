@@ -8312,14 +8312,22 @@ function renderTerrain(game) {
     const o = i * 4; d8[o] = R; d8[o + 1] = G; d8[o + 2] = B; d8[o + 3] = 255;
   }
   T.ctx.putImageData(img, 0, 0);
-  decorate(T.ctx, hm, wl);
+  decorate(T.ctx, hm, wl, r);
   // Kandidaten für Wasserglitzern: tiefes Wasser
   T.sparks = [];
   for (let k = 0; k < 900 && T.sparks.length < 170; k++) { const sx = hash(k, 11) * (W - 2 * OX) + OX, sy = hash(k, 12) * H, d = wl - hm[(sy | 0) * W + (sx | 0)]; if (d > 1.4) T.sparks.push({ x: sx, y: sy, p: hash(k, 13) * 6.28, v: 3 + hash(k, 14) * 5 }); }
 }
 
+// Bachverlauf (Stützpunkte in Bildpunkten, von der Quelle am Kartenrand bis zur Mündung): gemeinsam für Gelände (Freihalten) und Zeichnung
+function tribPoints(r, t, N = 18) {
+  const y0 = t.side < 0 ? 0 : r.rows * CELL, dir = t.side < 0 ? 1 : -1, y1 = (t.side < 0 ? t.my : t.my + 1) * CELL + dir * 0.6 * CELL, x0 = OX + (t.x + 0.5) * CELL;
+  return Array.from({ length: N + 1 }, (_, k) => { const f = k / N; return { x: x0 + Math.sin(f * 7 + t.x) * 7 * (1 - f * 0.35) + Math.sin(f * 17 + t.x * 2) * 1.5, y: y0 + (y1 - y0) * f, w: 4 + f * f * 9 }; });
+}
+const nearCreek = (paths, x, y, pad) => paths.some((P) => { for (let k = 0; k < P.length - 1; k++) { const a = P[k], b = P[k + 1], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)), px = a.x + dx * u, py = a.y + dy * u; if (Math.hypot(x - px, y - py) < pad + a.w * 1.1) return true; } return false; });
+
 // Bäume auf bewaldetem Land (Schatten, Krone mit Lichtkante), Büsche am Ufer, Schilf im Flachwasser; alles deterministisch aus Rasterpositionen
-function decorate(c, hm, wl) {
+function decorate(c, hm, wl, river) {
+  const creeks = (river.tribs ?? []).map((t) => tribPoints(river, t));
   const at = (x, y) => hm[(Math.max(0, Math.min(H - 1, y | 0))) * W + Math.max(0, Math.min(W - 1, x | 0))];
   const items = [];
   for (let gy = 4; gy < H - 4; gy += 9) for (let gx = OX + 4; gx < W - 4; gx += 9) {
@@ -8329,6 +8337,7 @@ function decorate(c, hm, wl) {
     else if (d > 0.1 && d < 0.65 && k < 0.55) items.push({ t: 'reed', x, y, r: 3 + k * 4 });
   }
   items.sort((a, b) => a.y - b.y);
+  for (let k = items.length - 1; k >= 0; k--) if (nearCreek(creeks, items[k].x, items[k].y, items[k].r + 3)) items.splice(k, 1); // Bäche bleiben frei: Bäume und Büsche stehen daneben, nicht darauf
   for (const it of items) {
     if (it.t === 'tree') {
       c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(it.x + it.r * 0.5, it.y + it.r * 0.6, it.r * 1.05, it.r * 0.75, 0, 0, 7); c.fill();
@@ -8437,7 +8446,7 @@ function drawAmbient(ctx, game, ui) {
   const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.55, W / 2, H / 2, W * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,12,26,.26)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
 }
 
-return { drawTerrain: drawTerrain, drawWaterFx: drawWaterFx, drawShipSprite: drawShipSprite, drawPontoonSprite: drawPontoonSprite, drawAmbient: drawAmbient };
+return { tribPoints: tribPoints, drawTerrain: drawTerrain, drawWaterFx: drawWaterFx, drawShipSprite: drawShipSprite, drawPontoonSprite: drawPontoonSprite, drawAmbient: drawAmbient };
 },
 function(){
 
