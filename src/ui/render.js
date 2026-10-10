@@ -573,8 +573,10 @@ export function drawHarborScene(ctx, game, ui = {}) {
   for (let k = 0; k < HARBOR.waitX.length; k++) {
     const wp = waitPos(k), x = OX + (wp.x - 2) * CELL, y = (wp.y - 1.5) * CELL, on = k < nw, cg = p.waitCargo?.[k];
     ctx.strokeStyle = on ? 'rgba(155,224,255,.85)' : 'rgba(255,255,255,.2)'; ctx.lineWidth = 1.5; ctx.setLineDash(on ? [5, 4] : [3, 5]); ctx.beginPath(); ctx.roundRect(x + 1, y + 1, 4 * CELL - 2, 3 * CELL - 2, 8); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = on ? 'rgba(155,224,255,.07)' : 'rgba(255,255,255,.03)'; ctx.fill();
-    ctx.fillStyle = on ? '#bfeaff' : '#ffffff55'; ctx.font = font(11); ctx.textAlign = 'center';
-    ctx.fillText(on ? `⏳ Warteraum ${k + 1}: ${cg ? PORT.commodities[cg].icon + ' ' + PORT.commodities[cg].name.split(' ')[0] : 'alle'}` : '🔒', x + 2 * CELL, y + 3 * CELL + 13); ctx.textAlign = 'start';
+    ctx.font = font(11); ctx.textAlign = 'center';
+    const wt = on ? `⏳ Warteraum ${k + 1}: ${cg ? PORT.commodities[cg].icon + ' ' + PORT.commodities[cg].name.split(' ')[0] : 'alle'}` : '🔒', wx = x + 2 * CELL, wy = y + 3 * CELL + 13, ww = ctx.measureText(wt).width + 10;
+    if (on) { ctx.fillStyle = 'rgba(8,24,40,.78)'; ctx.beginPath(); ctx.roundRect(wx - ww / 2, wy - fs(11) - 1, ww, fs(11) + 6, 5); ctx.fill(); } // dunkle Plakette: lesbar auch auf hellem Wasser
+    ctx.fillStyle = on ? '#d8f3ff' : '#ffffff88'; ctx.fillText(wt, wx, wy); ctx.textAlign = 'start';
   }
   for (const j of (p.jobs ?? []).filter((q) => q.state === 'waiting')) {
     const ship = g.maps[g.mapIdx].traffic.ships.find((s) => s.id === j.shipId); if (!ship) continue;

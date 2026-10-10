@@ -723,6 +723,7 @@ function placeToast() {
   const visTop = canvas.offsetTop + (cropVis !== null ? panY : 0), visH = cropVis !== null ? cropVis : canvas.clientHeight;
   t.style.right = '8px'; t.style.top = `${Math.max(8, visTop + visH - t.offsetHeight - 12)}px`;
 }
+let harborHintShown = false; // Hinweis zur Hafenkarte nur beim ersten Besuch
 function toast(text, kind = 'info', force = false, goto = null) {
   if (!force && (kind === 'info' || kind === 'upgrade')) return;
   $('toast').innerHTML = `<span class="${kind}"></span>`;
@@ -916,7 +917,7 @@ function enterHarbor() {
   if (lentUnit(game)) { harborSim.x = (HARBOR.basin.x0 + HARBOR.basin.x1) / 2; harborSim.y = (HARBOR.basin.y0 + HARBOR.basin.y1) / 2; } // dein Ponton arbeitet für die Flotte: nur zuschauen
   sim = harborSim; sim.setStats(game.stats); harborView = true; ui.harborView = true; document.body.classList.add('harbor-view'); $('harbor-back').hidden = false;
   mapTarget = null; zoneMode = false; ui.zoneMode = false; areaMode = false; ui.areaMode = false; landMode = false; ui.landMode = false;
-  syncMode(); updateTowButton(); fitCanvas(); toast('Hafenkarte: Becken ausbaggern, Pontons im Panel «Flotte» zuteilen', 'info', true);
+  syncMode(); updateTowButton(); fitCanvas(); if (!harborHintShown) { harborHintShown = true; toast('Hafenkarte: Becken ausbaggern', 'info', true); }
 }
 function leaveHarbor(silent = false) {
   if (!harborView) return;
