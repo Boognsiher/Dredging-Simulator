@@ -120,7 +120,7 @@ export const CONFIG = {
   // und er reicht über den Wasserspiegel: damit lässt sich Ufer im Ausbaustreifen abtragen (der Fluss wird breiter)
   bucket: { hardFactor: 0.5, turbidity: 0.3, reachAbove: 2.2, bombChance: 1 },
   // Flotte: gemietete Pontons arbeiten selbstständig (Automatik), ohne dass du den Querschnitt öffnest
-  fleet: { widenRows: 3, max: 8, perMap: [1, 2, 3, 5, 8], moveCost: 0.1, moveDays: 2, moveCooldownDays: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
+  fleet: { names: ['Aare-Biber', 'Rheinfelden', 'Thur', 'Sihl', 'Töss', 'Limmat', 'Reuss', 'Birs', 'Emme', 'Saane', 'Glatt', 'Linth', 'Ausdauer', 'Hecht', 'Otter', 'Kormoran'], widenRows: 3, max: 8, perMap: [1, 2, 3, 5, 8], moveCost: 0.1, moveDays: 2, moveCooldownDays: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
 };
 
 // Materialindex

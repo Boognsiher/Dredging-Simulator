@@ -2052,3 +2052,13 @@ test('Pontons verlegen: Kosten, Überfahrt, Sperrfrist, Grenze pro Karte', () =>
   g.maps[2].fleet.units.push(...Array.from({ length: perMapMax(g) }, (_, k) => ({ id: 90 + k, name: 'x', state: 'idle', skip: {}, removed: 0 })));
   g.fleet.units[0].moveReady = 0; assert.match(moveBlock(g, g.fleet.units[0].id, 2) ?? '', /hat schon/);
 });
+
+import { renameUnit, freeName } from '../src/sim/fleet.js';
+test('Pontons haben Eigennamen, nie doppelt, umbenennbar', () => {
+  const g = new Game(11, 'endlos'); g.eventsOn = false; g.money = 1e9; g.buyUpgrade('auto');
+  hireUnit(g); hireUnit(g); hireUnit(g);
+  const names = g.fleet.units.map((u) => u.name); assert.equal(new Set(names).size, names.length); assert.ok(names.every((n) => !/^Ponton \d/.test(n)));
+  assert.ok(!names.includes(freeName(g)));
+  assert.equal(renameUnit(g, g.fleet.units[0].id, '  Möwe  '), true); assert.equal(g.fleet.units[0].name, 'Möwe');
+  assert.equal(renameUnit(g, g.fleet.units[0].id, '   '), false);
+});

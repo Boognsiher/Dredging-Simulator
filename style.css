@@ -536,3 +536,4 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
 body.mode-map #shift-actions #btn-fleetmenu.open, body #shift-actions #btn-fleetmenu.open { background: var(--accent); color: #04222b; font-weight: 700; }
 
 body.cam-free #stage canvas { touch-action: none; }
+button.mini { padding: 0 6px; min-width: 0; min-height: 0; width: auto; font-size: 13px; line-height: 1.4; margin: 0 0 0 4px; vertical-align: baseline; }

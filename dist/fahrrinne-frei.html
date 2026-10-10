@@ -550,6 +550,7 @@ body.mode-map.pile-mode #pile-bar { bottom: 8px; }
 body.mode-map #shift-actions #btn-fleetmenu.open, body #shift-actions #btn-fleetmenu.open { background: var(--accent); color: #04222b; font-weight: 700; }
 
 body.cam-free #stage canvas { touch-action: none; }
+button.mini { padding: 0 6px; min-width: 0; min-height: 0; width: auto; font-size: 13px; line-height: 1.4; margin: 0 0 0 4px; vertical-align: baseline; }
 
 </style>
 </head>
@@ -715,7 +716,7 @@ const { startIcons } = __m(20);
 const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(10);
 const { acceptContract } = __m(17);
 const { waitingByClass, shipPos } = __m(16);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
 const { bayCapacity, maxZones, zoneClasses } = __m(16);
 const { materialPrice } = __m(19);
 const { TowSim, groundedNear } = __m(21);
@@ -1279,12 +1280,12 @@ function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden;
   $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open; applyRankButtons();
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, F.second, F.focus, JSON.stringify(game.river.trasse), game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game), Math.floor(game.money / 1000), Math.floor(game.time / 14), game.maps.length]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.name, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, F.second, F.focus, JSON.stringify(game.river.trasse), game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game), Math.floor(game.money / 1000), Math.floor(game.time / 14), game.maps.length]);
   if (sig === fleetSig) return;
   if ($('fleet').contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return; // offene Auswahl nicht wegräumen (Neuaufbau schliesst sie)
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
-  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : u.state === 'transit' ? '⛴' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert${!u.self && game.port.harbor ? `<br>Einsatz: <select data-uloc="${u.id}"><option value="main" ${(u.loc ?? 'main') === 'main' ? 'selected' : ''}>Hauptkarte</option><option value="harbor" ${u.loc === 'harbor' ? 'selected' : ''}>Hafen</option></select>` : ''}${!u.self && game.endless && game.maps.length > 1 ? `<br>Verlegen: <select data-umove="${u.id}"><option value="">auf andere Karte …</option>${game.maps.map((mp, k) => k === game.mapIdx ? '' : `<option value="${k}" ${moveBlock(game, u.id, k) ? 'disabled' : ''}>${mp.name} (${chf(moveCost(game))})${moveBlock(game, u.id, k) ? ' – ' + moveBlock(game, u.id, k) : ''}</option>`).join('')}</select>` : ''}</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
+  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b>${u.self ? '' : ` <button class="mini" data-rename="${u.id}" title="Ponton umbenennen" aria-label="Umbenennen">✎</button>`} <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : u.state === 'transit' ? '⛴' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert${!u.self && game.port.harbor ? `<br>Einsatz: <select data-uloc="${u.id}"><option value="main" ${(u.loc ?? 'main') === 'main' ? 'selected' : ''}>Hauptkarte</option><option value="harbor" ${u.loc === 'harbor' ? 'selected' : ''}>Hafen</option></select>` : ''}${!u.self && game.endless && game.maps.length > 1 ? `<br>Verlegen: <select data-umove="${u.id}"><option value="">auf andere Karte …</option>${game.maps.map((mp, k) => k === game.mapIdx ? '' : `<option value="${k}" ${moveBlock(game, u.id, k) ? 'disabled' : ''}>${mp.name} (${chf(moveCost(game))})${moveBlock(game, u.id, k) ? ' – ' + moveBlock(game, u.id, k) : ''}</option>`).join('')}</select>` : ''}</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
   const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
@@ -1320,6 +1321,7 @@ function updateFleet() {
   $('btn-lend').onclick = () => { if (sim.mode === 'slice') sim.leave(); if (lendPonton(game, sim.x, sim.y)) { syncMode(); fleetSig = null; updateFleet(); toast('Dein Ponton arbeitet für die Flotte', 'good', true); } };
   for (const sel of box.querySelectorAll('[data-uloc]')) sel.onchange = () => { setUnitLoc(game, +sel.dataset.uloc, sel.value); fleetSig = null; updateFleet(); toast(sel.value === 'harbor' ? 'Ponton arbeitet jetzt im Hafen' : 'Ponton arbeitet wieder auf der Hauptkarte', 'info', true); };
   for (const sel of box.querySelectorAll('[data-umove]')) sel.onchange = () => { if (sel.value !== '' && moveUnit(game, +sel.dataset.umove, +sel.value)) toast(`Ponton wird nach ${game.maps[+sel.value].name} verlegt`, 'info', true); fleetSig = null; updateFleet(); updatePanel(); };
+  for (const b of box.querySelectorAll('[data-rename]')) b.onclick = () => { const u = F.units.find((q) => q.id === +b.dataset.rename); const n = prompt('Name des Pontons', u?.name ?? ''); if (n && renameUnit(game, +b.dataset.rename, n)) { fleetSig = null; updateFleet(); } };
   for (const b of box.querySelectorAll('[data-recall]')) b.onclick = () => { const pos = recallPonton(game); if (pos) { sim.x = pos.x; sim.y = pos.y; } fleetSig = null; updateFleet(); toast('Ponton zurückgerufen', 'info', true); };
   $('btn-area2').onclick = toggleAreaMode; $('btn-route2').onclick = toggleRouteMode;
   for (const b of box.querySelectorAll('[data-area-w]')) b.onclick = () => { const [id, d] = b.dataset.areaW.split(':'); const a = F.areas.find((q) => q.id === +id); setAreaWidth(game, +id, a.w + +d); fleetSig = null; updateFleet(); };
@@ -2524,7 +2526,7 @@ const CONFIG = {
   // und er reicht über den Wasserspiegel: damit lässt sich Ufer im Ausbaustreifen abtragen (der Fluss wird breiter)
   bucket: { hardFactor: 0.5, turbidity: 0.3, reachAbove: 2.2, bombChance: 1 },
   // Flotte: gemietete Pontons arbeiten selbstständig (Automatik), ohne dass du den Querschnitt öffnest
-  fleet: { widenRows: 3, max: 8, perMap: [1, 2, 3, 5, 8], moveCost: 0.1, moveDays: 2, moveCooldownDays: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
+  fleet: { names: ['Aare-Biber', 'Rheinfelden', 'Thur', 'Sihl', 'Töss', 'Limmat', 'Reuss', 'Birs', 'Emme', 'Saane', 'Glatt', 'Linth', 'Ausdauer', 'Hecht', 'Otter', 'Kormoran'], widenRows: 3, max: 8, perMap: [1, 2, 3, 5, 8], moveCost: 0.1, moveDays: 2, moveCooldownDays: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
 };
 
 // Materialindex
@@ -5577,11 +5579,22 @@ function hireBlock(g) {
   return null;
 }
 
+// Eigennamen für neue Pontons (Orts-, Fluss- und Tiernamen), nie doppelt über alle Karten; danach nummeriert
+function freeName(g) {
+  const used = new Set((g.maps ?? [{ fleet: g.fleet }]).flatMap((m) => (m.fleet?.units ?? []).map((u) => u.name)));
+  const free = CONFIG.fleet.names.filter((n) => !used.has(n));
+  return free.length ? free[(used.size * 5 + (g.day ?? 0)) % free.length] : `Ponton ${used.size + 2}`;
+}
+function renameUnit(g, id, name) {
+  const u = g.fleet.units.find((q) => q.id === id), n = String(name ?? '').trim().slice(0, 18);
+  if (!u || !n) return false;
+  u.name = n; return true;
+}
 function hireUnit(g) {
   if (hireBlock(g)) return null;
   const cost = nextHireCost(g), F = g.fleet;
   g.money -= cost;
-  const u = { id: ++F.seq, name: `Ponton ${hiredCount(g) + 2}`, x: 1.5, y: g.river.centerY(1), state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
+  const u = { id: ++F.seq, name: freeName(g), x: 1.5, y: g.river.centerY(1), state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
   F.units.push(u);
   g.say(`${u.name} gemietet (−${cost.toLocaleString('de-CH')} CHF): arbeitet selbstständig.`, 'upgrade');
   return u;
@@ -6256,7 +6269,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => locOf(u) === 'main' && u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, hiredTotal: hiredTotal, hireCostAt: hireCostAt, nextHireCost: nextHireCost, perMapMax: perMapMax, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, moveCost: moveCost, moveBlock: moveBlock, moveUnit: moveUnit, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, setFocus: setFocus, focusActive: focusActive, setSecond: setSecond, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, startPiles: startPiles, clearPilePlan: clearPilePlan, lineCells: lineCells, wallSpans: wallSpans, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, hiredTotal: hiredTotal, hireCostAt: hireCostAt, nextHireCost: nextHireCost, perMapMax: perMapMax, hireBlock: hireBlock, freeName: freeName, renameUnit: renameUnit, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, moveCost: moveCost, moveBlock: moveBlock, moveUnit: moveUnit, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, setFocus: setFocus, focusActive: focusActive, setSecond: setSecond, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, startPiles: startPiles, clearPilePlan: clearPilePlan, lineCells: lineCells, wallSpans: wallSpans, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);

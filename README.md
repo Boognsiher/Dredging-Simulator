@@ -251,3 +251,4 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Menü und Fach pausieren das Spiel nicht mehr; Zeitraffer ⏩ (Taste V) mit ×2 / ×4.
 - Pontons lassen sich zwischen Karten verlegen (10 % des Mietpreises, 2 Tage Überfahrt, 4 Tage Sperrfrist). Flottengrenze nach Level 1/2/4/6/8, pro Karte 1/2/3/5/8.
 - Karte: Bäume, Büsche und Schilf, Uferschatten, Strömungsstreifen; Naturschutz als zarte Tönung mit gestrichelter Grenze.
+- Pontons bekommen Eigennamen (Orts-/Flussnamen), umbenennbar mit ✎ im Flotte-Panel.

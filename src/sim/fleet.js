@@ -32,11 +32,22 @@ export function hireBlock(g) {
   return null;
 }
 
+// Eigennamen für neue Pontons (Orts-, Fluss- und Tiernamen), nie doppelt über alle Karten; danach nummeriert
+export function freeName(g) {
+  const used = new Set((g.maps ?? [{ fleet: g.fleet }]).flatMap((m) => (m.fleet?.units ?? []).map((u) => u.name)));
+  const free = CONFIG.fleet.names.filter((n) => !used.has(n));
+  return free.length ? free[(used.size * 5 + (g.day ?? 0)) % free.length] : `Ponton ${used.size + 2}`;
+}
+export function renameUnit(g, id, name) {
+  const u = g.fleet.units.find((q) => q.id === id), n = String(name ?? '').trim().slice(0, 18);
+  if (!u || !n) return false;
+  u.name = n; return true;
+}
 export function hireUnit(g) {
   if (hireBlock(g)) return null;
   const cost = nextHireCost(g), F = g.fleet;
   g.money -= cost;
-  const u = { id: ++F.seq, name: `Ponton ${hiredCount(g) + 2}`, x: 1.5, y: g.river.centerY(1), state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
+  const u = { id: ++F.seq, name: freeName(g), x: 1.5, y: g.river.centerY(1), state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
   F.units.push(u);
   g.say(`${u.name} gemietet (−${cost.toLocaleString('de-CH')} CHF): arbeitet selbstständig.`, 'upgrade');
   return u;
