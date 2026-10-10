@@ -66,7 +66,15 @@ export function drawMap(ctx, game, sim, ui = {}) {
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const i = y * cols + x;
-      if (r.isWater(i) && !r.zone[i]) { ctx.fillStyle = 'rgba(70,230,110,.2)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); if ((x + y) % 2 === 0) { ctx.fillStyle = 'rgba(200,255,200,.22)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } }
+      if (r.isWater(i) && !r.zone[i]) { // Naturschutz: zarte Tönung, nur die Grenze zur Baggerzone wird als gestrichelte Linie gezeichnet (weniger Kästchen)
+        const px = OX + x * CELL, py = y * CELL; ctx.fillStyle = 'rgba(70,230,110,.11)'; ctx.fillRect(px, py, CELL, CELL);
+        ctx.strokeStyle = 'rgba(190,255,200,.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]);
+        for (const [dx, dy, x0, y0, x1, y1] of [[1, 0, CELL, 0, CELL, CELL], [-1, 0, 0, 0, 0, CELL], [0, 1, 0, CELL, CELL, CELL], [0, -1, 0, 0, CELL, 0]]) {
+          const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue; const ni = ny * cols + nx;
+          if (r.isWater(ni) && r.zone[ni]) { ctx.beginPath(); ctx.moveTo(px + x0, py + y0); ctx.lineTo(px + x1, py + y1); ctx.stroke(); }
+        }
+        ctx.setLineDash([]);
+      }
       else if (!r.isWater(i) && r.ext[i] === 1) { ctx.fillStyle = 'rgba(235,200,70,.16)'; ctx.fillRect(OX + x * CELL, y * CELL, CELL, CELL); } // Ausbaustreifen am Ufer (Löffelbagger)
     }
   }
