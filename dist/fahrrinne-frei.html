@@ -715,7 +715,7 @@ const { startIcons } = __m(20);
 const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(10);
 const { acceptContract } = __m(17);
 const { waitingByClass, shipPos } = __m(16);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
 const { bayCapacity, maxZones, zoneClasses } = __m(16);
 const { materialPrice } = __m(19);
 const { TowSim, groundedNear } = __m(21);
@@ -1279,11 +1279,11 @@ function updateFleet() {
   $('btn-area').hidden = sim.mode !== 'map' || tow || game.stats.autoLevel < 1; $('btn-route').hidden = $('btn-area').hidden;
   $('btn-land').hidden = sim.mode !== 'map' || !!tow || !game.port.open; applyRankButtons();
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
-  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, F.second, F.focus, JSON.stringify(game.river.trasse), game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game)]);
+  const sig = JSON.stringify([F.units.map((u) => [u.id, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, F.second, F.focus, JSON.stringify(game.river.trasse), game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game), Math.floor(game.money / 1000), Math.floor(game.time / 14), game.maps.length]);
   if (sig === fleetSig) return;
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
-  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert${!u.self && game.port.harbor ? `<br>Einsatz: <select data-uloc="${u.id}"><option value="main" ${(u.loc ?? 'main') === 'main' ? 'selected' : ''}>Hauptkarte</option><option value="harbor" ${u.loc === 'harbor' ? 'selected' : ''}>Hafen</option></select>` : ''}</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
+  const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b> <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : u.state === 'transit' ? '⛴' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert${!u.self && game.port.harbor ? `<br>Einsatz: <select data-uloc="${u.id}"><option value="main" ${(u.loc ?? 'main') === 'main' ? 'selected' : ''}>Hauptkarte</option><option value="harbor" ${u.loc === 'harbor' ? 'selected' : ''}>Hafen</option></select>` : ''}${!u.self && game.endless && game.maps.length > 1 ? `<br>Verlegen: <select data-umove="${u.id}"><option value="">auf andere Karte …</option>${game.maps.map((mp, k) => k === game.mapIdx ? '' : `<option value="${k}" ${moveBlock(game, u.id, k) ? 'disabled' : ''}>${mp.name} (${chf(moveCost(game))})${moveBlock(game, u.id, k) ? ' – ' + moveBlock(game, u.id, k) : ''}</option>`).join('')}</select>` : ''}</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
   const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
   box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
     ${rows}
@@ -1318,6 +1318,7 @@ function updateFleet() {
   $('btn-hire').onclick = () => { if (hireUnit(game)) { fleetSig = null; updateFleet(); updatePanel(); } };
   $('btn-lend').onclick = () => { if (sim.mode === 'slice') sim.leave(); if (lendPonton(game, sim.x, sim.y)) { syncMode(); fleetSig = null; updateFleet(); toast('Dein Ponton arbeitet für die Flotte', 'good', true); } };
   for (const sel of box.querySelectorAll('[data-uloc]')) sel.onchange = () => { setUnitLoc(game, +sel.dataset.uloc, sel.value); fleetSig = null; updateFleet(); toast(sel.value === 'harbor' ? 'Ponton arbeitet jetzt im Hafen' : 'Ponton arbeitet wieder auf der Hauptkarte', 'info', true); };
+  for (const sel of box.querySelectorAll('[data-umove]')) sel.onchange = () => { if (sel.value !== '' && moveUnit(game, +sel.dataset.umove, +sel.value)) toast(`Ponton wird nach ${game.maps[+sel.value].name} verlegt`, 'info', true); fleetSig = null; updateFleet(); updatePanel(); };
   for (const b of box.querySelectorAll('[data-recall]')) b.onclick = () => { const pos = recallPonton(game); if (pos) { sim.x = pos.x; sim.y = pos.y; } fleetSig = null; updateFleet(); toast('Ponton zurückgerufen', 'info', true); };
   $('btn-area2').onclick = toggleAreaMode; $('btn-route2').onclick = toggleRouteMode;
   for (const b of box.querySelectorAll('[data-area-w]')) b.onclick = () => { const [id, d] = b.dataset.areaW.split(':'); const a = F.areas.find((q) => q.id === +id); setAreaWidth(game, +id, a.w + +d); fleetSig = null; updateFleet(); };
@@ -2522,7 +2523,7 @@ const CONFIG = {
   // und er reicht über den Wasserspiegel: damit lässt sich Ufer im Ausbaustreifen abtragen (der Fluss wird breiter)
   bucket: { hardFactor: 0.5, turbidity: 0.3, reachAbove: 2.2, bombChance: 1 },
   // Flotte: gemietete Pontons arbeiten selbstständig (Automatik), ohne dass du den Querschnitt öffnest
-  fleet: { widenRows: 3, max: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
+  fleet: { widenRows: 3, max: 8, perMap: [1, 2, 3, 5, 8], moveCost: 0.1, moveDays: 2, moveCooldownDays: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
 };
 
 // Materialindex
@@ -4087,7 +4088,7 @@ const plantUnlocked = (g) => !UNLOCK.enabled || rankOf(g) >= 2 || (g.totals?.buf
 const upgradeRank = (id) => UP_NEED[id] ?? 1;
 const rankOf = (g) => (UNLOCK.enabled ? g.rank ?? 1 : 99);
 const hasRank = (g, key) => rankOf(g) >= (typeof key === 'number' ? key : NEED[key]);
-const fleetMax = (g) => [1, 2, 3, 4, 4][Math.min(4, rankOf(g) - 1)];
+const fleetMax = (g) => [1, 2, 4, 6, 8][Math.min(4, rankOf(g) - 1)];
 const rankName = (n) => ({ kahn: 'Lastkahn', motor: 'Motorgüterschiff', tank: 'Tankschiff', container: 'Containerschiff', schub: 'Schubverband' })[RANK_ORDER[n - 1]];
 // Höchstes Level aus den freigeschalteten Klassen aller Karten
 function computeRank(g) {
@@ -5535,7 +5536,7 @@ function updateContracts(g) {
 return { makeContract: makeContract, acceptContract: acceptContract, creditContracts: creditContracts, updateContracts: updateContracts, shipById: shipById };
 },
 function(){
-const { fleetMax } = __m(10);
+const { fleetMax, rankOf, UNLOCK } = __m(10);
 const { CONFIG, SHIPS, KIND, shipById } = __m(2);
 const { toolAvailable } = __m(12);
 const { zoneSupports } = __m(16);
@@ -5560,11 +5561,15 @@ const hiredCount = (g) => g.fleet.units.filter((u) => !u.self).length; // dein e
 const hiredTotal = (g) => (g.maps ?? []).reduce((n, m) => n + (m.fleet?.units ?? []).filter((u) => !u.self).length, 0) || hiredCount(g);
 const hireCostAt = (n) => { const c = CONFIG.fleet.costs; return n < c.length ? c[n] : Math.round((c[c.length - 1] * 1.35 ** (n - c.length + 1)) / 1000) * 1000; };
 const nextHireCost = (g) => hireCostAt(hiredTotal(g));
+// Höchstzahl gemieteter Pontons pro Karte (nach Level); ohne Levelsystem (Tests) gilt nur die Gesamtgrenze
+const perMapMax = (g) => Math.min(fleetMax(g), UNLOCK.enabled ? CONFIG.fleet.perMap[Math.min(4, rankOf(g) - 1)] : CONFIG.fleet.max);
+const hiredOn = (m) => (m.fleet?.units ?? []).filter((u) => !u.self).length;
 
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 function hireBlock(g) {
   if (g.status !== 'playing') return 'Spiel beendet';
-  if (hiredCount(g) >= Math.min(CONFIG.fleet.max, fleetMax(g))) return hiredCount(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : 'Mehr Pontons brauchen das nächste Level (grössere Schiffsklasse)';
+  if (hiredCount(g) >= perMapMax(g)) return hiredCount(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : `Diese Karte fasst höchstens ${perMapMax(g)} Pontons (mehr mit dem nächsten Level)`;
+  if (hiredTotal(g) >= Math.min(CONFIG.fleet.max, fleetMax(g))) return hiredTotal(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : 'Mehr Pontons brauchen das nächste Level (grössere Schiffsklasse)';
   if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
   const cost = nextHireCost(g);
   if (g.money < cost) return `Braucht ${cost.toLocaleString('de-CH')} CHF`;
@@ -5599,6 +5604,30 @@ function recallPonton(g) {
   const u = lentUnit(g); if (!u) return null;
   u.sim?.leave(); g.fleet.units.splice(g.fleet.units.indexOf(u), 1);
   return { x: u.x, y: u.y };
+}
+// Ponton auf eine andere Karte verlegen: kostet einen Teil des Mietpreises, die Überfahrt dauert, danach kurze Sperrfrist
+const moveCost = (g) => Math.round((nextHireCost(g) * CONFIG.fleet.moveCost) / 100) * 100;
+function moveBlock(g, id, to) {
+  const u = g.fleet.units.find((q) => q.id === id), T = g.maps?.[to];
+  if (g.status !== 'playing') return 'Spiel beendet';
+  if (!u || u.self) return 'Nur gemietete Pontons lassen sich verlegen';
+  if (!T || to === g.mapIdx) return 'Ungültige Zielkarte';
+  if (u.state === 'transit') return 'Ist schon unterwegs';
+  if (g.time < (u.moveReady ?? 0)) return `Gerade verlegt: wieder möglich in ${Math.ceil(((u.moveReady ?? 0) - g.time) / CONFIG.daySeconds)} Tagen`;
+  if (hiredOn(T) >= perMapMax(g)) return `${T.name} hat schon ${perMapMax(g)} Pontons`;
+  const c = moveCost(g); if (g.money < c) return `Braucht ${c.toLocaleString('de-CH')} CHF`;
+  return null;
+}
+function moveUnit(g, id, to) {
+  if (moveBlock(g, id, to)) return false;
+  const F = g.fleet, i = F.units.findIndex((q) => q.id === id), u = F.units[i], T = g.maps[to], c = moveCost(g);
+  u.sim?.leave(); u.sim = null; F.units.splice(i, 1);
+  for (const a of F.areas ?? []) if (a.unit === id) a.unit = null;
+  for (const z of g.zones ?? []) if (z.unit === id) z.unit = null;
+  g.money -= c; g.today.costs += c;
+  T.fleet.units.push({ ...u, id: ++T.fleet.seq, state: 'transit', loc: 'main', site: null, path: null, idle: 0, x: 1.5, y: T.river.centerY(1), note: `Überfahrt nach ${T.name}`, arriveAt: g.time + CONFIG.fleet.moveDays * CONFIG.daySeconds, moveReady: g.time + (CONFIG.fleet.moveDays + CONFIG.fleet.moveCooldownDays) * CONFIG.daySeconds });
+  g.say(`${u.name} wird nach ${T.name} verlegt (−${c.toLocaleString('de-CH')} CHF, ${CONFIG.fleet.moveDays} Tage).`, 'upgrade');
+  return true;
 }
 function dismissUnit(g, id) {
   const F = g.fleet, i = F.units.findIndex((u) => u.id === id);
@@ -6119,6 +6148,7 @@ function floatPath(sim, from, to) {
 }
 
 function stepUnit(g, u, dt) {
+  if (u.state === 'transit') { if (g.time >= u.arriveAt) { u.state = 'idle'; u.idle = 0; u.note = 'angekommen'; } return; } // auf Überfahrt: arbeitet nicht
   const sim = (u.sim ??= makeSim(g, u));
   sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom; sim.concreteAvail = g.concrete;
   let inp = { dx: 0, dy: 0, suction: false };
@@ -6225,7 +6255,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => locOf(u) === 'main' && u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, hiredTotal: hiredTotal, hireCostAt: hireCostAt, nextHireCost: nextHireCost, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, setFocus: setFocus, focusActive: focusActive, setSecond: setSecond, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, startPiles: startPiles, clearPilePlan: clearPilePlan, lineCells: lineCells, wallSpans: wallSpans, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, hiredTotal: hiredTotal, hireCostAt: hireCostAt, nextHireCost: nextHireCost, perMapMax: perMapMax, hireBlock: hireBlock, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, moveCost: moveCost, moveBlock: moveBlock, moveUnit: moveUnit, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, setFocus: setFocus, focusActive: focusActive, setSecond: setSecond, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, startPiles: startPiles, clearPilePlan: clearPilePlan, lineCells: lineCells, wallSpans: wallSpans, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);
@@ -7785,6 +7815,7 @@ function drawHarborScene(ctx, game, ui = {}) {
 
 function drawFleet(ctx, game, ui = {}) {
   for (const u of game.fleet?.units ?? []) {
+    if (u.state === 'transit') continue;
     if ((u.loc ?? 'main') !== (game.isHarborView ? 'harbor' : 'main')) continue; // Pontons im Hafen erscheinen nur auf der Hafenkarte
     const px = OX + u.x * CELL, py = u.y * CELL, sim = u.sim;
     if (sim?.mode === 'slice') {

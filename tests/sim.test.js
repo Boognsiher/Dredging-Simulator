@@ -686,7 +686,7 @@ test('Löffel: schafft harte Schicht und Fels besser als der Saugkopf', () => {
 test('Flotte: Mieten braucht Automatik und Geld, Kosten steigen, Obergrenze', () => {
   const g = new Game(5);
   assert.match(hireBlock(g), /Automatik/);
-  g.money = 1e6; g.buyUpgrade('auto');
+  g.money = 1e7; g.buyUpgrade('auto');
   assert.equal(hireBlock(g), null);
   const c0 = g.money;
   assert.ok(hireUnit(g));
@@ -2033,4 +2033,22 @@ test('Flussdelta: wächst täglich nach und verschwindet nicht', () => {
   assert.ok(cells.length > 30, 'gross');
   for (const i of cells) r.depLeft[i] = 0.1; g.depositsDay();
   assert.ok(cells.every((i) => r.depLeft[i] > 0.1), 'wächst nach'); assert.equal(d.depleted ?? false, false);
+});
+
+// ---------- Pontons zwischen Karten verlegen ----------
+import { moveUnit, moveBlock, moveCost, perMapMax } from '../src/sim/fleet.js';
+test('Pontons verlegen: Kosten, Überfahrt, Sperrfrist, Grenze pro Karte', () => {
+  const g = new Game(11, 'endlos'); g.eventsOn = false; g.money = 1e9; g.buyUpgrade('auto'); g.addMap(); g.addMap();
+  hireUnit(g); hireUnit(g);
+  const id = g.fleet.units[0].id, m0 = g.money, cost = moveCost(g);
+  assert.ok(cost > 0); assert.equal(moveBlock(g, id, g.mapIdx), 'Ungültige Zielkarte');
+  assert.equal(moveUnit(g, id, 1), true);
+  assert.equal(g.money, m0 - cost); assert.equal(g.fleet.units.length, 1); assert.equal(g.maps[1].fleet.units.length, 1);
+  g.switchMap(1); const u = g.fleet.units[0]; assert.equal(u.state, 'transit');
+  assert.match(moveBlock(g, u.id, 2) ?? '', /unterwegs/);
+  for (let i = 0; i < 300; i++) g.update(0.1); // 30 s > 2 Tage Überfahrt
+  assert.notEqual(g.fleet.units[0].state, 'transit');
+  assert.match(moveBlock(g, u.id, 2) ?? '', /Gerade verlegt/);
+  g.maps[2].fleet.units.push(...Array.from({ length: perMapMax(g) }, (_, k) => ({ id: 90 + k, name: 'x', state: 'idle', skip: {}, removed: 0 })));
+  g.fleet.units[0].moveReady = 0; assert.match(moveBlock(g, g.fleet.units[0].id, 2) ?? '', /hat schon/);
 });

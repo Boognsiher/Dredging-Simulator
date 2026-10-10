@@ -602,6 +602,7 @@ export function drawHarborScene(ctx, game, ui = {}) {
 
 function drawFleet(ctx, game, ui = {}) {
   for (const u of game.fleet?.units ?? []) {
+    if (u.state === 'transit') continue;
     if ((u.loc ?? 'main') !== (game.isHarborView ? 'harbor' : 'main')) continue; // Pontons im Hafen erscheinen nur auf der Hafenkarte
     const px = OX + u.x * CELL, py = u.y * CELL, sim = u.sim;
     if (sim?.mode === 'slice') {

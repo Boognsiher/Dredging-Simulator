@@ -19,7 +19,7 @@ export const plantUnlocked = (g) => !UNLOCK.enabled || rankOf(g) >= 2 || (g.tota
 export const upgradeRank = (id) => UP_NEED[id] ?? 1;
 export const rankOf = (g) => (UNLOCK.enabled ? g.rank ?? 1 : 99);
 export const hasRank = (g, key) => rankOf(g) >= (typeof key === 'number' ? key : NEED[key]);
-export const fleetMax = (g) => [1, 2, 3, 4, 4][Math.min(4, rankOf(g) - 1)];
+export const fleetMax = (g) => [1, 2, 4, 6, 8][Math.min(4, rankOf(g) - 1)];
 export const rankName = (n) => ({ kahn: 'Lastkahn', motor: 'Motorgüterschiff', tank: 'Tankschiff', container: 'Containerschiff', schub: 'Schubverband' })[RANK_ORDER[n - 1]];
 // Höchstes Level aus den freigeschalteten Klassen aller Karten
 export function computeRank(g) {

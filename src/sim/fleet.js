@@ -1,4 +1,4 @@
-import { fleetMax } from './rank.js';
+import { fleetMax, rankOf, UNLOCK } from './rank.js';
 import { CONFIG, SHIPS, KIND, shipById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { zoneSupports } from './traffic.js';
@@ -17,11 +17,15 @@ const hiredCount = (g) => g.fleet.units.filter((u) => !u.self).length; // dein e
 export const hiredTotal = (g) => (g.maps ?? []).reduce((n, m) => n + (m.fleet?.units ?? []).filter((u) => !u.self).length, 0) || hiredCount(g);
 export const hireCostAt = (n) => { const c = CONFIG.fleet.costs; return n < c.length ? c[n] : Math.round((c[c.length - 1] * 1.35 ** (n - c.length + 1)) / 1000) * 1000; };
 export const nextHireCost = (g) => hireCostAt(hiredTotal(g));
+// Höchstzahl gemieteter Pontons pro Karte (nach Level); ohne Levelsystem (Tests) gilt nur die Gesamtgrenze
+export const perMapMax = (g) => Math.min(fleetMax(g), UNLOCK.enabled ? CONFIG.fleet.perMap[Math.min(4, rankOf(g) - 1)] : CONFIG.fleet.max);
+const hiredOn = (m) => (m.fleet?.units ?? []).filter((u) => !u.self).length;
 
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 export function hireBlock(g) {
   if (g.status !== 'playing') return 'Spiel beendet';
-  if (hiredCount(g) >= Math.min(CONFIG.fleet.max, fleetMax(g))) return hiredCount(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : 'Mehr Pontons brauchen das nächste Level (grössere Schiffsklasse)';
+  if (hiredCount(g) >= perMapMax(g)) return hiredCount(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : `Diese Karte fasst höchstens ${perMapMax(g)} Pontons (mehr mit dem nächsten Level)`;
+  if (hiredTotal(g) >= Math.min(CONFIG.fleet.max, fleetMax(g))) return hiredTotal(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : 'Mehr Pontons brauchen das nächste Level (grössere Schiffsklasse)';
   if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
   const cost = nextHireCost(g);
   if (g.money < cost) return `Braucht ${cost.toLocaleString('de-CH')} CHF`;
@@ -56,6 +60,30 @@ export function recallPonton(g) {
   const u = lentUnit(g); if (!u) return null;
   u.sim?.leave(); g.fleet.units.splice(g.fleet.units.indexOf(u), 1);
   return { x: u.x, y: u.y };
+}
+// Ponton auf eine andere Karte verlegen: kostet einen Teil des Mietpreises, die Überfahrt dauert, danach kurze Sperrfrist
+export const moveCost = (g) => Math.round((nextHireCost(g) * CONFIG.fleet.moveCost) / 100) * 100;
+export function moveBlock(g, id, to) {
+  const u = g.fleet.units.find((q) => q.id === id), T = g.maps?.[to];
+  if (g.status !== 'playing') return 'Spiel beendet';
+  if (!u || u.self) return 'Nur gemietete Pontons lassen sich verlegen';
+  if (!T || to === g.mapIdx) return 'Ungültige Zielkarte';
+  if (u.state === 'transit') return 'Ist schon unterwegs';
+  if (g.time < (u.moveReady ?? 0)) return `Gerade verlegt: wieder möglich in ${Math.ceil(((u.moveReady ?? 0) - g.time) / CONFIG.daySeconds)} Tagen`;
+  if (hiredOn(T) >= perMapMax(g)) return `${T.name} hat schon ${perMapMax(g)} Pontons`;
+  const c = moveCost(g); if (g.money < c) return `Braucht ${c.toLocaleString('de-CH')} CHF`;
+  return null;
+}
+export function moveUnit(g, id, to) {
+  if (moveBlock(g, id, to)) return false;
+  const F = g.fleet, i = F.units.findIndex((q) => q.id === id), u = F.units[i], T = g.maps[to], c = moveCost(g);
+  u.sim?.leave(); u.sim = null; F.units.splice(i, 1);
+  for (const a of F.areas ?? []) if (a.unit === id) a.unit = null;
+  for (const z of g.zones ?? []) if (z.unit === id) z.unit = null;
+  g.money -= c; g.today.costs += c;
+  T.fleet.units.push({ ...u, id: ++T.fleet.seq, state: 'transit', loc: 'main', site: null, path: null, idle: 0, x: 1.5, y: T.river.centerY(1), note: `Überfahrt nach ${T.name}`, arriveAt: g.time + CONFIG.fleet.moveDays * CONFIG.daySeconds, moveReady: g.time + (CONFIG.fleet.moveDays + CONFIG.fleet.moveCooldownDays) * CONFIG.daySeconds });
+  g.say(`${u.name} wird nach ${T.name} verlegt (−${c.toLocaleString('de-CH')} CHF, ${CONFIG.fleet.moveDays} Tage).`, 'upgrade');
+  return true;
 }
 export function dismissUnit(g, id) {
   const F = g.fleet, i = F.units.findIndex((u) => u.id === id);
@@ -576,6 +604,7 @@ function floatPath(sim, from, to) {
 }
 
 function stepUnit(g, u, dt) {
+  if (u.state === 'transit') { if (g.time >= u.arriveAt) { u.state = 'idle'; u.idle = 0; u.note = 'angekommen'; } return; } // auf Überfahrt: arbeitet nicht
   const sim = (u.sim ??= makeSim(g, u));
   sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom; sim.concreteAvail = g.concrete;
   let inp = { dx: 0, dy: 0, suction: false };
