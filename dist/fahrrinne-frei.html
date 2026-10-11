@@ -556,12 +556,29 @@ button.mini { padding: 0 6px; min-width: 0; min-height: 0; width: auto; font-siz
 .plot button.mini, .port-card button.mini, .brow button.mini { width: auto; min-width: 32px; min-height: 28px; display: inline-block; padding: 2px 8px; margin: 0 4px; flex: none; font-size: 15px; vertical-align: middle; }
 .phead { display: flex; align-items: center; gap: 4px; }
 
+#btn-books { flex: none; margin: 0 6px 0 auto; padding: 6px 12px; min-height: 0; font-weight: 600; background: #24415c; }
+#books { position: fixed; inset: 0; z-index: 40; background: #000c; overflow-y: auto; padding: 12px; }
+#books[hidden] { display: none; }
+.books-card { background: #10283d; border: 1px solid #ffffff22; border-radius: 12px; padding: 12px; max-width: 980px; margin: 0 auto; }
+.books-head { display: flex; justify-content: space-between; align-items: center; } .books-head h2 { margin: 0; font-size: 18px; } .books-head button { width: auto; min-height: 0; padding: 4px 12px; margin: 0; }
+.books-sum { margin: 8px 0; } .books-card h3 { margin: 14px 0 6px; font-size: 14px; } .books-card small { color: var(--muted); display: block; margin-top: 8px; }
+.books-scroll { overflow-x: auto; border-radius: 8px; }
+table.books { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; min-width: 100%; }
+table.books th, table.books td { padding: 4px 7px; white-space: nowrap; border-bottom: 1px solid #ffffff14; text-align: right; }
+table.books thead th { color: var(--muted); font-weight: 600; } table.books tbody th { text-align: left; position: sticky; left: 0; background: #10283d; font-weight: 500; }
+table.books tr.sum th, table.books tr.sum td { font-weight: 700; border-top: 1px solid #ffffff44; } table.books tr.dim { opacity: .7; }
+.books-card .pos { color: #7bd88f; } .books-card .neg { color: #ff8a7a; } .books-card .zero { color: #7f93a6; }
+.bar-row { display: grid; grid-template-columns: 9.5em 1fr 6.5em; gap: 8px; align-items: center; font-size: 12px; margin: 3px 0; } .bar-row b { text-align: right; font-variant-numeric: tabular-nums; }
+.bar-track { background: #ffffff10; border-radius: 4px; height: 10px; overflow: hidden; } .bar-track i { display: block; height: 100%; } .bar-track i.p { background: #4fbf72; } .bar-track i.n { background: #e0634f; }
+@media (max-width: 860px) { .bar-row { grid-template-columns: 7em 1fr 5.5em; } }
+
 </style>
 </head>
 <body>
   <header id="header-bar">
     <h1 id="title">Fahrrinne frei! <small id="level-name"></small></h1>
     <select id="map-select" aria-label="Karte wechseln" hidden></select>
+    <button id="btn-books" aria-label="Bilanz" title="Bilanz (B)">📊 Bilanz</button>
     <button id="btn-menu" aria-label="Menü">☰ Menü</button>
     <div id="hud">
       <span title="Level = höchste befahrbare Schiffsklasse">Level <b id="h-rank"></b></span>
@@ -716,29 +733,31 @@ const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit:
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(7);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
 const { Game } = __m(11);
-const { startIcons } = __m(20);
+const { setupBooks } = __m(20);
+const { startIcons } = __m(21);
 const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(10);
 const { acceptContract } = __m(17);
 const { waitingByClass, shipPos } = __m(16);
 const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
 const { bayCapacity, maxZones, zoneClasses } = __m(16);
 const { materialPrice } = __m(19);
-const { TowSim, groundedNear } = __m(21);
+const { TowSim, groundedNear } = __m(22);
 const { makeHarborView, HARBOR, waitPos } = __m(4);
 const { toolName } = __m(13);
 const { priceOf, trend } = __m(8);
 const { needDepth, minNeedDepth } = __m(3);
-const { Advisor } = __m(22);
-const { serializeGame, restoreGame, savedSummary } = __m(23);
-const { createInput } = __m(24);
-const { setupTouch } = __m(26);
-const { steerToward } = __m(25);
-const { setupPort } = __m(27);
-const { fitSize, renderQuality } = __m(28);
-const { hintsFor } = __m(29);
-const { Fx } = __m(30);
-const { createAudio } = __m(31);
-const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(32);
+const { Advisor } = __m(23);
+const { serializeGame, restoreGame, savedSummary } = __m(24);
+const { createInput } = __m(25);
+const { setupTouch } = __m(27);
+const { steerToward } = __m(26);
+const { setupPort } = __m(28);
+const { fitSize, renderQuality } = __m(29);
+const { hintsFor } = __m(30);
+const { Fx } = __m(31);
+const { createAudio } = __m(32);
+const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(33);
+
 
 
 
@@ -1941,6 +1960,7 @@ $('btn-ff2').onclick = cycleFF; $('btn-ff').onclick = cycleFF;
 
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
+const books = setupBooks(() => game);
 $('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
 addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
 
@@ -2030,6 +2050,7 @@ function frame(now) {
   if (portOpen() && readInput.tap('Escape')) togglePort();
   if (portOpen()) { portUi.render(); portUi.tick(dt); }
   if (readInput.tap('KeyP')) togglePause();
+  books.tick(dt);
   if (readInput.tap('KeyV')) cycleFF();
   if (readInput.tap('KeyB') && !overlayOpen()) setFritz(!advisor.enabled);
   const running = !paused && !overlayOpen() && !tipOpen && game.status === 'playing';
@@ -2342,7 +2363,7 @@ function unloadAt(g, s, i) {
 }
 function deliver(g, s, at) {
   const S = g.shipping, revenue = unloadAt(g, s, at), gain = revenue - s.load * s.basis;
-  s.profit += gain; S.profit += gain; s.trips++; S.trips++; g.today.income += Math.max(0, gain);
+  s.profit += gain; S.profit += gain; s.trips++; S.trips++; g.today.income += Math.max(0, gain); g.book('reederei', gain);
   s.note = `lieferte ${Math.round(s.load)} t (${gain >= 0 ? '+' : '−'}${Math.abs(Math.round(gain)).toLocaleString('de-CH')} CHF vor Unterhalt)`;
   s.load = 0;
 }
@@ -2380,7 +2401,7 @@ function updateShipping(g, dt) {
   const day = CONFIG.daySeconds;
   for (const s of S.ships) {
     const T = SHIPPING.types[s.type];
-    const up = (T.perDay * dt * (s.state === 'idle' ? SHIPPING.idleUpkeep : 1)) / day; g.money -= up; g.today.costs += up;
+    const up = (T.perDay * dt * (s.state === 'idle' ? SHIPPING.idleUpkeep : 1)) / day; g.money -= up; g.today.costs += up; g.book('reederei', -up);
     if (s.state === 'idle') {
       const info = routeInfo(g, s);
       if (!info.ok) { s.note = info.reason; continue; }
@@ -3764,7 +3785,7 @@ function sell(g, id, tons) {
   const q = Math.max(0, Math.min(tons, p.stock[id]));
   if (q <= 0) return 0;
   const r = q * sellPrice(g, id);
-  p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; marketImpact(g, id, q, -1);
+  p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; g.book('handel', r - q * (p.cost[id] ?? 0)); marketImpact(g, id, q, -1);
   if (p.stock[id] < 1e-6) { p.stock[id] = 0; p.cost[id] = 0; }
   return q;
 }
@@ -3815,7 +3836,7 @@ function moveGoods(g, job, q) {
   if (job.out) q = Math.min(q, p.stock[id]);
   else q = Math.min(q, capacity(g, id) - p.stock[id], Math.max(0, (g.money - PORT.reserve) / (price * (1 - PORT.spread / 2))));
   if (q <= 1e-9) { job.done = job.tons; return 0; } // nichts mehr möglich (Lager leer/voll/kein Geld): Auftrag endet
-  if (job.out) { const r = q * price * (1 + PORT.spread / 2); p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; }
+  if (job.out) { const r = q * price * (1 + PORT.spread / 2); p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; g.book('handel', r - q * (p.cost[id] ?? 0)); }
   else { const c = q * price * (1 - PORT.spread / 2); p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q; g.money -= c; p.spent += c; g.today.costs += c; }
   job.done += q; p.handled += q;
   return q;
@@ -3823,7 +3844,7 @@ function moveGoods(g, job, q) {
 function finishJob(g, job) {
   const p = g.port, J = PORT.jobs, late = job.left <= 0;
   const frac = Math.max(0, job.left) / J.deadline, pay = late ? job.fee * J.lateFactor : job.fee * (1 + J.bonusMax * frac);
-  g.money += pay; p.fees += pay; g.today.income += pay; if (!late) p.bonus += pay - job.fee; else p.jobsLate++;
+  g.money += pay; p.fees += pay; g.today.income += pay; g.book('hafen', pay); if (!late) p.bonus += pay - job.fee; else p.jobsLate++;
   p.jobsDone++;
   g.flash.push({ x: 0, y: 0, text: `+${Math.round(pay)}`, color: late ? '#e0a040' : '#7bd88f' });
 }
@@ -3879,7 +3900,7 @@ function portDay(g) {
   if (rail) { const q = prod('container', PORT.buildings.bahn.rate[rail.level - 1], PORT.ownCost.container * cargoBase('container')); g.totals.railDelivered = (g.totals.railDelivered ?? 0) + q; }
   for (const id of Object.keys(PORT.commodities)) { // Einlagerkosten
     const c = (p.stock[id] ?? 0) * (PORT.storageCost[id] ?? 0); if (c <= 0) continue;
-    g.money -= c; p.spent += c; g.today.costs += c; g.totals.storageCost = (g.totals.storageCost ?? 0) + c;
+    g.money -= c; p.spent += c; g.today.costs += c; g.totals.storageCost = (g.totals.storageCost ?? 0) + c; g.book('lager', -c);
   }
   for (const id of Object.keys(PORT.commodities)) {
     const a = p.auto[id], cap = capacity(g, id); if (!a.on || cap <= 0) continue;
@@ -4195,7 +4216,9 @@ function regionBias(seed, k) {
   for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-span[id], span[id]).toFixed(2);
   return bias;
 }
-const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0 });
+const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0, cat: {} });
+// Kategorien der Tagesbilanz (Dashboard): Betrag > 0 = Einnahme, < 0 = Ausgabe
+const BOOK = { baggern: 'Baggern (Entgelt)', rohstoff: 'Rohstoff-Aufschlag', verkehr: 'Verkehrsgebühren', anlage: 'Aufbereitungsanlage', handel: 'Hafenhandel', hafen: 'Hafen-Umschlag', lager: 'Lagerkosten', reederei: 'Reederei', vertrag: 'Verträge', bussen: 'Bussen & Reparaturen', havarie: 'Havarie & Bergung', ereignis: 'Ereignisse', beton: 'Beton', betrieb: 'Betrieb', loehne: 'Löhne Flotte' };
 
 // Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
 // Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel (goalTons) schaltet das nächste Level frei.
@@ -4237,7 +4260,7 @@ class Game {
     this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
     this.rejectedBy = {};
     this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, premium: 0, sunk: 0, sunkFines: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
-    this.today = freshDay();
+    this.today = freshDay(); this.history = []; this.dayStartMoney = this.money;
     this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
     this.tabsSeen = {}; // freigeschaltete Menü-Bereiche (Stufensystem der Oberfläche), bleiben freigeschaltet
@@ -4520,6 +4543,9 @@ class Game {
     return true;
   }
 
+  // Betrag in eine Kategorie der Tagesbilanz buchen (das Geld selbst wird an der Stelle verändert)
+  book(cat, amount) { if (!amount) return; const c = (this.today.cat ??= {}); c[cat] = (c[cat] ?? 0) + amount; }
+
   // Verbucht, was der Ponton in einem Schritt getan hat (siehe DredgeSim.update)
   collect(d) {
     if (this.status !== 'playing') return;
@@ -4529,6 +4555,7 @@ class Game {
     let bomb = 0;
     if (d.bombs) { bomb = 4500 * d.bombs; this.totals.bombs += d.bombs; this.say(`Blindgänger! Der Kampfmittelräumdienst rückt aus (−${bomb} CHF).`, 'bad'); this.notify('Fliegerbombe! Kampfmittelräumdienst −4500 CHF', 'bad'); }
     this.money += pay - protect - land - d.fines - d.repairs - bomb;
+    this.book('baggern', pay); this.book('bussen', -(protect + land + d.fines + d.repairs)); this.book('havarie', -bomb);
     // Rohstoffvorkommen mit Konzession: der Preisaufschlag wird sofort bar bezahlt
     let premium = 0;
     for (const [id, vol] of Object.entries(d.dep ?? {})) {
@@ -4537,7 +4564,7 @@ class Game {
       if (dep.owned) premium += vol * materialPrice(dep.kind, this.stats, this.market) * (dep.mult - 1);
       else if (vol > 0.5) this.depositNoConcession = dep.id;
     }
-    if (premium) { this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
+    if (premium) { this.book('rohstoff', premium); this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
     const t = this.totals, y = this.today;
     t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
     y.pay += pay; y.costs += protect + land + d.fines + d.repairs + bomb;
@@ -4563,12 +4590,12 @@ class Game {
       const m = Math.min(this.stats.mixRate * dt, C.stockCap - this.concrete, this.agg.kies / C.mix.kies, this.agg.sand / C.mix.sand);
       if (m > 1e-9) {
         this.agg.kies -= m * C.mix.kies; this.agg.sand -= m * C.mix.sand; this.concrete += m;
-        const cost = m * C.cement; this.money -= cost; this.totals.cementCost += cost; this.totals.concreteMixed += m; this.today.costs += cost;
+        const cost = m * C.cement; this.money -= cost; this.totals.cementCost += cost; this.totals.concreteMixed += m; this.today.costs += cost; this.book('beton', -cost);
       }
     }
     if (pl.vol > 0) {
-      this.money += pl.net; this.totals.plantNet += pl.net; this.today.plant += pl.net;
-      const rf = refundFrac(this); if (rf > 0 && pl.by[KIND.altlast] < 0) { const back = -pl.by[KIND.altlast] * rf; this.money += back; this.totals.plantNet += back; this.today.plant += back; this.port.refunded = (this.port.refunded ?? 0) + back; } // Sanierungsanlage
+      this.money += pl.net; this.totals.plantNet += pl.net; this.today.plant += pl.net; this.book('anlage', pl.net);
+      const rf = refundFrac(this); if (rf > 0 && pl.by[KIND.altlast] < 0) { const back = -pl.by[KIND.altlast] * rf; this.money += back; this.totals.plantNet += back; this.today.plant += back; this.book('anlage', back); this.port.refunded = (this.port.refunded ?? 0) + back; } // Sanierungsanlage
       for (let k = 0; k < 5; k++) { if (pl.by[k] >= 0) this.totals.sold += pl.by[k]; else this.totals.disposal -= pl.by[k]; }
     }
 
@@ -4604,7 +4631,8 @@ class Game {
     const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
     this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;
-    y.costs += cost + wages;
+    y.costs += cost + wages; this.book('betrieb', -cost); this.book('loehne', -wages);
+    (this.history ??= []).push({ day: this.day - 1, net: Math.round(this.money - (this.dayStartMoney ?? this.money)), cat: Object.fromEntries(Object.entries(y.cat ?? {}).map(([k, v]) => [k, Math.round(v)])) }); if (this.history.length > 40) this.history.shift(); this.dayStartMoney = this.money;
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();
     { const c0 = this.mapIdx; for (let k = 0; k < this.maps.length; k++) { this.mapIdx = k; stepMarket(this.market, this.rng); portDay(this); } this.mapIdx = c0; }
@@ -4643,7 +4671,7 @@ for (const key of ['market', 'port', 'river', 'traffic', 'fleet', 'zones', 'zone
   Object.defineProperty(Game.prototype, key, { get() { return this.maps[this.mapIdx][key]; }, set(v) { this.maps[this.mapIdx][key] = v; }, enumerable: false, configurable: true });
 }
 
-return { mapSeed: mapSeed, endlessRiver: endlessRiver, BIAS_SPAN: BIAS_SPAN, regionBias: regionBias, Game: Game };
+return { mapSeed: mapSeed, endlessRiver: endlessRiver, BIAS_SPAN: BIAS_SPAN, regionBias: regionBias, BOOK: BOOK, Game: Game };
 },
 function(){
 const { CONFIG, DEBRIS, KIND } = __m(2);
@@ -5172,11 +5200,11 @@ const EVENTS = [
   },
   {
     id: 'pump_repair', chance: 0.06,
-    apply: (g) => { const c = round100(g.rng.range(1500, 4500)); g.money -= c; g.totals.eventCosts += c; g.today.costs += c; return { kind: 'bad', text: `Werkstatt: Der Schlepper brauchte neue Lager (−${c} CHF)` }; },
+    apply: (g) => { const c = round100(g.rng.range(1500, 4500)); g.money -= c; g.totals.eventCosts += c; g.today.costs += c; g.book('ereignis', -c); return { kind: 'bad', text: `Werkstatt: Der Schlepper brauchte neue Lager (−${c} CHF)` }; },
   },
   {
     id: 'subsidy', chance: 0.04,
-    apply: (g) => { const c = round100(g.rng.range(3000, 8000)); g.money += c; g.totals.eventGains += c; return { kind: 'good', text: `Der Bund findet im Budget einen Zuschuss für die Wasserstrasse (+${c} CHF)` }; },
+    apply: (g) => { const c = round100(g.rng.range(3000, 8000)); g.money += c; g.totals.eventGains += c; g.book('ereignis', c); return { kind: 'good', text: `Der Bund findet im Budget einen Zuschuss für die Wasserstrasse (+${c} CHF)` }; },
   },
 ];
 
@@ -5347,7 +5375,7 @@ function sinkShip(g, ship, p) {
   const hx = Math.min(r.cols - 1, Math.max(0, Math.floor(p.x))), hy = Math.min(r.rows - 1, Math.max(0, Math.floor(p.y)));
   r.debris[r.idx(hx, hy)] = DEBRIS.length - 1; // Schiffswrack (die Bombe bleibt der letzte Eintrag)
   const fine = Math.round((cls.fee * 3 + (hazard ? K.fineHazard : K.fineBase)) / 100) * 100;
-  g.money -= fine; g.totals.sunk++; g.totals.sunkFines += fine; g.today.costs += fine;
+  g.money -= fine; g.totals.sunk++; g.totals.sunkFines += fine; g.today.costs += fine; g.book('havarie', -fine);
   const what = hazard ? (ship.cargo === 'oel' ? 'Öl' : 'Chemie') : 'Treibstoff';
   g.say(`${cls.name} gesunken bei Spalte ${hx + 1}! ${what} läuft aus: ${n} Zellen Altlast, Wrack in der Rinne, Umweltbusse −${fine} CHF`, 'bad');
   g.notify(`${cls.name} gesunken! Wrack und Altlast bei Spalte ${hx + 1} (−${fine.toLocaleString('de-CH')} CHF)`, 'bad');
@@ -5434,7 +5462,7 @@ function updateTraffic(g, dt) {
       g.money += inc;
       const t = g.totals;
       t.ships++; t.tons += ship.tons; t.trafficIncome += inc; t.byCargo[ship.cargo] = (t.byCargo[ship.cargo] ?? 0) + ship.tons; t.byClass[ship.cls] = (t.byClass[ship.cls] ?? 0) + 1;
-      g.today.ships++; g.today.tons += ship.tons; g.today.income += inc;
+      g.today.ships++; g.today.tons += ship.tons; g.today.income += inc; g.book('verkehr', inc);
       creditContracts(g, ship.cargo, ship.tons);
       g.flash.push({ x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
       continue;
@@ -5447,7 +5475,7 @@ function updateTraffic(g, dt) {
     if (!(ship.safeT > 0) && p.x > 0 && p.x < g.river.cols && depth < cls.draught - C.groundMargin - 0.1 * vts) {
       const cost = Math.round((cls.fee * C.salvageFactor * (1 - 0.25 * vts)) / 10) * 10;
       ship.state = 'grounded'; ship.ground = C.groundSeconds; ship.salvage = cost;
-      g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost;
+      g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost; g.book('havarie', -cost);
       g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
       g.notify(`${g.maps.length > 1 ? `${g.map.name}: ` : ''}${cls.name} aufgelaufen bei Spalte ${Math.floor(p.x) + 1}! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad', { goto: { map: g.mapIdx, ship: ship.id } });
       g.flash.push({ x: p.x, y: p.y, text: '⚠', color: '#ff7a6b' });
@@ -5546,7 +5574,7 @@ function creditContracts(g, cargoId, tons) {
     c.done += tons;
     if (c.done >= c.tons) {
       c.status = 'done';
-      g.money += c.bonus; g.totals.contractsPaid += c.bonus; g.totals.contractsDone++;
+      g.money += c.bonus; g.book('vertrag', c.bonus); g.totals.contractsPaid += c.bonus; g.totals.contractsDone++;
       g.say(`Auftrag erfüllt: ${c.tons} t ${cargoById(c.cargo).name} (+${c.bonus} CHF)`, 'good');
       g.notify(`Auftrag erfüllt: +${c.bonus.toLocaleString('de-CH')} CHF`, 'good');
       return; // die Tonnage zählt für einen Auftrag, damit zwei nicht dieselbe Ladung bekommen
@@ -5560,7 +5588,7 @@ function updateContracts(g) {
   for (const c of g.contracts) {
     if (c.status === 'offer' && g.time >= c.offerExpiresAt) { c.status = 'expired'; g.say(`Auftrag verfallen: ${c.client}`, 'info'); }
     else if (c.status === 'active' && g.time >= c.dueAt) {
-      c.status = 'failed'; g.money -= c.penalty; g.totals.contractsPenalty += c.penalty; g.totals.contractsFailed++;
+      c.status = 'failed'; g.money -= c.penalty; g.book('vertrag', -c.penalty); g.totals.contractsPenalty += c.penalty; g.totals.contractsFailed++;
       g.say(`Auftrag verpasst (${c.done}/${c.tons} t): Konventionalstrafe −${c.penalty} CHF`, 'bad');
       g.notify(`Auftrag verpasst: −${c.penalty.toLocaleString('de-CH')} CHF`, 'bad');
     }
@@ -6348,6 +6376,64 @@ function processPlant(stock, dt, stats, market, divert = null) {
 return { stockTotal: stockTotal, materialPrice: materialPrice, processPlant: processPlant };
 },
 function(){
+const { BOOK } = __m(11);
+
+
+// Dashboard «Bilanz»: Gesamtbilanz pro Tag (letzte 10 Tage), je Kategorie, und Hochrechnung auf die nächsten 30 Tage.
+// Quelle: game.history (je Tagesende) und die laufenden Zahlen von heute (game.today.cat). «Investitionen & Sonstiges» = Geldveränderung, die keine Kategorie ist (Käufe, Bauten).
+const DAYS = 10, AHEAD = 30;
+const n0 = (v) => Math.round(v).toLocaleString('de-CH');
+const cls = (v) => (Math.round(v) > 0 ? 'pos' : Math.round(v) < 0 ? 'neg' : 'zero');
+const cell = (v) => `<td class="${cls(v)}">${Math.round(v) === 0 ? '–' : (v > 0 ? '+' : '−') + n0(Math.abs(v))}</td>`;
+
+function bookData(g) {
+  const hist = (g.history ?? []).slice(-DAYS), cur = g.today?.cat ?? {};
+  const days = hist.map((h) => ({ day: h.day, cat: h.cat ?? {}, net: h.net ?? 0 }));
+  const keys = Object.keys(BOOK).filter((k) => days.some((d) => d.cat[k]) || cur[k]);
+  const rows = keys.map((k) => {
+    const vals = days.map((d) => d.cat[k] ?? 0), sum = vals.reduce((a, b) => a + b, 0), avg = days.length ? sum / days.length : 0;
+    return { key: k, name: BOOK[k], vals, today: cur[k] ?? 0, avg, proj: avg * AHEAD };
+  });
+  const op = days.map((d) => Object.values(d.cat).reduce((a, b) => a + b, 0));
+  const other = days.map((d, i) => d.net - op[i]);
+  const sum = (a) => a.reduce((x, y) => x + y, 0), avg = (a) => (a.length ? sum(a) / a.length : 0);
+  return { days, rows, op, other, net: days.map((d) => d.net), avgOp: avg(op), avgOther: avg(other), avgNet: avg(days.map((d) => d.net)), todayOp: Object.values(cur).reduce((a, b) => a + b, 0) };
+}
+
+function booksHtml(g) {
+  const D = bookData(g);
+  if (!D.days.length) return `<div class="books-head"><h2>📊 Bilanz</h2><button data-books="close">✕</button></div><p>Noch keine abgeschlossenen Tage. Nach dem ersten Tag erscheint hier, wo du Geld machst und wo Verlust.</p>`;
+  const head = `<tr><th>Kategorie</th>${D.days.map((d) => `<th>T${d.day}</th>`).join('')}<th>Heute</th><th>Ø/Tag</th><th>30 Tage</th></tr>`;
+  const body = D.rows.map((r) => `<tr><th>${r.name}</th>${r.vals.map(cell).join('')}${cell(r.today)}${cell(r.avg)}${cell(r.proj)}</tr>`).join('');
+  const sumRow = (label, vals, today, avg, extra = '') => `<tr class="sum ${extra}"><th>${label}</th>${vals.map(cell).join('')}${cell(today)}${cell(avg)}${cell(avg * AHEAD)}</tr>`;
+  const maxAbs = Math.max(1, ...D.rows.map((r) => Math.abs(r.proj)));
+  const bars = [...D.rows].sort((a, b) => b.proj - a.proj).map((r) => `<div class="bar-row"><span>${r.name}</span><div class="bar-track"><i class="${r.proj >= 0 ? 'p' : 'n'}" style="width:${(Math.abs(r.proj) / maxAbs) * 100}%"></i></div><b class="${cls(r.proj)}">${r.proj >= 0 ? '+' : '−'}${n0(Math.abs(r.proj))}</b></div>`).join('');
+  const verdict = D.avgOp >= 0 ? `Im Schnitt <b class="pos">+${n0(D.avgOp)} CHF pro Tag</b> im Betrieb: Hochrechnung <b class="pos">+${n0(D.avgOp * AHEAD)} CHF</b> in 30 Tagen.` : `Im Schnitt <b class="neg">−${n0(-D.avgOp)} CHF pro Tag</b> im Betrieb: Hochrechnung <b class="neg">−${n0(-D.avgOp * AHEAD)} CHF</b> in 30 Tagen. Verlustbringer unten prüfen.`;
+  return `<div class="books-head"><h2>📊 Bilanz</h2><button data-books="close" aria-label="Schliessen">✕</button></div>
+    <p class="books-sum">${verdict}</p>
+    <div class="books-scroll"><table class="books"><thead>${head}</thead><tbody>${body}
+      ${sumRow('Betriebsergebnis', D.op, D.todayOp, D.avgOp)}
+      ${sumRow('Investitionen & Sonstiges', D.other, 0, D.avgOther, 'dim')}
+      ${sumRow('Geldveränderung gesamt', D.net, D.todayOp, D.avgNet)}
+    </tbody></table></div>
+    <h3>Hochrechnung 30 Tage (Ø der letzten ${D.days.length} Tage)</h3><div class="bars">${bars}</div>
+    <small>Hochrechnung = Durchschnitt der letzten ${D.days.length} Tage × 30, ohne Investitionen. «Heute» läuft noch. Der Hafenhandel zeigt den Gewinn beim Verkauf (Verkaufserlös minus Einstand), nicht den Einkauf.</small>`;
+}
+
+function setupBooks(getGame) {
+  const el = document.createElement('div'); el.id = 'books'; el.hidden = true; document.body.append(el);
+  let open = false, acc = 0;
+  const render = () => { el.innerHTML = `<div class="books-card">${booksHtml(getGame())}</div>`; };
+  const set = (v) => { open = v; el.hidden = !v; if (v) render(); };
+  el.addEventListener('click', (e) => { if (e.target === el || e.target.closest('[data-books="close"]')) set(false); });
+  addEventListener('keydown', (e) => { if (open && e.code === 'Escape') set(false); });
+  const btn = document.getElementById('btn-books'); if (btn) btn.onclick = () => set(!open);
+  return { toggle: () => set(!open), isOpen: () => open, tick: (dt) => { if (!open) return; acc += dt; if (acc > 1.5) { acc = 0; const sc = el.querySelector('.books-scroll'), x = sc?.scrollLeft ?? 0, y = el.scrollTop; render(); const n = el.querySelector('.books-scroll'); if (n) n.scrollLeft = x; el.scrollTop = y; } } };
+}
+
+return { bookData: bookData, booksHtml: booksHtml, setupBooks: setupBooks };
+},
+function(){
 
 // Einheitliche Linien-Icons statt Geräte-Emojis: Beim Laden und bei jeder Textänderung in den Knopfleisten werden bekannte Emojis durch kleine SVGs ersetzt.
 // Die Texte im Spielcode bleiben unverändert; unbekannte Emojis bleiben stehen.
@@ -6740,7 +6826,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(25);
+const { isTap } = __m(26);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -6838,7 +6924,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(25);
+const { snapStick } = __m(26);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -7261,13 +7347,13 @@ const { SLICE } = __m(12);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
 const { shipPos, queuePos, bayCapacity } = __m(16);
 const { needDepth, minNeedDepth, trasseY } = __m(3);
-const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(33);
+const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(34);
 const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(6);
 const { HARBOR, berthPos, waitPos } = __m(4);
 const { areaWork, wallSpans } = __m(18);
 const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(7);
-const { Chain, drawChain } = __m(34);
-const { groundedNear } = __m(21);
+const { Chain, drawChain } = __m(35);
+const { groundedNear } = __m(22);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 
 
@@ -8261,7 +8347,7 @@ const CONFIG_TOW_SNAP = () => CONFIG.tow.snapAt;
 return { CELL: CELL, MARGIN: MARGIN, OX: OX, W: W, H: H, sizeCanvas: sizeCanvas, view: view, fs: fs, mapPx: mapPx, sliceY: sliceY, drawMap: drawMap, drawHarborScene: drawHarborScene, autoLineX: autoLineX, sliceHeadScreen: sliceHeadScreen, sliceMouthScreen: sliceMouthScreen, drawSlice: drawSlice, drawTowView: drawTowView, CARGOS: CARGOS, groundedNear: groundedNear };
 },
 function(){
-const { CELL, OX, W, H } = __m(32);
+const { CELL, OX, W, H } = __m(33);
 
 
 // Grafik-Aufwertung der Karte: weiches Gelände mit Hillshade und Schaum, Wasserglitzern, Schiffe mit Kielwasser, Ponton-Sprites, Tag-/Nachtlicht.

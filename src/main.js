@@ -3,6 +3,7 @@ import { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit
 import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } from './sim/land.js';
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
 import { Game } from './sim/game.js';
+import { setupBooks } from './ui/books.js';
 import { startIcons } from './ui/icons.js';
 import { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } from './sim/rank.js';
 import { acceptContract } from './sim/contracts.js';
@@ -1200,6 +1201,7 @@ $('btn-ff2').onclick = cycleFF; $('btn-ff').onclick = cycleFF;
 
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
+const books = setupBooks(() => game);
 $('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
 addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
 
@@ -1289,6 +1291,7 @@ function frame(now) {
   if (portOpen() && readInput.tap('Escape')) togglePort();
   if (portOpen()) { portUi.render(); portUi.tick(dt); }
   if (readInput.tap('KeyP')) togglePause();
+  books.tick(dt);
   if (readInput.tap('KeyV')) cycleFF();
   if (readInput.tap('KeyB') && !overlayOpen()) setFritz(!advisor.enabled);
   const running = !paused && !overlayOpen() && !tipOpen && game.status === 'playing';

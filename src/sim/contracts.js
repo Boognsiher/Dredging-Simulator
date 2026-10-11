@@ -33,7 +33,7 @@ export function creditContracts(g, cargoId, tons) {
     c.done += tons;
     if (c.done >= c.tons) {
       c.status = 'done';
-      g.money += c.bonus; g.totals.contractsPaid += c.bonus; g.totals.contractsDone++;
+      g.money += c.bonus; g.book('vertrag', c.bonus); g.totals.contractsPaid += c.bonus; g.totals.contractsDone++;
       g.say(`Auftrag erfüllt: ${c.tons} t ${cargoById(c.cargo).name} (+${c.bonus} CHF)`, 'good');
       g.notify(`Auftrag erfüllt: +${c.bonus.toLocaleString('de-CH')} CHF`, 'good');
       return; // die Tonnage zählt für einen Auftrag, damit zwei nicht dieselbe Ladung bekommen
@@ -47,7 +47,7 @@ export function updateContracts(g) {
   for (const c of g.contracts) {
     if (c.status === 'offer' && g.time >= c.offerExpiresAt) { c.status = 'expired'; g.say(`Auftrag verfallen: ${c.client}`, 'info'); }
     else if (c.status === 'active' && g.time >= c.dueAt) {
-      c.status = 'failed'; g.money -= c.penalty; g.totals.contractsPenalty += c.penalty; g.totals.contractsFailed++;
+      c.status = 'failed'; g.money -= c.penalty; g.book('vertrag', -c.penalty); g.totals.contractsPenalty += c.penalty; g.totals.contractsFailed++;
       g.say(`Auftrag verpasst (${c.done}/${c.tons} t): Konventionalstrafe −${c.penalty} CHF`, 'bad');
       g.notify(`Auftrag verpasst: −${c.penalty.toLocaleString('de-CH')} CHF`, 'bad');
     }

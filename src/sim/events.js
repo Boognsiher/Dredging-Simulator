@@ -45,10 +45,10 @@ export const EVENTS = [
   },
   {
     id: 'pump_repair', chance: 0.06,
-    apply: (g) => { const c = round100(g.rng.range(1500, 4500)); g.money -= c; g.totals.eventCosts += c; g.today.costs += c; return { kind: 'bad', text: `Werkstatt: Der Schlepper brauchte neue Lager (−${c} CHF)` }; },
+    apply: (g) => { const c = round100(g.rng.range(1500, 4500)); g.money -= c; g.totals.eventCosts += c; g.today.costs += c; g.book('ereignis', -c); return { kind: 'bad', text: `Werkstatt: Der Schlepper brauchte neue Lager (−${c} CHF)` }; },
   },
   {
     id: 'subsidy', chance: 0.04,
-    apply: (g) => { const c = round100(g.rng.range(3000, 8000)); g.money += c; g.totals.eventGains += c; return { kind: 'good', text: `Der Bund findet im Budget einen Zuschuss für die Wasserstrasse (+${c} CHF)` }; },
+    apply: (g) => { const c = round100(g.rng.range(3000, 8000)); g.money += c; g.totals.eventGains += c; g.book('ereignis', c); return { kind: 'good', text: `Der Bund findet im Budget einen Zuschuss für die Wasserstrasse (+${c} CHF)` }; },
   },
 ];

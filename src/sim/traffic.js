@@ -137,7 +137,7 @@ function sinkShip(g, ship, p) {
   const hx = Math.min(r.cols - 1, Math.max(0, Math.floor(p.x))), hy = Math.min(r.rows - 1, Math.max(0, Math.floor(p.y)));
   r.debris[r.idx(hx, hy)] = DEBRIS.length - 1; // Schiffswrack (die Bombe bleibt der letzte Eintrag)
   const fine = Math.round((cls.fee * 3 + (hazard ? K.fineHazard : K.fineBase)) / 100) * 100;
-  g.money -= fine; g.totals.sunk++; g.totals.sunkFines += fine; g.today.costs += fine;
+  g.money -= fine; g.totals.sunk++; g.totals.sunkFines += fine; g.today.costs += fine; g.book('havarie', -fine);
   const what = hazard ? (ship.cargo === 'oel' ? 'Öl' : 'Chemie') : 'Treibstoff';
   g.say(`${cls.name} gesunken bei Spalte ${hx + 1}! ${what} läuft aus: ${n} Zellen Altlast, Wrack in der Rinne, Umweltbusse −${fine} CHF`, 'bad');
   g.notify(`${cls.name} gesunken! Wrack und Altlast bei Spalte ${hx + 1} (−${fine.toLocaleString('de-CH')} CHF)`, 'bad');
@@ -224,7 +224,7 @@ export function updateTraffic(g, dt) {
       g.money += inc;
       const t = g.totals;
       t.ships++; t.tons += ship.tons; t.trafficIncome += inc; t.byCargo[ship.cargo] = (t.byCargo[ship.cargo] ?? 0) + ship.tons; t.byClass[ship.cls] = (t.byClass[ship.cls] ?? 0) + 1;
-      g.today.ships++; g.today.tons += ship.tons; g.today.income += inc;
+      g.today.ships++; g.today.tons += ship.tons; g.today.income += inc; g.book('verkehr', inc);
       creditContracts(g, ship.cargo, ship.tons);
       g.flash.push({ x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
       continue;
@@ -237,7 +237,7 @@ export function updateTraffic(g, dt) {
     if (!(ship.safeT > 0) && p.x > 0 && p.x < g.river.cols && depth < cls.draught - C.groundMargin - 0.1 * vts) {
       const cost = Math.round((cls.fee * C.salvageFactor * (1 - 0.25 * vts)) / 10) * 10;
       ship.state = 'grounded'; ship.ground = C.groundSeconds; ship.salvage = cost;
-      g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost;
+      g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost; g.book('havarie', -cost);
       g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
       g.notify(`${g.maps.length > 1 ? `${g.map.name}: ` : ''}${cls.name} aufgelaufen bei Spalte ${Math.floor(p.x) + 1}! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad', { goto: { map: g.mapIdx, ship: ship.id } });
       g.flash.push({ x: p.x, y: p.y, text: '⚠', color: '#ff7a6b' });

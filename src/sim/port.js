@@ -249,7 +249,7 @@ export function sell(g, id, tons) {
   const q = Math.max(0, Math.min(tons, p.stock[id]));
   if (q <= 0) return 0;
   const r = q * sellPrice(g, id);
-  p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; marketImpact(g, id, q, -1);
+  p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; g.book('handel', r - q * (p.cost[id] ?? 0)); marketImpact(g, id, q, -1);
   if (p.stock[id] < 1e-6) { p.stock[id] = 0; p.cost[id] = 0; }
   return q;
 }
@@ -300,7 +300,7 @@ function moveGoods(g, job, q) {
   if (job.out) q = Math.min(q, p.stock[id]);
   else q = Math.min(q, capacity(g, id) - p.stock[id], Math.max(0, (g.money - PORT.reserve) / (price * (1 - PORT.spread / 2))));
   if (q <= 1e-9) { job.done = job.tons; return 0; } // nichts mehr möglich (Lager leer/voll/kein Geld): Auftrag endet
-  if (job.out) { const r = q * price * (1 + PORT.spread / 2); p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; }
+  if (job.out) { const r = q * price * (1 + PORT.spread / 2); p.stock[id] -= q; g.money += r; p.earned += r; g.today.income += r; g.book('handel', r - q * (p.cost[id] ?? 0)); }
   else { const c = q * price * (1 - PORT.spread / 2); p.cost[id] = (p.cost[id] * p.stock[id] + c) / (p.stock[id] + q); p.stock[id] += q; g.money -= c; p.spent += c; g.today.costs += c; }
   job.done += q; p.handled += q;
   return q;
@@ -308,7 +308,7 @@ function moveGoods(g, job, q) {
 function finishJob(g, job) {
   const p = g.port, J = PORT.jobs, late = job.left <= 0;
   const frac = Math.max(0, job.left) / J.deadline, pay = late ? job.fee * J.lateFactor : job.fee * (1 + J.bonusMax * frac);
-  g.money += pay; p.fees += pay; g.today.income += pay; if (!late) p.bonus += pay - job.fee; else p.jobsLate++;
+  g.money += pay; p.fees += pay; g.today.income += pay; g.book('hafen', pay); if (!late) p.bonus += pay - job.fee; else p.jobsLate++;
   p.jobsDone++;
   g.flash.push({ x: 0, y: 0, text: `+${Math.round(pay)}`, color: late ? '#e0a040' : '#7bd88f' });
 }
@@ -364,7 +364,7 @@ export function portDay(g) {
   if (rail) { const q = prod('container', PORT.buildings.bahn.rate[rail.level - 1], PORT.ownCost.container * cargoBase('container')); g.totals.railDelivered = (g.totals.railDelivered ?? 0) + q; }
   for (const id of Object.keys(PORT.commodities)) { // Einlagerkosten
     const c = (p.stock[id] ?? 0) * (PORT.storageCost[id] ?? 0); if (c <= 0) continue;
-    g.money -= c; p.spent += c; g.today.costs += c; g.totals.storageCost = (g.totals.storageCost ?? 0) + c;
+    g.money -= c; p.spent += c; g.today.costs += c; g.totals.storageCost = (g.totals.storageCost ?? 0) + c; g.book('lager', -c);
   }
   for (const id of Object.keys(PORT.commodities)) {
     const a = p.auto[id], cap = capacity(g, id); if (!a.on || cap <= 0) continue;

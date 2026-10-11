@@ -36,7 +36,9 @@ export function regionBias(seed, k) {
   for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-span[id], span[id]).toFixed(2);
   return bias;
 }
-const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0 });
+const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0, cat: {} });
+// Kategorien der Tagesbilanz (Dashboard): Betrag > 0 = Einnahme, < 0 = Ausgabe
+export const BOOK = { baggern: 'Baggern (Entgelt)', rohstoff: 'Rohstoff-Aufschlag', verkehr: 'Verkehrsgebühren', anlage: 'Aufbereitungsanlage', handel: 'Hafenhandel', hafen: 'Hafen-Umschlag', lager: 'Lagerkosten', reederei: 'Reederei', vertrag: 'Verträge', bussen: 'Bussen & Reparaturen', havarie: 'Havarie & Bergung', ereignis: 'Ereignisse', beton: 'Beton', betrieb: 'Betrieb', loehne: 'Löhne Flotte' };
 
 // Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
 // Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel (goalTons) schaltet das nächste Level frei.
@@ -78,7 +80,7 @@ export class Game {
     this.nextContractAt = CONFIG.contracts.firstAtDay * CONFIG.daySeconds;
     this.rejectedBy = {};
     this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, premium: 0, sunk: 0, sunkFines: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
-    this.today = freshDay();
+    this.today = freshDay(); this.history = []; this.dayStartMoney = this.money;
     this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
     this.tabsSeen = {}; // freigeschaltete Menü-Bereiche (Stufensystem der Oberfläche), bleiben freigeschaltet
@@ -361,6 +363,9 @@ export class Game {
     return true;
   }
 
+  // Betrag in eine Kategorie der Tagesbilanz buchen (das Geld selbst wird an der Stelle verändert)
+  book(cat, amount) { if (!amount) return; const c = (this.today.cat ??= {}); c[cat] = (c[cat] ?? 0) + amount; }
+
   // Verbucht, was der Ponton in einem Schritt getan hat (siehe DredgeSim.update)
   collect(d) {
     if (this.status !== 'playing') return;
@@ -370,6 +375,7 @@ export class Game {
     let bomb = 0;
     if (d.bombs) { bomb = 4500 * d.bombs; this.totals.bombs += d.bombs; this.say(`Blindgänger! Der Kampfmittelräumdienst rückt aus (−${bomb} CHF).`, 'bad'); this.notify('Fliegerbombe! Kampfmittelräumdienst −4500 CHF', 'bad'); }
     this.money += pay - protect - land - d.fines - d.repairs - bomb;
+    this.book('baggern', pay); this.book('bussen', -(protect + land + d.fines + d.repairs)); this.book('havarie', -bomb);
     // Rohstoffvorkommen mit Konzession: der Preisaufschlag wird sofort bar bezahlt
     let premium = 0;
     for (const [id, vol] of Object.entries(d.dep ?? {})) {
@@ -378,7 +384,7 @@ export class Game {
       if (dep.owned) premium += vol * materialPrice(dep.kind, this.stats, this.market) * (dep.mult - 1);
       else if (vol > 0.5) this.depositNoConcession = dep.id;
     }
-    if (premium) { this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
+    if (premium) { this.book('rohstoff', premium); this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
     const t = this.totals, y = this.today;
     t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
     y.pay += pay; y.costs += protect + land + d.fines + d.repairs + bomb;
@@ -404,12 +410,12 @@ export class Game {
       const m = Math.min(this.stats.mixRate * dt, C.stockCap - this.concrete, this.agg.kies / C.mix.kies, this.agg.sand / C.mix.sand);
       if (m > 1e-9) {
         this.agg.kies -= m * C.mix.kies; this.agg.sand -= m * C.mix.sand; this.concrete += m;
-        const cost = m * C.cement; this.money -= cost; this.totals.cementCost += cost; this.totals.concreteMixed += m; this.today.costs += cost;
+        const cost = m * C.cement; this.money -= cost; this.totals.cementCost += cost; this.totals.concreteMixed += m; this.today.costs += cost; this.book('beton', -cost);
       }
     }
     if (pl.vol > 0) {
-      this.money += pl.net; this.totals.plantNet += pl.net; this.today.plant += pl.net;
-      const rf = refundFrac(this); if (rf > 0 && pl.by[KIND.altlast] < 0) { const back = -pl.by[KIND.altlast] * rf; this.money += back; this.totals.plantNet += back; this.today.plant += back; this.port.refunded = (this.port.refunded ?? 0) + back; } // Sanierungsanlage
+      this.money += pl.net; this.totals.plantNet += pl.net; this.today.plant += pl.net; this.book('anlage', pl.net);
+      const rf = refundFrac(this); if (rf > 0 && pl.by[KIND.altlast] < 0) { const back = -pl.by[KIND.altlast] * rf; this.money += back; this.totals.plantNet += back; this.today.plant += back; this.book('anlage', back); this.port.refunded = (this.port.refunded ?? 0) + back; } // Sanierungsanlage
       for (let k = 0; k < 5; k++) { if (pl.by[k] >= 0) this.totals.sold += pl.by[k]; else this.totals.disposal -= pl.by[k]; }
     }
 
@@ -445,7 +451,8 @@ export class Game {
     const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
     this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;
-    y.costs += cost + wages;
+    y.costs += cost + wages; this.book('betrieb', -cost); this.book('loehne', -wages);
+    (this.history ??= []).push({ day: this.day - 1, net: Math.round(this.money - (this.dayStartMoney ?? this.money)), cat: Object.fromEntries(Object.entries(y.cat ?? {}).map(([k, v]) => [k, Math.round(v)])) }); if (this.history.length > 40) this.history.shift(); this.dayStartMoney = this.money;
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();
     { const c0 = this.mapIdx; for (let k = 0; k < this.maps.length; k++) { this.mapIdx = k; stepMarket(this.market, this.rng); portDay(this); } this.mapIdx = c0; }

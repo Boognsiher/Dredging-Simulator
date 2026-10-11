@@ -111,7 +111,7 @@ function unloadAt(g, s, i) {
 }
 function deliver(g, s, at) {
   const S = g.shipping, revenue = unloadAt(g, s, at), gain = revenue - s.load * s.basis;
-  s.profit += gain; S.profit += gain; s.trips++; S.trips++; g.today.income += Math.max(0, gain);
+  s.profit += gain; S.profit += gain; s.trips++; S.trips++; g.today.income += Math.max(0, gain); g.book('reederei', gain);
   s.note = `lieferte ${Math.round(s.load)} t (${gain >= 0 ? '+' : '−'}${Math.abs(Math.round(gain)).toLocaleString('de-CH')} CHF vor Unterhalt)`;
   s.load = 0;
 }
@@ -149,7 +149,7 @@ export function updateShipping(g, dt) {
   const day = CONFIG.daySeconds;
   for (const s of S.ships) {
     const T = SHIPPING.types[s.type];
-    const up = (T.perDay * dt * (s.state === 'idle' ? SHIPPING.idleUpkeep : 1)) / day; g.money -= up; g.today.costs += up;
+    const up = (T.perDay * dt * (s.state === 'idle' ? SHIPPING.idleUpkeep : 1)) / day; g.money -= up; g.today.costs += up; g.book('reederei', -up);
     if (s.state === 'idle') {
       const info = routeInfo(g, s);
       if (!info.ok) { s.note = info.reason; continue; }
