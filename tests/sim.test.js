@@ -2100,3 +2100,11 @@ test('Bilanz je Karte: Verlauf wird pro Karte geführt', () => {
   assert.equal(g.maps[0].history.at(-1).cat.verkehr, 1000); assert.equal(g.maps[1].history.at(-1).cat.verkehr, 500);
   assert.equal(g.history.at(-1).cat.verkehr, 1500);
 });
+
+import { harborDiag } from '../src/sim/port.js';
+test('Hafen-Diagnose nennt, warum kein Schiff anlegt', () => {
+  const g = harborGame(); const d = harborDiag(g);
+  assert.ok(d.some((x) => !x.ok && /Becken/.test(x.text) || x.ok));
+  assert.ok(d.some((x) => /Containerbrücke/.test(x.text)));
+  g.port.slots[0] = null; assert.match(harborDiag(g)[0].text, /Kai/);
+});

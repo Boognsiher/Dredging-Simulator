@@ -281,7 +281,7 @@ export class Game {
     for (const m of this.maps) {
       const r = m.river, name = this.maps.length > 1 ? `${m.name}: ` : '';
       for (const d of r.deposits) if (d.regen && !d.depleted) for (let i = 0; i < r.dep.length; i++) if (r.dep[i] === d.id) r.depLeft[i] = Math.min(1.5, r.depLeft[i] + d.regen, Math.max(0, r.top[i] - r.rock[i])); // Flussdelta wächst täglich nach
-      for (const d of r.deposits) if (!d.depleted && !d.regen && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
+      for (const d of r.deposits) if (!d.depleted && !d.regen && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
       const active = r.deposits.filter((d) => !d.depleted).length;
       if (active < D.maxActive && this.rng() < D.spawnChance) {
         const T = DEPOSITS[Math.floor(this.rng() * DEPOSITS.length)], d = r.spawnDeposit(this.rng, T);
@@ -384,6 +384,7 @@ export class Game {
       if (dep.owned) premium += vol * materialPrice(dep.kind, this.stats, this.market) * (dep.mult - 1);
       else if (vol > 0.5) this.depositNoConcession = dep.id;
     }
+    for (const id of Object.keys(d.dep ?? {})) { const dep = this.river.deposits[id - 1]; if (dep && !dep.depleted && !dep.regen && this.river.depositRemaining(dep.id) < CONFIG.deposits.emptyBelow) { this.river.retireDeposit(dep.id); this.say(`${dep.name} ist abgebaut und verschwindet von der Karte.`, 'info'); } } // leere Vorkommen sofort entfernen
     if (premium) { this.book('rohstoff', premium); this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
     const t = this.totals, y = this.today;
     t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;

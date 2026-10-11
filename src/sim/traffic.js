@@ -192,6 +192,7 @@ export function updateTraffic(g, dt) {
     }
     const p0 = shipPos(ship);
     if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow + (1 - C.siteSlow) * (g.stats.siteRelief ?? 0);
+    const vBase = v;
     let gapMin = Infinity;
     for (const o of ships) {
       if (o === ship || o.dir !== ship.dir || !!o.alt !== !!ship.alt || (o.state !== 'sail' && o.state !== 'grounded') || o.s <= ship.s) continue;
@@ -199,6 +200,17 @@ export function updateTraffic(g, dt) {
       if (gap < gapMin) gapMin = gap;
     }
     const safe = C.gap * (1 - 0.15 * vts);
+    // Überholen: ein schnelleres Schiff hinter einem langsameren wechselt in die freie zweite Rinne (nur bei zwei getrennten Rinnen, ohne Gegenverkehr und ohne Ponton dort)
+    if (gapMin < safe + 1.5 && ship.lane === 'two' && ship.state === 'sail' && g.time - (ship.ovT ?? -99) > 10) {
+      const f2 = g.fair?.[ship.cls], lead = ships.filter((o) => o !== ship && o.dir === ship.dir && !!o.alt === !!ship.alt && (o.state === 'sail' || o.state === 'grounded') && o.s > ship.s).sort((a, b) => a.s - b.s)[0];
+      const vf = (c) => shipById(c.cls).speed * (c.dir > 0 ? C.downFactor : C.upFactor);
+      if (lead && f2?.twoWay && f2.path && f2.secondPath && vf(ship) > vf(lead) * 1.15) {
+        const other = !ship.alt, np = other ? f2.secondPath : f2.path, sl2 = ships.filter((o) => o !== ship && (o.state === 'sail' || o.state === 'grounded') && !!o.alt === other);
+        const nearOther = other ? near[`${ship.cls}:2`] : near[ship.cls];
+        const clear = !nearOther && !sl2.some((o) => o.dir !== ship.dir || Math.abs(o.s - ship.s) < C.enterGap + (shipById(o.cls).len + cls.len) / 2 + 1);
+        if (clear) { const px = shipPos(ship).x; ship.alt = other; ship.path = np; ship.s = Math.max(0, Math.min(np.length, sAtX(np, px, ship.dir))); ship.lat = 0; ship.ovT = g.time; g.totals.overtakes = (g.totals.overtakes ?? 0) + 1; gapMin = Infinity; }
+      }
+    }
     if (gapMin < safe) v = 0; else if (gapMin < safe + 1.5) v *= (gapMin - safe) / 1.5;
     if (ship.meets?.length) { // Begegnung an einer Kreuzungsstelle: wer zuerst da ist, wartet in der Zone, bis das andere Schiff eintrifft
       for (const m of ship.meets) {
@@ -213,6 +225,9 @@ export function updateTraffic(g, dt) {
       }
       ship.meets = ship.meets.filter((m) => !m.done);
     }
+    // Stau-Wächter: steht ein Schiff lange still (gegenseitiges Warten, Kreuzungsstelle, Schiff davor steckt fest), räumt der Lotse auf: es fährt kurz ohne Rücksicht weiter
+    if (ship.freeT > 0) { ship.freeT -= dt; v = vBase; ship.meets = []; ship.latZones = []; }
+    else { ship.stuckT = v < 0.03 * vBase + 1e-6 ? (ship.stuckT ?? 0) + dt : 0; if (ship.stuckT > C.stuckMax) { ship.stuckT = 0; ship.freeT = 12; v = vBase; ship.meets = []; ship.latZones = []; g.totals.jamsCleared = (g.totals.jamsCleared ?? 0) + 1; g.say(`Lotse räumt den Stau: ${cls.name} fährt weiter.`, 'info'); } }
     ship.s += v * dt;
     if (ship.berth && g.port?.bay?.cells?.length) { // Hafen erreicht: anlegen
       const bay = g.port.bay, bx = (bay.x0 + bay.x1 + 1) / 2, pn = shipPos(ship);
@@ -259,14 +274,15 @@ export function updateTraffic(g, dt) {
     if (!open || !f?.passable || !f.path) continue;
     // zwei getrennte Rinnen: Richtung > 0 fährt standardmässig die Hauptrinne, Richtung < 0 die zweite; ist die eigene Spur an der Einfahrt belegt,
     // weicht das Schiff auf die andere Spur aus, solange dort kein Gegenverkehr fährt (so fahren bei einseitigem Andrang beide Rinnen)
-    const lane = f.twoWay && !near[ship.cls] && !near[`${ship.cls}:2`] && f.secondPath ? 'two' : 'one';
+    const nearIn = (a) => (a ? near[`${ship.cls}:2`] : near[ship.cls]); // Ponton nahe an dieser Spur?
+    const lane = f.twoWay && f.secondPath && !(nearIn(false) && nearIn(true)) ? 'two' : 'one'; // steht nur in einer Spur ein Ponton, bleibt die andere frei benutzbar
     let ok = true, meets = [], alt = false;
     const sl = sailing();
     const blockedAt = (a) => sl.some((o) => o.dir === ship.dir && !!o.alt === a && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2);
     if (lane === 'two') {
       const own = ship.dir < 0, headOn = (a) => sl.some((o) => o.dir !== ship.dir && !!o.alt === a);
-      if (!headOn(own) && !blockedAt(own)) alt = own;
-      else if (!headOn(!own) && !blockedAt(!own)) alt = !own;
+      if (!headOn(own) && !blockedAt(own) && !nearIn(own)) alt = own;
+      else if (!headOn(!own) && !blockedAt(!own) && !nearIn(!own)) alt = !own;
       else ok = false;
     } else for (const o of sl) if (o.dir === ship.dir && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2) { ok = false; break; }
     if (ok && lane === 'one') { // Einbahnrinne: Gegenverkehr nur mit freier Kreuzungsstelle dazwischen

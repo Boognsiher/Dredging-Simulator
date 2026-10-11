@@ -260,3 +260,6 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Bilanz auch je Karte (Reiter oben im Dashboard); Bilanz-Knopf 📊 in der Kopfzeile neben Zeitraffer/Pause.
 - Kleine Hafen-Pontons: 15'000 CHF, halbe Leistung, 150 CHF Lohn pro Tag, nur im Hafenbecken, höchstens 3 je Hafen.
 - Kreuzungsstellen und Land werden wie die Pfahlwand in einer gezoomten Planungsansicht mit eigener Leiste (Zurück, Zoom) bearbeitet; der Land-Knopf steht neben «Hafenkarte».
+- Verkehr: Die zweite Rinne wird auch genutzt, wenn nur in einer Spur ein Ponton arbeitet; schnellere Schiffe überholen langsamere über die freie zweite Rinne; ein Stau-Wächter (Lotse) löst gegenseitiges Blockieren nach 20 s auf.
+- Hafen: Karte «Warum legt (k)ein Schiff an?» zeigt, was fehlt (Kai, Beckentiefe, Lager, Containerbrücke, Liegeplätze).
+- Rohstoffvorkommen mit 0 m³ Rest verschwinden sofort.

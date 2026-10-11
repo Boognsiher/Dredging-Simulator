@@ -586,6 +586,8 @@ body.mode-map.pile-mode :is(#land-bar, #zone-bar) { bottom: 8px; top: auto; }
 }
 body.pile-mode :is(#shift-actions, #tool-row, #touch-ui) { display: none !important; }
 
+.diag { margin: 6px 0; font-size: 13px; line-height: 1.45; } .diag .dok { color: #7bd88f; } .diag .dno { color: #ffb4a8; }
+
 </style>
 </head>
 <body>
@@ -1028,7 +1030,7 @@ function updateMarket() {
 let depositSig = null;
 function updateDeposits() {
   const r = game.river, price = (d) => materialPrice(d.kind, game.stats, game.market);
-  const rows = r.deposits.filter((d) => !d.depleted).map((d) => ({ d, rest: r.depositRemaining(d.id) }));
+  const rows = r.deposits.filter((d) => !d.depleted).map((d) => ({ d, rest: r.depositRemaining(d.id) })).filter(({ d, rest }) => d.regen || rest >= 0.5); // leere Vorkommen (0 m³) nicht anzeigen
   const sig = JSON.stringify([rows.map(({ d, rest }) => [d.id, d.known, d.owned, Math.round(rest / 5)]), Math.floor(game.money / 500), game.fleet.mine, Math.round(game.totals.premium / 100)]);
   if (sig === depositSig) return;
   depositSig = sig;
@@ -2538,7 +2540,7 @@ const CONFIG = {
     patience: 75, // Sekunden, die ein Schiff vor der Einfahrt wartet, bevor es abdreht und die Fracht auf die Bahn geht
     bay: 1, // Warteplatz an jedem Ende: so viele Schiffe warten anfangs (Rotlichter und Schlepper bauen ihn aus); weitere drehen sofort ab
     tugSpeed: 0.12, // Schlepper: Tempo-Zuwachs je Stufe für grosse Schiffe (Tiefgang ab 2,6 m)
-    holdTimeout: 45, // Sekunden, die ein Schiff in einer Kreuzungsstelle höchstens wartet
+    stuckMax: 20, holdTimeout: 45, // Sekunden, die ein Schiff in einer Kreuzungsstelle höchstens wartet
     downFactor: 1.15, upFactor: 0.85, // talwärts schneller als bergwärts
     gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
     enterGap: 3.0,
@@ -3642,6 +3644,22 @@ function bayDepth(g) {
 }
 const kaiLevel = (g) => slotsOf(g.port, 'kai')[0]?.level ?? 0;
 const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g)), g.port.harborGoal) : PORT.bay.target);
+// Warum legt kein Schiff an? Prüft Kai, Klassen, Beckentiefe, Lager und Brücke und nennt, was fehlt
+function harborDiag(g) {
+  const out = [], kl = kaiLevel(g), kc = kl ? HARBOR.kaiClasses[kl - 1] : 0, d = bayDepth(g);
+  if (!g.port.open) return [{ ok: false, text: 'Der Hafen ist noch nicht eröffnet.' }];
+  if (!hasKai(g)) return [{ ok: false, text: 'Es fehlt ein Kai: ohne Kai legt kein Schiff an.' }];
+  SHIPS.forEach((c, i) => {
+    const need = HARBOR.need[c.id], name = c.name.split(' ')[0];
+    if (i >= kc) out.push({ ok: false, text: `${name}: der Kai (Stufe ${kl}) nimmt diese Klasse nicht an, Kai ausbauen.` });
+    else if (d < need - 0.05) out.push({ ok: false, text: `${name}: Becken ${d.toFixed(1)} m, braucht ${need.toFixed(1)} m: weiter ausbaggern.` });
+    else out.push({ ok: true, text: `${name}: legt an (Becken ${d.toFixed(1)} m reicht für ${need.toFixed(1)} m).` });
+  });
+  for (const [id, C] of Object.entries(PORT.commodities)) if (capacity(g, id) <= 0) out.push({ ok: false, text: `${C.name}: kein Lager (${PORT.buildings[PORT.storage[id]].name} bauen), Schiffe mit dieser Fracht fahren vorbei.` });
+  if (!bridgeLevel(g)) out.push({ ok: false, text: 'Containerschiffe: brauchen zusätzlich die Containerbrücke.' });
+  const busy = berthJobs(g).length, nb = berthsOf(g); if (busy >= nb) out.push({ ok: false, text: `Alle ${nb} Liegeplätze sind belegt; Warteräume: ${waitsOf(g)}.` });
+  return out;
+}
 // Hafentiefe festlegen: bis zu welcher Schiffsklasse das Becken ausgebaggert wird (null = tiefste Klasse, die der Kai annimmt)
 function setHarborGoal(g, id) { const kc = HARBOR.kaiClasses[Math.max(0, kaiLevel(g) - 1)]; if (id && !SHIPS.slice(0, kc).some((s) => s.id === id)) return false; g.port.harborGoal = id || null; return true; }
 const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.12;
@@ -3937,7 +3955,7 @@ function portDay(g) {
 }
 const cargoBase = (id) => CARGOS.find((c) => c.id === id)?.base ?? 1;
 
-return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, setHarborGoal: setHarborGoal, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, oilInfo: oilInfo, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, bridgeLevel: bridgeLevel, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, harborDiag: harborDiag, setHarborGoal: setHarborGoal, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, oilInfo: oilInfo, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, bridgeLevel: bridgeLevel, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 
@@ -4487,7 +4505,7 @@ class Game {
     for (const m of this.maps) {
       const r = m.river, name = this.maps.length > 1 ? `${m.name}: ` : '';
       for (const d of r.deposits) if (d.regen && !d.depleted) for (let i = 0; i < r.dep.length; i++) if (r.dep[i] === d.id) r.depLeft[i] = Math.min(1.5, r.depLeft[i] + d.regen, Math.max(0, r.top[i] - r.rock[i])); // Flussdelta wächst täglich nach
-      for (const d of r.deposits) if (!d.depleted && !d.regen && d.known && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
+      for (const d of r.deposits) if (!d.depleted && !d.regen && r.depositRemaining(d.id) < D.emptyBelow) { r.retireDeposit(d.id); this.say(`${name}${d.name} ist abgebaut und verschwindet von der Karte.`, 'info'); }
       const active = r.deposits.filter((d) => !d.depleted).length;
       if (active < D.maxActive && this.rng() < D.spawnChance) {
         const T = DEPOSITS[Math.floor(this.rng() * DEPOSITS.length)], d = r.spawnDeposit(this.rng, T);
@@ -4590,6 +4608,7 @@ class Game {
       if (dep.owned) premium += vol * materialPrice(dep.kind, this.stats, this.market) * (dep.mult - 1);
       else if (vol > 0.5) this.depositNoConcession = dep.id;
     }
+    for (const id of Object.keys(d.dep ?? {})) { const dep = this.river.deposits[id - 1]; if (dep && !dep.depleted && !dep.regen && this.river.depositRemaining(dep.id) < CONFIG.deposits.emptyBelow) { this.river.retireDeposit(dep.id); this.say(`${dep.name} ist abgebaut und verschwindet von der Karte.`, 'info'); } } // leere Vorkommen sofort entfernen
     if (premium) { this.book('rohstoff', premium); this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
     const t = this.totals, y = this.today;
     t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
@@ -5459,6 +5478,7 @@ function updateTraffic(g, dt) {
     }
     const p0 = shipPos(ship);
     if (sites.some((site) => Math.hypot(p0.x - site.x, p0.y - site.y) < C.siteRadius)) v *= C.siteSlow + (1 - C.siteSlow) * (g.stats.siteRelief ?? 0);
+    const vBase = v;
     let gapMin = Infinity;
     for (const o of ships) {
       if (o === ship || o.dir !== ship.dir || !!o.alt !== !!ship.alt || (o.state !== 'sail' && o.state !== 'grounded') || o.s <= ship.s) continue;
@@ -5466,6 +5486,17 @@ function updateTraffic(g, dt) {
       if (gap < gapMin) gapMin = gap;
     }
     const safe = C.gap * (1 - 0.15 * vts);
+    // Überholen: ein schnelleres Schiff hinter einem langsameren wechselt in die freie zweite Rinne (nur bei zwei getrennten Rinnen, ohne Gegenverkehr und ohne Ponton dort)
+    if (gapMin < safe + 1.5 && ship.lane === 'two' && ship.state === 'sail' && g.time - (ship.ovT ?? -99) > 10) {
+      const f2 = g.fair?.[ship.cls], lead = ships.filter((o) => o !== ship && o.dir === ship.dir && !!o.alt === !!ship.alt && (o.state === 'sail' || o.state === 'grounded') && o.s > ship.s).sort((a, b) => a.s - b.s)[0];
+      const vf = (c) => shipById(c.cls).speed * (c.dir > 0 ? C.downFactor : C.upFactor);
+      if (lead && f2?.twoWay && f2.path && f2.secondPath && vf(ship) > vf(lead) * 1.15) {
+        const other = !ship.alt, np = other ? f2.secondPath : f2.path, sl2 = ships.filter((o) => o !== ship && (o.state === 'sail' || o.state === 'grounded') && !!o.alt === other);
+        const nearOther = other ? near[`${ship.cls}:2`] : near[ship.cls];
+        const clear = !nearOther && !sl2.some((o) => o.dir !== ship.dir || Math.abs(o.s - ship.s) < C.enterGap + (shipById(o.cls).len + cls.len) / 2 + 1);
+        if (clear) { const px = shipPos(ship).x; ship.alt = other; ship.path = np; ship.s = Math.max(0, Math.min(np.length, sAtX(np, px, ship.dir))); ship.lat = 0; ship.ovT = g.time; g.totals.overtakes = (g.totals.overtakes ?? 0) + 1; gapMin = Infinity; }
+      }
+    }
     if (gapMin < safe) v = 0; else if (gapMin < safe + 1.5) v *= (gapMin - safe) / 1.5;
     if (ship.meets?.length) { // Begegnung an einer Kreuzungsstelle: wer zuerst da ist, wartet in der Zone, bis das andere Schiff eintrifft
       for (const m of ship.meets) {
@@ -5480,6 +5511,9 @@ function updateTraffic(g, dt) {
       }
       ship.meets = ship.meets.filter((m) => !m.done);
     }
+    // Stau-Wächter: steht ein Schiff lange still (gegenseitiges Warten, Kreuzungsstelle, Schiff davor steckt fest), räumt der Lotse auf: es fährt kurz ohne Rücksicht weiter
+    if (ship.freeT > 0) { ship.freeT -= dt; v = vBase; ship.meets = []; ship.latZones = []; }
+    else { ship.stuckT = v < 0.03 * vBase + 1e-6 ? (ship.stuckT ?? 0) + dt : 0; if (ship.stuckT > C.stuckMax) { ship.stuckT = 0; ship.freeT = 12; v = vBase; ship.meets = []; ship.latZones = []; g.totals.jamsCleared = (g.totals.jamsCleared ?? 0) + 1; g.say(`Lotse räumt den Stau: ${cls.name} fährt weiter.`, 'info'); } }
     ship.s += v * dt;
     if (ship.berth && g.port?.bay?.cells?.length) { // Hafen erreicht: anlegen
       const bay = g.port.bay, bx = (bay.x0 + bay.x1 + 1) / 2, pn = shipPos(ship);
@@ -5526,14 +5560,15 @@ function updateTraffic(g, dt) {
     if (!open || !f?.passable || !f.path) continue;
     // zwei getrennte Rinnen: Richtung > 0 fährt standardmässig die Hauptrinne, Richtung < 0 die zweite; ist die eigene Spur an der Einfahrt belegt,
     // weicht das Schiff auf die andere Spur aus, solange dort kein Gegenverkehr fährt (so fahren bei einseitigem Andrang beide Rinnen)
-    const lane = f.twoWay && !near[ship.cls] && !near[`${ship.cls}:2`] && f.secondPath ? 'two' : 'one';
+    const nearIn = (a) => (a ? near[`${ship.cls}:2`] : near[ship.cls]); // Ponton nahe an dieser Spur?
+    const lane = f.twoWay && f.secondPath && !(nearIn(false) && nearIn(true)) ? 'two' : 'one'; // steht nur in einer Spur ein Ponton, bleibt die andere frei benutzbar
     let ok = true, meets = [], alt = false;
     const sl = sailing();
     const blockedAt = (a) => sl.some((o) => o.dir === ship.dir && !!o.alt === a && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2);
     if (lane === 'two') {
       const own = ship.dir < 0, headOn = (a) => sl.some((o) => o.dir !== ship.dir && !!o.alt === a);
-      if (!headOn(own) && !blockedAt(own)) alt = own;
-      else if (!headOn(!own) && !blockedAt(!own)) alt = !own;
+      if (!headOn(own) && !blockedAt(own) && !nearIn(own)) alt = own;
+      else if (!headOn(!own) && !blockedAt(!own) && !nearIn(!own)) alt = !own;
       else ok = false;
     } else for (const o of sl) if (o.dir === ship.dir && o.s < C.enterGap + (shipById(o.cls).len + cls.len) / 2) { ok = false; break; }
     if (ok && lane === 'one') { // Einbahnrinne: Gegenverkehr nur mit freier Kreuzungsstelle dazwischen
@@ -7061,7 +7096,7 @@ function(){
 const { CONFIG, SHIPS, shipById } = __m(2);
 const { needDepth, minNeedDepth } = __m(3);
 const { LAND, landOf, connectedRoads, hallConnected, roadFactor, hallUpgradeBlock, upgradeHall } = __m(7);
-const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, setHarborGoal, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel, waitsOf, cycleWaitCargo, cyclePriority } = __m(6);
+const { PORT, bayDepth, siteWork, siteAct, autoLevel, autoLevelCost, machineOf, loadHit, hasKai, capacity, buyPrice, sellPrice, openBlock, openPort, buildBlock, build, setHarborGoal, harborDiag, upgradeBlock, upgrade, demolish, buy, sell, refundFrac, plantLimit, berthsOf, isDocked, bayTarget, kaiLevel, waitsOf, cycleWaitCargo, cyclePriority } = __m(6);
 const { oilInfo } = __m(6);
 const { priceOf, ratioOf } = __m(8);
 const { HARBOR } = __m(4);
@@ -7157,7 +7192,7 @@ function setupPort(root, getGame, onChange) {
         h += `<div class="port-card"><b>🛣 Landseite</b> <small>${L.roads.length} Strassenzellen (${conn.size} angebunden) · Umschlag ×${roadFactor(g).toFixed(2)} · Bau auf der Karte (L): Strassen ans Hafenbecken, Lagerhallen für Container und Kies</small>` +
           (L.halls.length ? L.halls.map((hl) => { const ok = hallConnected(g, hl, conn), up = hl.level <= LAND.hall.up.length; return `<div class="row"><span>🏭 ${hl.id} · Stufe ${hl.level} · ${ok ? `+${LAND.hall.cap.container[hl.level - 1]} t Container, +${LAND.hall.cap.kies[hl.level - 1]} t Kies` : '<span class="warn">nicht angebunden</span>'}</span>${up ? `<button data-act="hallup" data-hall="${hl.id}" ${hallUpgradeBlock(g, hl.id) ? 'disabled' : ''}>Ausbauen · ${chf(LAND.hall.up[hl.level - 1])}</button>` : ''}</div>`; }).join('') : '<br><small>Noch keine Lagerhalle.</small>') + `</div>`; }
       { const d = bayDepth(g), T = bayTarget(g), ok = d >= T - 0.05, kl = kaiLevel(g) || 1, kc = HARBOR.kaiClasses[kl - 1], names = SHIPS.slice(0, kc).map((c) => c.name).join(', ');
-        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>Becken ${ok ? `tief genug (${d.toFixed(1)} m)` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: noch ausbaggern`}. Der Kai (Stufe ${kl}) nimmt an: <b>${names}</b>${kc < SHIPS.length ? ' (weitere Klassen mit dem Kai-Ausbau)' : ''}; sie legen nur an, wenn das Becken tief genug ist: ${SHIPS.slice(0, kc).map((c) => `${c.name.split(' ')[0]} ${HARBOR.need[c.id].toFixed(1)} m`).join(', ')}${kc >= 4 ? '; Containerschiffe brauchen zusätzlich die Containerbrücke' : ''}. Das Becken liegt auf der eigenen <b>Hafenkarte</b> (Knopf «⚓ Hafenkarte», Y): dort selbst ankern und ausbaggern oder Pontons im Panel «Flotte» dem Hafen zuteilen.</small><div class="row"><label>Ausbautiefe bis <select data-act="hgoal"><option value="">automatisch (${SHIPS[kc - 1].name.split(' ')[0]}, ${HARBOR.need[SHIPS[kc - 1].id].toFixed(1)} m)</option>${SHIPS.slice(0, kc).map((c) => `<option value="${c.id}" ${g.port.harborGoal === c.id ? 'selected' : ''}>${c.name.split(' ')[0]} (${HARBOR.need[c.id].toFixed(1)} m)</option>`).join('')}</select></label></div></div>`; }
+        h += `<div class="port-card"><b>⚓ Hafenbecken</b> <small>Becken ${ok ? `tief genug (${d.toFixed(1)} m)` : `${d.toFixed(1)} m von ${T.toFixed(1)} m: noch ausbaggern`}. Der Kai (Stufe ${kl}) nimmt an: <b>${names}</b>${kc < SHIPS.length ? ' (weitere Klassen mit dem Kai-Ausbau)' : ''}; sie legen nur an, wenn das Becken tief genug ist: ${SHIPS.slice(0, kc).map((c) => `${c.name.split(' ')[0]} ${HARBOR.need[c.id].toFixed(1)} m`).join(', ')}${kc >= 4 ? '; Containerschiffe brauchen zusätzlich die Containerbrücke' : ''}. Das Becken liegt auf der eigenen <b>Hafenkarte</b> (Knopf «⚓ Hafenkarte», Y): dort selbst ankern und ausbaggern oder Pontons im Panel «Flotte» dem Hafen zuteilen.</small><div class="diag"><b>Warum legt (k)ein Schiff an?</b>${harborDiag(g).map((x) => `<div class="${x.ok ? 'dok' : 'dno'}">${x.ok ? '✓' : '✗'} ${x.text}</div>`).join('')}</div><div class="row"><label>Ausbautiefe bis <select data-act="hgoal"><option value="">automatisch (${SHIPS[kc - 1].name.split(' ')[0]}, ${HARBOR.need[SHIPS[kc - 1].id].toFixed(1)} m)</option>${SHIPS.slice(0, kc).map((c) => `<option value="${c.id}" ${g.port.harborGoal === c.id ? 'selected' : ''}>${c.name.split(' ')[0]} (${HARBOR.need[c.id].toFixed(1)} m)</option>`).join('')}</select></label></div></div>`; }
       { const nw = waitsOf(g), cg = (c) => (c ? `${PORT.commodities[c].icon} ${PORT.commodities[c].name.split(' ')[0]}` : 'alle');
         h += `<div class="port-card"><b>⏳ Warteräume</b> <small>Ist kein Liegeplatz frei, wartet das Schiff in einem Warteraum im Becken (nicht im Fahrwasser) und rückt nach, sobald ein Platz frei wird; nach ${PORT.waitMax} s gibt es auf. Räume: <b>${nw}</b> (Kai ausbauen für mehr). Jedem Raum lässt sich eine Fracht zuweisen, dann warten dort nur Schiffe dieser Fracht.</small>` +
           (nw ? `<div class="row">${Array.from({ length: nw }, (_, k) => `<button data-act="waitcargo" data-slot="${k}">Raum ${k + 1}: ${cg(p.waitCargo?.[k])}</button>`).join('')}</div><div class="row"><button data-act="prio">Vorrang beim Nachrücken: ${p.priority ? cg(p.priority) : 'keiner (längste Wartezeit)'}</button></div>` : '<small> Noch keine Warteräume: Kai bauen.</small>') + '</div>'; }

@@ -80,6 +80,22 @@ export function bayDepth(g) {
 }
 export const kaiLevel = (g) => slotsOf(g.port, 'kai')[0]?.level ?? 0;
 export const bayTarget = (g) => (g.port.harbor ? harborTarget(Math.max(1, kaiLevel(g)), g.port.harborGoal) : PORT.bay.target);
+// Warum legt kein Schiff an? Prüft Kai, Klassen, Beckentiefe, Lager und Brücke und nennt, was fehlt
+export function harborDiag(g) {
+  const out = [], kl = kaiLevel(g), kc = kl ? HARBOR.kaiClasses[kl - 1] : 0, d = bayDepth(g);
+  if (!g.port.open) return [{ ok: false, text: 'Der Hafen ist noch nicht eröffnet.' }];
+  if (!hasKai(g)) return [{ ok: false, text: 'Es fehlt ein Kai: ohne Kai legt kein Schiff an.' }];
+  SHIPS.forEach((c, i) => {
+    const need = HARBOR.need[c.id], name = c.name.split(' ')[0];
+    if (i >= kc) out.push({ ok: false, text: `${name}: der Kai (Stufe ${kl}) nimmt diese Klasse nicht an, Kai ausbauen.` });
+    else if (d < need - 0.05) out.push({ ok: false, text: `${name}: Becken ${d.toFixed(1)} m, braucht ${need.toFixed(1)} m: weiter ausbaggern.` });
+    else out.push({ ok: true, text: `${name}: legt an (Becken ${d.toFixed(1)} m reicht für ${need.toFixed(1)} m).` });
+  });
+  for (const [id, C] of Object.entries(PORT.commodities)) if (capacity(g, id) <= 0) out.push({ ok: false, text: `${C.name}: kein Lager (${PORT.buildings[PORT.storage[id]].name} bauen), Schiffe mit dieser Fracht fahren vorbei.` });
+  if (!bridgeLevel(g)) out.push({ ok: false, text: 'Containerschiffe: brauchen zusätzlich die Containerbrücke.' });
+  const busy = berthJobs(g).length, nb = berthsOf(g); if (busy >= nb) out.push({ ok: false, text: `Alle ${nb} Liegeplätze sind belegt; Warteräume: ${waitsOf(g)}.` });
+  return out;
+}
 // Hafentiefe festlegen: bis zu welcher Schiffsklasse das Becken ausgebaggert wird (null = tiefste Klasse, die der Kai annimmt)
 export function setHarborGoal(g, id) { const kc = HARBOR.kaiClasses[Math.max(0, kaiLevel(g) - 1)]; if (id && !SHIPS.slice(0, kc).some((s) => s.id === id)) return false; g.port.harborGoal = id || null; return true; }
 export const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.12;

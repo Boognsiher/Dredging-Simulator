@@ -571,3 +571,5 @@ body.mode-map.pile-mode :is(#land-bar, #zone-bar) { bottom: 8px; top: auto; }
   body.pile-mode :is(#land-bar, #zone-bar) :is(button, select) { min-height: 38px; padding: 6px 10px; }
 }
 body.pile-mode :is(#shift-actions, #tool-row, #touch-ui) { display: none !important; }
+
+.diag { margin: 6px 0; font-size: 13px; line-height: 1.45; } .diag .dok { color: #7bd88f; } .diag .dno { color: #ffb4a8; }

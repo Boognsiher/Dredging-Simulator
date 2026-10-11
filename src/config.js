@@ -78,7 +78,7 @@ export const CONFIG = {
     patience: 75, // Sekunden, die ein Schiff vor der Einfahrt wartet, bevor es abdreht und die Fracht auf die Bahn geht
     bay: 1, // Warteplatz an jedem Ende: so viele Schiffe warten anfangs (Rotlichter und Schlepper bauen ihn aus); weitere drehen sofort ab
     tugSpeed: 0.12, // Schlepper: Tempo-Zuwachs je Stufe für grosse Schiffe (Tiefgang ab 2,6 m)
-    holdTimeout: 45, // Sekunden, die ein Schiff in einer Kreuzungsstelle höchstens wartet
+    stuckMax: 20, holdTimeout: 45, // Sekunden, die ein Schiff in einer Kreuzungsstelle höchstens wartet
     downFactor: 1.15, upFactor: 0.85, // talwärts schneller als bergwärts
     gap: 1.4, // Zellen Sicherheitsabstand hinter dem Vordermann
     enterGap: 3.0,
