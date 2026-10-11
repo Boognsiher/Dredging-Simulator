@@ -287,11 +287,12 @@ function changeMap(i) {
   toast(`Karte ${game.map.name}`, 'info', true);
 }
 let shipSig = null;
+const editing = (id) => { const a = document.activeElement; return !!a && (a.tagName === 'SELECT' || a.tagName === 'INPUT') && !!$(id)?.contains(a); }; // Auswahlfeld/Eingabe im Panel aktiv: Panel nicht neu aufbauen (sonst klappt die Auswahl zu)
 function updateShipping() {
   const on = game.endless && game.maps.length > 1, box = $('shipping');
   $('h-ship').hidden = !on; box.hidden = !on; if (!on) return;
   const S = game.shipping, sig = JSON.stringify([S.ships.map((s) => [s.id, s.state, s.from, s.to, s.cargo, s.autoBuy, s.toStock, s.note, Math.round(s.profit / 100), s.unload, s.unloadMin]), game.maps.map((m) => m.name), Math.floor(game.money / 2000), game.maps.map((m) => game.maps.length && [Math.round(m.fair.kahn.loadFactor * 20), Math.round(m.fair.motor.loadFactor * 20)])]);
-  if (sig === shipSig) return; shipSig = sig;
+  if (sig === shipSig || (shipSig !== null && editing('shipping'))) return; shipSig = sig;
   const mapOpts = (sel) => game.maps.map((m, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${m.name}</option>`).join('');
   const prices = ['kies', 'oel', 'container'].map((id) => `${PORT.label[id]}: ` + game.maps.map((m, i) => `${m.name} <b>${withMap(game, i, () => Math.round(buyPrice(game, id)))}</b>/${withMap(game, i, () => Math.round(sellPrice(game, id)))}`).join(' · ')).join('<br>');
   const cards = S.ships.map((s) => {
@@ -323,7 +324,7 @@ function updateMaps() {
   const on = game.endless, box = $('maps');
   $('h-maps').hidden = !on; box.hidden = !on; if (!on) return;
   const sig = JSON.stringify([game.maps.map((m) => [m.name, Object.keys(m.unlocked).length, m.fleet.units.length, m.traffic.ships.length]), game.mapIdx, Math.floor(game.money / 1000)]);
-  if (sig === mapsSig) return; mapsSig = sig;
+  if (sig === mapsSig || (mapsSig !== null && editing('maps'))) return; mapsSig = sig;
   const cost = game.mapCost(), block = game.mapBlock();
   box.innerHTML = `<small>Flussnetz (Seed ${game.seed}): jede Karte ist eine eigene Engstelle mit eigenem Verkehr, eigener Flotte und eigenen Kreuzungsstellen. Alle laufen im Hintergrund weiter; Geld, Anlage, Ausrüstung und Markt sind gemeinsam.</small>` +
     game.maps.map((m, i) => `<div class="unit"><div><b>${i === game.mapIdx ? '▶ ' : ''}${m.name}</b> <small>Schwierigkeit ${m.difficulty + 1} · ${SHIPS.filter((s) => m.unlocked[s.id]).map((s) => s.icon).join(' ') || '–'} · ${m.fleet.units.length} Pontons · ${m.traffic.ships.filter((s) => s.state === 'sail').length} Schiffe unterwegs</small></div><button data-map="${i}" ${i === game.mapIdx ? 'disabled' : ''}>Wechseln</button></div>`).join('') +
@@ -335,7 +336,7 @@ function updateMaps() {
 let shoreSig = null;
 function updateShore() {
   const secs = game.shoreSections(), sig = JSON.stringify([secs.map((q) => q.cells.length), Math.floor(game.money / 500)]);
-  if (sig === shoreSig) return;
+  if (sig === shoreSig || (shoreSig !== null && editing('shore'))) return;
   shoreSig = sig;
   const part = ['Oberlauf', 'Mittellauf', 'Unterlauf'], side = ['Nordufer', 'Südufer'], P = CONFIG.zones.shoreParts;
   $('shore').innerHTML = `<small>Die Flachwasserstreifen am Ufer sind Naturschutzgebiet (hohe Bussen). Du kannst sie abschnittsweise freikaufen: Sie werden zum Baggerkorridor, die Rinne kann dort breiter werden (muss aber noch ausgebaggert werden).</small>` +
@@ -349,7 +350,7 @@ function updateHazard() {
   const r = game.river, sum = r.altlastSummary(), price = Math.abs(CONFIG.materials[KIND.altlast].price * game.stats.disposalFactor);
   const lanes = game.level.classes.map((id) => [id, game.fair?.[id]?.altlast ?? 0]).filter(([, v]) => v > 0.5);
   const sig = JSON.stringify([Math.round(sum.volume), sum.cells, Math.round(sum.corridor), lanes.map(([id, v]) => [id, Math.round(v)]), game.totals.sunk, Math.round(price)]);
-  if (sig === hazardSig) return;
+  if (sig === hazardSig || (hazardSig !== null && editing('hazard'))) return;
   hazardSig = sig;
   const rows = lanes.map(([id, v]) => `<div class="frow"><div>${shipById(id).icon} <b>${shipById(id).name}</b><br><small>Altlast in der Rinne, die weg muss</small></div><div style="text-align:right"><span class="no">${num(v)} m³</span><br><small>≈ ${chf(v * price)} Entsorgung</small></div></div>`).join('');
   $('hazard').innerHTML = sum.cells ? `<div><b>${num(sum.volume)} m³</b> Altlast in ${sum.cells} Zellen (davon im Baggerkorridor ${num(sum.corridor)} m³)</div>
@@ -361,7 +362,7 @@ function updateTrafficPanel() {
   const st = game.stats, cap = bayCapacity(game), mz = maxZones(game), cid = game.zoneClassId, cls = shipById(cid);
   const plans = game.zones.map((z) => { const p = game.zonePlanFor(z.x, z.cls ?? cid); return [z.id, z.x, z.cls ?? cid, p.ready, Math.round(p.volume === Infinity ? -1 : p.volume)]; });
   const sig = JSON.stringify([cap, mz, plans, game.zones.map((z) => z.unit ?? 0), game.fleet.units.map((u) => u.id), cid, zoneMode, game.totals.turnedAway, st.signals, st.tugs, Math.floor(game.money / 500)]);
-  if (sig === trafficSig) return;
+  if (sig === trafficSig || (trafficSig !== null && editing('trafficpanel'))) return;
   trafficSig = sig;
   const box = $('trafficpanel');
   const opts = (sel) => game.level.classes.map((id) => `<option value="${id}" ${id === sel ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name} (${2 * shipById(id).beam + 1} Zellen)</option>`).join('');
@@ -534,7 +535,7 @@ let concreteSig = null;
 function updateConcrete() {
   const C = CONFIG.concrete, st = game.stats;
   const sig = JSON.stringify([Math.round(game.concrete), Math.round(game.agg.kies), Math.round(game.agg.sand), st.mixer, st.betonrohr, game.divertAgg, Math.floor(game.money / 1000), Math.round(game.totals.concreteUsed / 10)]);
-  if (sig === concreteSig) return;
+  if (sig === concreteSig || (concreteSig !== null && editing('concrete'))) return;
   concreteSig = sig;
   const box = $('concrete');
   const packs = C.packs.map((m) => ({ m, block: game.concreteBlock(m) }));
@@ -554,7 +555,7 @@ function updateFleet() {
   const F = game.fleet, goal = F.goal ?? '', block = hireBlock(game), cost = nextHireCost(game);
   const sig = JSON.stringify([F.units.map((u) => [u.id, u.name, u.state, u.note, u.loc ?? 'main', !!game.port.harbor, Math.floor(u.removed / 20)]), goal, block, game.levelId, targetClass(game)?.id, F.widen, F.widenW, F.second, F.focus, JSON.stringify(game.river.trasse), game.stats.loeffel, F.pour, F.mine, game.stats.betonrohr, Math.round(game.concrete / 10), (F.areas ?? []).map((a) => [a.id, a.depth, a.unit, a.w, areaWork(game, a)]), areaMode, areaKind, F.noNature, F.noAltlast, !!lentUnit(game), Math.floor(game.money / 1000), Math.floor(game.time / 14), game.maps.length]);
   if (sig === fleetSig) return;
-  if ($('fleet').contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return; // offene Auswahl nicht wegräumen (Neuaufbau schliesst sie)
+  if (fleetSig !== null && $('fleet').contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return; // offene Auswahl nicht wegräumen (Neuaufbau schliesst sie)
   fleetSig = sig;
   const box = $('fleet'), cls = targetClass(game);
   const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b>${u.self ? '' : ` <button class="mini" data-rename="${u.id}" title="Ponton umbenennen" aria-label="Umbenennen">✎</button>`} <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : u.state === 'transit' ? '⛴' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert${u.small ? '<br>Klein: halbe Leistung, arbeitet nur im Hafen' : ''}${!u.self && !u.small && game.port.harbor ? `<br>Einsatz: <select data-uloc="${u.id}"><option value="main" ${(u.loc ?? 'main') === 'main' ? 'selected' : ''}>Hauptkarte</option><option value="harbor" ${u.loc === 'harbor' ? 'selected' : ''}>Hafen</option></select>` : ''}${!u.self && !u.small && game.endless && game.maps.length > 1 ? `<br>Verlegen: <select data-umove="${u.id}"><option value="">auf andere Karte …</option>${game.maps.map((mp, k) => k === game.mapIdx ? '' : `<option value="${k}" ${moveBlock(game, u.id, k) ? 'disabled' : ''}>${mp.name} (${chf(moveCost(game))})${moveBlock(game, u.id, k) ? ' – ' + moveBlock(game, u.id, k) : ''}</option>`).join('')}</select>` : ''}</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
@@ -608,7 +609,7 @@ function updateFleet() {
 let contractSig = null;
 function updateContracts() {
   const sig = JSON.stringify(game.contracts.map((c) => [c.id, c.status, Math.floor(c.done / 50)])) + Math.floor(game.money / 500);
-  if (sig === contractSig) return;
+  if (sig === contractSig || (contractSig !== null && editing('contracts'))) return;
   contractSig = sig;
   const box = $('contracts');
   if (!game.contracts.length) { box.innerHTML = '<div class="empty">Keine Aufträge. Reedereien melden sich ab und zu.</div>'; return; }
