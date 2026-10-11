@@ -17,7 +17,6 @@
   <header id="header-bar">
     <h1 id="title">Fahrrinne frei! <small id="level-name"></small></h1>
     <select id="map-select" aria-label="Karte wechseln" hidden></select>
-    <button id="btn-books" aria-label="Bilanz" title="Bilanz (B)">📊 Bilanz</button>
     <button id="btn-menu" aria-label="Menü">☰ Menü</button>
     <div id="hud">
       <span title="Level = höchste befahrbare Schiffsklasse">Level <b id="h-rank"></b></span>
@@ -34,7 +33,7 @@
   <div id="scrim" hidden></div>
   <main>
     <section id="stage">
-      <div id="topbar"><div id="classbar" aria-label="Schiffsklassen"></div><button id="btn-ff2" aria-label="Zeitraffer" title="Zeitraffer (V)">⏩</button><button id="btn-pause2" aria-label="Pause">⏸</button></div>
+      <div id="topbar"><div id="classbar" aria-label="Schiffsklassen"></div><button id="btn-books" aria-label="Bilanz" title="Bilanz">📊</button><button id="btn-ff2" aria-label="Zeitraffer" title="Zeitraffer (V)">⏩</button><button id="btn-pause2" aria-label="Pause">⏸</button></div>
       <canvas id="canvas"></canvas>
       <div id="shift-hud" hidden>
         <span id="s-mode"></span>
@@ -53,6 +52,7 @@
         <button id="btn-tool" hidden>🔧 Gerät: Saugkopf (V)</button>
         <button id="btn-port">🏗 Hafen (H)</button>
         <button id="btn-harborview" hidden>⚓ Hafenkarte (Y)</button>
+        <button id="btn-land" class="tool-btn" hidden>🛣 Land (L)</button>
         <button id="btn-fleetmenu" hidden>🚤 Flotte ▾</button>
         <button id="btn-goto" hidden>📍 Zum Aufläufer</button>
         <button id="btn-tow" hidden>🛟 Aufläufer freischleppen (T)</button>
@@ -66,11 +66,11 @@
         <button id="btn-lane" class="tool-btn" hidden>🧭 Rinne festlegen (R)</button>
         <button id="btn-pile" class="tool-btn" hidden>🧱 Pfahlwand (O)</button>
         <button id="btn-zone" class="tool-btn">↔ Kreuzung (K)</button>
-        <button id="btn-land" class="tool-btn" hidden>🛣 Land (L)</button>
         <button id="btn-fleetlend" class="tool-btn" hidden>🧑‍✈️ Zur Flotte (J)</button>
       </div>
       <div id="pile-bar" hidden><button id="pile-done" class="primary">↩ Zurück</button><button data-ptool="cell" class="on">✏ Zelle</button><button data-ptool="line">📏 Linie</button><button data-ptool="remove">🗑 Rückbau</button><button id="pile-zin">🔍＋</button><button id="pile-zout">🔍−</button><button id="pile-go" class="primary">▶ Ausführen</button><button id="pile-clear">🧹 Löschen</button></div>
-      <div id="land-bar" hidden><button data-tool="road" class="on">🛣 Strasse</button><button data-tool="hall">🏭 Lagerhalle</button><button data-tool="auto">➜ Strasse automatisch</button><button data-tool="demo">✖ Abriss</button><button id="land-done" class="primary">Fertig</button></div>
+      <div id="land-bar" hidden><button id="land-done" class="primary">↩ Zurück</button><button data-zoom="in">🔍＋</button><button data-zoom="out">🔍−</button><button data-tool="road" class="on">🛣 Strasse</button><button data-tool="hall">🏭 Lagerhalle</button><button data-tool="auto">➜ Strasse automatisch</button><button data-tool="demo">✖ Abriss</button></div>
+      <div id="zone-bar" hidden><button id="zone-done" class="primary">↩ Zurück</button><button data-zoom="in">🔍＋</button><button data-zoom="out">🔍−</button><select id="zbar-cls" aria-label="Planen für"></select></div>
       <button id="harbor-back" hidden>↩ Hauptkarte (Esc)</button>
       <div id="toast"></div>
       <div id="port-page" hidden></div>

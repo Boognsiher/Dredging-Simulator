@@ -257,3 +257,6 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Leistung: Gelände wird nur noch bereichsweise neu gezeichnet, Vignette zwischengespeichert, Zeichenauflösung auf Handys höchstens 2-fach.
 - Hafen: ⓘ-Knopf bei jedem Gebäude (gebaut und im Baumenü) erklärt, was es macht.
 - Dashboard «📊 Bilanz»: Tagesbilanz je Kategorie (letzte 10 Tage) mit Hochrechnung auf 30 Tage.
+- Bilanz auch je Karte (Reiter oben im Dashboard); Bilanz-Knopf 📊 in der Kopfzeile neben Zeitraffer/Pause.
+- Kleine Hafen-Pontons: 15'000 CHF, halbe Leistung, 150 CHF Lohn pro Tag, nur im Hafenbecken, höchstens 3 je Hafen.
+- Kreuzungsstellen und Land werden wie die Pfahlwand in einer gezoomten Planungsansicht mit eigener Leiste (Zurück, Zoom) bearbeitet; der Land-Knopf steht neben «Hafenkarte».

@@ -364,7 +364,7 @@ export class Game {
   }
 
   // Betrag in eine Kategorie der Tagesbilanz buchen (das Geld selbst wird an der Stelle verändert)
-  book(cat, amount) { if (!amount) return; const c = (this.today.cat ??= {}); c[cat] = (c[cat] ?? 0) + amount; }
+  book(cat, amount) { if (!amount) return; const c = (this.today.cat ??= {}); c[cat] = (c[cat] ?? 0) + amount; const m = this.maps?.[this.mapIdx]; if (m) { m.cat ??= {}; m.cat[cat] = (m.cat[cat] ?? 0) + amount; } } // gesamt und für die Karte, auf der es passiert
 
   // Verbucht, was der Ponton in einem Schritt getan hat (siehe DredgeSim.update)
   collect(d) {
@@ -448,10 +448,13 @@ export class Game {
   dayEnd() {
     const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
     const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
-    const wages = CONFIG.fleet.wage * this.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
+    const wagesOf = (m) => m.fleet.units.reduce((a, u) => a + (u.self ? 0 : u.small ? CONFIG.fleet.small.wage : CONFIG.fleet.wage), 0);
+    const wages = this.maps.reduce((a, m) => a + wagesOf(m), 0);
     this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;
-    y.costs += cost + wages; this.book('betrieb', -cost); this.book('loehne', -wages);
+    y.costs += cost + wages;
+    { const gc = (y.cat ??= {}), nm = this.maps.length; gc.betrieb = (gc.betrieb ?? 0) - cost; gc.loehne = (gc.loehne ?? 0) - wages; // Betrieb anteilig, Löhne nach den Pontons der Karte
+      for (const m of this.maps) { m.cat ??= {}; m.cat.betrieb = (m.cat.betrieb ?? 0) - cost / nm; m.cat.loehne = (m.cat.loehne ?? 0) - wagesOf(m); (m.history ??= []).push({ day: this.day - 1, cat: Object.fromEntries(Object.entries(m.cat).map(([k, v]) => [k, Math.round(v)])) }); if (m.history.length > 40) m.history.shift(); m.cat = {}; } }
     (this.history ??= []).push({ day: this.day - 1, net: Math.round(this.money - (this.dayStartMoney ?? this.money)), cat: Object.fromEntries(Object.entries(y.cat ?? {}).map(([k, v]) => [k, Math.round(v)])) }); if (this.history.length > 40) this.history.shift(); this.dayStartMoney = this.money;
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();

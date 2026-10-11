@@ -12,14 +12,14 @@ import { kaiLevel } from './port.js';
 // Zustände: 'idle' (sucht Arbeit), 'travel' (fährt zur Stelle), 'work' (baggert). Die Simulation (u.sim) ist abgeleitet und wird nicht gespeichert.
 export const createFleet = () => ({ pilePlan: [], pileRemove: [], units: [], seq: 0, goal: null, mine: true, pour: false, widen: false, widenW: CONFIG.fleet.widenRows, areas: [], areaSeq: 0, noNature: false, noAltlast: false, focus: false });
 
-const hiredCount = (g) => g.fleet.units.filter((u) => !u.self).length; // dein eigener Ponton (self) zählt nicht zu den gemieteten
+const hiredCount = (g) => g.fleet.units.filter((u) => !u.self && !u.small).length; // dein eigener Ponton (self) zählt nicht zu den gemieteten
 // Mietpreise steigen über alle Karten hinweg weiter: massgebend ist die Zahl aller gemieteten Pontons (neue Karten fangen nicht wieder bei 30k an)
-export const hiredTotal = (g) => (g.maps ?? []).reduce((n, m) => n + (m.fleet?.units ?? []).filter((u) => !u.self).length, 0) || hiredCount(g);
+export const hiredTotal = (g) => (g.maps ?? []).reduce((n, m) => n + (m.fleet?.units ?? []).filter((u) => !u.self && !u.small).length, 0) || hiredCount(g);
 export const hireCostAt = (n) => { const c = CONFIG.fleet.costs; return n < c.length ? c[n] : Math.round((c[c.length - 1] * 1.35 ** (n - c.length + 1)) / 1000) * 1000; };
 export const nextHireCost = (g) => hireCostAt(hiredTotal(g));
 // Höchstzahl gemieteter Pontons pro Karte (nach Level); ohne Levelsystem (Tests) gilt nur die Gesamtgrenze
 export const perMapMax = (g) => Math.min(fleetMax(g), UNLOCK.enabled ? CONFIG.fleet.perMap[Math.min(4, rankOf(g) - 1)] : CONFIG.fleet.max);
-const hiredOn = (m) => (m.fleet?.units ?? []).filter((u) => !u.self).length;
+const hiredOn = (m) => (m.fleet?.units ?? []).filter((u) => !u.self && !u.small).length;
 
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 export function hireBlock(g) {
@@ -42,6 +42,32 @@ export function renameUnit(g, id, name) {
   const u = g.fleet.units.find((q) => q.id === id), n = String(name ?? '').trim().slice(0, 18);
   if (!u || !n) return false;
   u.name = n; return true;
+}
+// Kleine Hafen-Pontons: günstig, nur halbe Leistung, arbeiten ausschliesslich im Hafenbecken (verlassen den Hafen nie), höchstens 3 je Hafen
+export const smallCount = (g) => g.fleet.units.filter((u) => u.small).length;
+export function smallBlock(g) {
+  const S = CONFIG.fleet.small;
+  if (g.status !== 'playing') return 'Spiel beendet';
+  if (!g.port.harbor) return 'Der Hafen muss erst eröffnet sein';
+  if (smallCount(g) >= S.max) return `Höchstens ${S.max} kleine Pontons pro Hafen`;
+  if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
+  return g.money < S.cost ? `Braucht ${S.cost.toLocaleString('de-CH')} CHF` : null;
+}
+export function hireSmall(g) {
+  if (smallBlock(g)) return null;
+  const S = CONFIG.fleet.small, F = g.fleet;
+  g.money -= S.cost;
+  const u = { id: ++F.seq, name: freeName(g), small: true, loc: 'harbor', x: 1.5, y: (HARBOR.entrance.y0 + HARBOR.entrance.y1 + 1) / 2, state: 'idle', site: null, idle: 0, note: 'startet', skip: {}, removed: 0 };
+  F.units.push(u);
+  g.say(`${u.name} (klein, halbe Leistung) im Hafen gemietet (−${S.cost.toLocaleString('de-CH')} CHF).`, 'upgrade');
+  return u;
+}
+const smallStats = new WeakMap(); // abgeleitete Werte für kleine Pontons (halbe Pumpen- und Löffelleistung), je Stats-Objekt einmal
+function statsFor(g, u) {
+  if (!u.small) return g.stats;
+  const c = smallStats.get(u); if (c && c.src === g.stats) return c.val;
+  const k = CONFIG.fleet.small.power, val = { ...g.stats, power: g.stats.power * k, bucketPower: (g.stats.bucketPower ?? 0) * k };
+  smallStats.set(u, { src: g.stats, val }); return val;
 }
 export function hireUnit(g) {
   if (hireBlock(g)) return null;
@@ -77,6 +103,7 @@ export const moveCost = (g) => Math.round((nextHireCost(g) * CONFIG.fleet.moveCo
 export function moveBlock(g, id, to) {
   const u = g.fleet.units.find((q) => q.id === id), T = g.maps?.[to];
   if (g.status !== 'playing') return 'Spiel beendet';
+  if (u?.small) return 'Kleine Hafen-Pontons verlassen den Hafen nicht';
   if (!u || u.self) return 'Nur gemietete Pontons lassen sich verlegen';
   if (!T || to === g.mapIdx) return 'Ungültige Zielkarte';
   if (u.state === 'transit') return 'Ist schon unterwegs';
@@ -266,7 +293,7 @@ export function setAreaWidth(g, id, w) {
 export function setZoneUnit(g, zoneId, unitId) { const z = g.zones.find((q) => q.id === zoneId); if (!z) return false; z.unit = unitId ?? null; bump(g); return true; }
 // Einsatzort eines Pontons wählen (Hauptkarte oder Hafenkarte): bricht die Arbeit ab und setzt das Ponton an die Zufahrt der anderen Karte
 export function setUnitLoc(g, id, loc) {
-  const u = g.fleet.units.find((q) => q.id === id); if (!u || (loc !== 'main' && loc !== 'harbor')) return false;
+  const u = g.fleet.units.find((q) => q.id === id); if (!u || u.small || (loc !== 'main' && loc !== 'harbor')) return false; // kleine Pontons bleiben im Hafen
   if (loc === 'harbor' && !g.port.harbor) return false;
   if (locOf(u) === loc) return true;
   u.sim?.leave(); u.sim = null; u.loc = loc; u.state = 'idle'; u.site = null; u.idle = 0; u.path = null; u.note = loc === 'harbor' ? 'fährt in den Hafen' : 'fährt auf die Hauptkarte';
@@ -617,7 +644,7 @@ function floatPath(sim, from, to) {
 function stepUnit(g, u, dt) {
   if (u.state === 'transit') { if (g.time >= u.arriveAt) { u.state = 'idle'; u.idle = 0; u.note = 'angekommen'; } return; } // auf Überfahrt: arbeitet nicht
   const sim = (u.sim ??= makeSim(g, u));
-  sim.setStats(g.stats); sim.bufferRoom = g.bufferRoom; sim.concreteAvail = g.concrete;
+  sim.setStats(statsFor(g, u)); sim.bufferRoom = g.bufferRoom; sim.concreteAvail = g.concrete;
   let inp = { dx: 0, dy: 0, suction: false };
   if ((u.state === 'travel' || u.state === 'work') && u.rev !== (g.fleet.rev ?? 0)) { // Einstellungen geändert: Arbeit abbrechen und neu wählen
     if (sim.mode === 'slice') sim.leave();

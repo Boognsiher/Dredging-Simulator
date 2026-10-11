@@ -2081,3 +2081,22 @@ test('Hafentiefe: Ausbauziel begrenzt die Solltiefe im Becken', () => {
   assert.equal(setHarborGoal(g, 'schub'), false);
   assert.equal(setHarborGoal(g, null), true); assert.equal(bayT2(g), auto);
 });
+
+import { smallBlock, hireSmall, smallCount } from '../src/sim/fleet.js';
+test('Kleine Hafen-Pontons: nur im Hafen, höchstens 3, halbe Leistung, eigene Löhne', () => {
+  const g = harborGame(); g.buyUpgrade('auto'); g.money = 1e8;
+  assert.equal(smallBlock(g), null);
+  for (let i = 0; i < CONFIG.fleet.small.max; i++) assert.ok(hireSmall(g));
+  assert.match(smallBlock(g), /Höchstens 3/); assert.equal(smallCount(g), 3);
+  const u = g.fleet.units[0]; assert.equal(u.small, true); assert.equal(u.loc, 'harbor');
+  assert.equal(setUnitLoc(g, u.id, 'main'), false);
+  assert.equal(g.fleet.units.filter((q) => !q.small && !q.self).length, 0); // zählen nicht zur grossen Flotte
+  g.update(0.05); const sim = u.sim; assert.ok(sim.stats.power > 0 && Math.abs(sim.stats.power - g.stats.power * 0.5) < 1e-9);
+  const m0 = g.money; g.dayEnd(); assert.ok(g.money <= m0 - 3 * CONFIG.fleet.small.wage);
+});
+test('Bilanz je Karte: Verlauf wird pro Karte geführt', () => {
+  const g = new Game(11, 'endlos'); g.eventsOn = false; g.money = 1e12; g.unlocked.motor = true; g.addMap();
+  g.book('verkehr', 1000); g.switchMap(1); g.book('verkehr', 500); g.dayEnd();
+  assert.equal(g.maps[0].history.at(-1).cat.verkehr, 1000); assert.equal(g.maps[1].history.at(-1).cat.verkehr, 500);
+  assert.equal(g.history.at(-1).cat.verkehr, 1500);
+});
