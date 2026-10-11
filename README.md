@@ -254,3 +254,4 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Pontons bekommen Eigennamen (Orts-/Flussnamen), umbenennbar mit ✎ im Flotte-Panel.
 - Zuflüsse (Bäche): geschwungenes Band mit Uferrand, Strömung, Schwemmfächer und Trübungsfahne an der Mündung.
 - Hafentiefe: «Ausbautiefe bis» im Hafenbecken-Panel (automatisch = tiefste Klasse des Kais); Hafenkarte zeigt hochkant den ganzen Hafen.
+- Leistung: Gelände wird nur noch bereichsweise neu gezeichnet, Vignette zwischengespeichert, Zeichenauflösung auf Handys höchstens 2-fach.

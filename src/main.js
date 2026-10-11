@@ -848,7 +848,7 @@ function fitCanvas() {
     ({ w, h } = fitSize(stageW, availH, lw, lh));
   }
   canvas.style.width = `${w}px`; canvas.style.height = `${h}px`;
-  const q = renderQuality(devicePixelRatio, w, lw);
+  const q = renderQuality(devicePixelRatio, w, lw, 2);
   const cw = Math.round(lw * q), chh = Math.round(lh * q);
   if (canvas.width !== cw || canvas.height !== chh) { canvas.width = cw; canvas.height = chh; }
   canvas.q = cw / lw;

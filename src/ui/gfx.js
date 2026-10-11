@@ -31,45 +31,87 @@ function noiseTexture() {
   return (T.noise = n);
 }
 
+// Rauschfelder für Strömungsstreifen (Wasser) und Waldflecken (Land): hängen nur von der Bildposition ab, werden einmal berechnet
+function detailNoise() {
+  if (T.wave) return;
+  T.wave = new Float32Array(W * H); T.forest = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const wx = (x - OX) / CELL, wy = y / CELL; T.wave[y * W + x] = vnoise(wx * 5 + 40, wy * 14) - 0.5; T.forest[y * W + x] = Math.max(0, vnoise(wx * 2.6, wy * 2.6) - 0.5) * 0.9; }
+}
+export const terrainDebug = () => T.dbg;
+// Gelände neu berechnen: komplett (neuer Fluss, Pegel stark geändert) oder nur die Bereiche um sichtbar geänderte Zellen (Baggern, Rutschung)
 function renderTerrain(game) {
-  const r = game.river, wl = r.wl, { cols, rows } = r;
-  if (!T.canvas) { T.canvas = document.createElement('canvas'); T.canvas.width = W; T.canvas.height = H; T.ctx = T.canvas.getContext('2d'); }
-  const noise = noiseTexture(), hm = new Float32Array(W * H);
-  const xi0 = new Int16Array(W), xf = new Float32Array(W);
-  for (let x = 0; x < W; x++) { const c = Math.min(cols - 1, Math.max(0, (x - OX) / CELL - 0.5)), i0 = Math.floor(c); xi0[x] = i0; xf[x] = c - i0; }
-  for (let y = 0; y < H; y++) {
-    const c = Math.min(rows - 1, Math.max(0, y / CELL - 0.5)), y0 = Math.floor(c), y1 = Math.min(rows - 1, y0 + 1), fy = c - y0;
-    for (let x = 0; x < W; x++) {
-      const x0 = xi0[x], x1 = Math.min(cols - 1, x0 + 1), fx = xf[x];
-      hm[y * W + x] = (r.top[y0 * cols + x0] * (1 - fx) + r.top[y0 * cols + x1] * fx) * (1 - fy) + (r.top[y1 * cols + x0] * (1 - fx) + r.top[y1 * cols + x1] * fx) * fy;
+  const t0 = performance.now(), r = game.river, wl = r.wl, { cols, rows } = r, S = 3;
+  const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
+  if (!T.canvas) { T.canvas = mk(); T.ctx = T.canvas.getContext('2d'); T.base = mk(); T.bctx = T.base.getContext('2d'); T.deco = mk(); T.hm = new Float32Array(W * H); }
+  const noise = noiseTexture(), hm = T.hm; detailNoise();
+  const dg = (T.dbg ??= { calls: 0, full: 0, ms: 0, cells: 0 }); dg.calls++;
+  const full = T.river !== r || !T.prevTop || T.prevTop.length !== r.top.length || Math.abs(T.prevWl - wl) > 0.04; // der Pegel schwankt dauernd: erst bei sichtbarer Änderung (4 cm) alles neu
+  const paint = (x0, y0, x1, y1) => {
+    const hx0 = Math.max(0, x0 - S), hx1 = Math.min(W, x1 + S), hy0 = Math.max(0, y0 - S), hy1 = Math.min(H, y1 + S);
+    for (let y = hy0; y < hy1; y++) {
+      const c = Math.min(rows - 1, Math.max(0, y / CELL - 0.5)), ya = Math.floor(c), yb = Math.min(rows - 1, ya + 1), fy = c - ya;
+      for (let x = hx0; x < hx1; x++) {
+        const cxp = Math.min(cols - 1, Math.max(0, (x - OX) / CELL - 0.5)), xa = Math.floor(cxp), xb = Math.min(cols - 1, xa + 1), fx = cxp - xa;
+        hm[y * W + x] = (r.top[ya * cols + xa] * (1 - fx) + r.top[ya * cols + xb] * fx) * (1 - fy) + (r.top[yb * cols + xa] * (1 - fx) + r.top[yb * cols + xb] * fx) * fy;
+      }
     }
-  }
-  const img = T.ctx.createImageData(W, H), d8 = img.data, S = 3;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const i = y * W + x, h = hm[i], d = wl - h, n = noise[i];
-    let R, G, B;
-    if (d <= 0) {
-      const e = -d + (n - 0.5) * 0.9, li = Math.max(0, Math.min(255, ((e + 0.2) / 12.2) * 255)) | 0;
-      const hx = hm[i + (x < W - S ? S : 0)] - hm[i - (x >= S ? S : 0)], hy = hm[i + (y < H - S ? S * W : 0)] - hm[i - (y >= S ? S * W : 0)];
-      const sh = Math.min(1.25, Math.max(0.72, 1 + (-hx - hy) * 0.55 * 0.35 * 1.4 + (n - 0.5) * 0.12));
-      R = LAND[li * 3] * sh; G = LAND[li * 3 + 1] * sh; B = LAND[li * 3 + 2] * sh;
-      if (-d < 0.45) { const wet = 1 - (-d) / 0.45; R *= 1 - wet * 0.22; G *= 1 - wet * 0.18; B *= 1 - wet * 0.1; } // feuchte Uferkante
-      if (-d > 2.4) { const f = Math.max(0, vnoise(((x - OX) / CELL) * 2.6, (y / CELL) * 2.6) - 0.5) * 0.9; R += (FOREST[0] - R) * f; G += (FOREST[1] - G) * f; B += (FOREST[2] - B) * f; }
-    } else {
-      const wi = Math.max(0, Math.min(255, ((d + (n - 0.5) * 0.5) / 12) * 255)) | 0;
-      R = WATER[wi * 3]; G = WATER[wi * 3 + 1]; B = WATER[wi * 3 + 2];
-      { const wv = (vnoise(((x - OX) / CELL) * 5 + 40, (y / CELL) * 14) - 0.5) * 16 * Math.min(1, d / 1.2); R += wv * 0.6; G += wv * 0.8; B += wv; } // sanfte Strömungsstreifen
-      if (d < 1.6) { const sh2 = (1 - d / 1.6) * 0.16; R *= 1 - sh2; G *= 1 - sh2 * 0.8; B *= 1 - sh2 * 0.5; } // Uferschatten im Wasser
-      const sed = Math.max(0, 1 - d / 1.4) * (0.55 + n * 0.3) * 0.55; R += (SAND[0] - R) * sed; G += (SAND[1] - G) * sed; B += (SAND[2] - B) * sed; // Sand im Flachen
-      if (d < 0.28) { const f = Math.pow(1 - d / 0.28, 1.5) * 0.55; R += (235 - R) * f; G += (248 - G) * f; B += (250 - B) * f; } // Schaum am Ufer
+    const rw = x1 - x0, rh = y1 - y0, img = T.bctx.createImageData(rw, rh), d8 = img.data;
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const i = y * W + x, h = hm[i], d = wl - h, n = noise[i];
+      let R, G, B;
+      if (d <= 0) {
+        const e = -d + (n - 0.5) * 0.9, li = Math.max(0, Math.min(255, ((e + 0.2) / 12.2) * 255)) | 0;
+        const hx = hm[i + (x < W - S ? S : 0)] - hm[i - (x >= S ? S : 0)], hy = hm[i + (y < H - S ? S * W : 0)] - hm[i - (y >= S ? S * W : 0)];
+        const sh = Math.min(1.25, Math.max(0.72, 1 + (-hx - hy) * 0.55 * 0.35 * 1.4 + (n - 0.5) * 0.12));
+        R = LAND[li * 3] * sh; G = LAND[li * 3 + 1] * sh; B = LAND[li * 3 + 2] * sh;
+        if (-d < 0.45) { const wet = 1 - (-d) / 0.45; R *= 1 - wet * 0.22; G *= 1 - wet * 0.18; B *= 1 - wet * 0.1; } // feuchte Uferkante
+        if (-d > 2.4) { const f = T.forest[i]; R += (FOREST[0] - R) * f; G += (FOREST[1] - G) * f; B += (FOREST[2] - B) * f; }
+      } else {
+        const wi = Math.max(0, Math.min(255, ((d + (n - 0.5) * 0.5) / 12) * 255)) | 0;
+        R = WATER[wi * 3]; G = WATER[wi * 3 + 1]; B = WATER[wi * 3 + 2];
+        { const wv = T.wave[i] * 16 * Math.min(1, d / 1.2); R += wv * 0.6; G += wv * 0.8; B += wv; } // sanfte Strömungsstreifen
+        if (d < 1.6) { const sh2 = (1 - d / 1.6) * 0.16; R *= 1 - sh2; G *= 1 - sh2 * 0.8; B *= 1 - sh2 * 0.5; } // Uferschatten im Wasser
+        const sed = Math.max(0, 1 - d / 1.4) * (0.55 + n * 0.3) * 0.55; R += (SAND[0] - R) * sed; G += (SAND[1] - G) * sed; B += (SAND[2] - B) * sed; // Sand im Flachen
+        if (d < 0.28) { const f = Math.pow(1 - d / 0.28, 1.5) * 0.55; R += (235 - R) * f; G += (248 - G) * f; B += (250 - B) * f; } // Schaum am Ufer
+      }
+      const o = ((y - y0) * rw + (x - x0)) * 4; d8[o] = R; d8[o + 1] = G; d8[o + 2] = B; d8[o + 3] = 255;
     }
-    const o = i * 4; d8[o] = R; d8[o + 1] = G; d8[o + 2] = B; d8[o + 3] = 255;
+    T.bctx.putImageData(img, x0, y0);
+  };
+  const now = performance.now();
+  if (!T.prevTop || T.prevTop.length !== r.top.length) T.prevTop = new Float32Array(r.top.length);
+  if (full) {
+    paint(0, 0, W, H); dg.full++;
+    const dc = T.deco.getContext('2d'); dc.clearRect(0, 0, W, H); decorate(dc, hm, wl, r); T.decoAt = now;
+    T.ctx.drawImage(T.base, 0, 0); T.ctx.drawImage(T.deco, 0, 0);
+    T.prevTop.set(r.top); T.prevWl = wl;
+    T.sparks = []; // Kandidaten für Wasserglitzern: tiefes Wasser
+    for (let k = 0; k < 900 && T.sparks.length < 170; k++) { const sx = hash(k, 11) * (W - 2 * OX) + OX, sy = hash(k, 12) * H, d = wl - hm[(sy | 0) * W + (sx | 0)]; if (d > 1.4) T.sparks.push({ x: sx, y: sy, p: hash(k, 13) * 6.28, v: 3 + hash(k, 14) * 5 }); }
+    dg.ms += performance.now() - t0; return true;
   }
-  T.ctx.putImageData(img, 0, 0);
-  decorate(T.ctx, hm, wl, r);
-  // Kandidaten für Wasserglitzern: tiefes Wasser
-  T.sparks = [];
-  for (let k = 0; k < 900 && T.sparks.length < 170; k++) { const sx = hash(k, 11) * (W - 2 * OX) + OX, sy = hash(k, 12) * H, d = wl - hm[(sy | 0) * W + (sx | 0)]; if (d > 1.4) T.sparks.push({ x: sx, y: sy, p: hash(k, 13) * 6.28, v: 3 + hash(k, 14) * 5 }); }
+  // Teilaktualisierung: Zellen, die sich sichtbar (> 5 cm) verändert haben, samt Nachbarschaft (Interpolation und Hillshade); je Zeile zusammenhängende Läufe
+  const mask = new Uint8Array(cols * rows); let any = false;
+  for (let i = 0; i < r.top.length; i++) {
+    if (Math.abs(r.top[i] - T.prevTop[i]) <= 0.05) continue;
+    T.prevTop[i] = r.top[i]; any = true; dg.cells++;
+    const cx = i % cols, cy = (i / cols) | 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const nx = cx + dx, ny = cy + dy; if (nx >= 0 && ny >= 0 && nx < cols && ny < rows) mask[ny * cols + nx] = 1; }
+  }
+  if (!any) { dg.ms += performance.now() - t0; return false; }
+  const rects = [];
+  for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+    if (!mask[cy * cols + cx]) continue;
+    let ce = cx; while (ce + 1 < cols && mask[cy * cols + ce + 1]) ce++;
+    rects.push([cx === 0 ? 0 : Math.round(OX + cx * CELL), Math.round(cy * CELL), ce === cols - 1 ? W : Math.round(OX + (ce + 1) * CELL), Math.round((cy + 1) * CELL)]); cx = ce;
+  }
+  for (const [x0, y0, x1, y1] of rects) {
+    const ax0 = Math.max(0, x0 - S), ax1 = Math.min(W, x1 + S), ay0 = Math.max(0, y0 - S), ay1 = Math.min(H, y1 + S); if (ax1 <= ax0 || ay1 <= ay0) continue;
+    paint(ax0, ay0, ax1, ay1);
+    { const dc = T.deco.getContext('2d'); dc.save(); dc.beginPath(); dc.rect(ax0, ay0, ax1 - ax0, ay1 - ay0); dc.clip(); dc.clearRect(ax0, ay0, ax1 - ax0, ay1 - ay0); decorate(dc, hm, wl, r, [ax0, ay0, ax1, ay1]); dc.restore(); } // Bäume im geänderten Bereich neu setzen (Ufer verschoben)
+    T.ctx.drawImage(T.base, ax0, ay0, ax1 - ax0, ay1 - ay0, ax0, ay0, ax1 - ax0, ay1 - ay0); T.ctx.drawImage(T.deco, ax0, ay0, ax1 - ax0, ay1 - ay0, ax0, ay0, ax1 - ax0, ay1 - ay0);
+  }
+  dg.ms += performance.now() - t0; dg.rects = rects.length;
+  return true;
 }
 
 // Bachverlauf (Stützpunkte in Bildpunkten, von der Quelle am Kartenrand bis zur Mündung): gemeinsam für Gelände (Freihalten) und Zeichnung
@@ -80,7 +122,7 @@ export function tribPoints(r, t, N = 18) {
 const nearCreek = (paths, x, y, pad) => paths.some((P) => { for (let k = 0; k < P.length - 1; k++) { const a = P[k], b = P[k + 1], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)), px = a.x + dx * u, py = a.y + dy * u; if (Math.hypot(x - px, y - py) < pad + a.w * 1.1) return true; } return false; });
 
 // Bäume auf bewaldetem Land (Schatten, Krone mit Lichtkante), Büsche am Ufer, Schilf im Flachwasser; alles deterministisch aus Rasterpositionen
-function decorate(c, hm, wl, river) {
+function decorate(c, hm, wl, river, rect = null) {
   const creeks = (river.tribs ?? []).map((t) => tribPoints(river, t));
   const at = (x, y) => hm[(Math.max(0, Math.min(H - 1, y | 0))) * W + Math.max(0, Math.min(W - 1, x | 0))];
   const items = [];
@@ -90,6 +132,7 @@ function decorate(c, hm, wl, river) {
     else if (d <= -0.15 && d > -0.9 && k < 0.45) items.push({ t: 'bush', x, y, r: 2.5 + k * 3 });
     else if (d > 0.1 && d < 0.65 && k < 0.55) items.push({ t: 'reed', x, y, r: 3 + k * 4 });
   }
+  if (rect) for (let k = items.length - 1; k >= 0; k--) { const it = items[k]; if (it.x + it.r < rect[0] || it.x - it.r > rect[2] || it.y + it.r < rect[1] || it.y - it.r > rect[3]) items.splice(k, 1); } // nur der aktualisierte Bereich
   items.sort((a, b) => a.y - b.y);
   for (let k = items.length - 1; k >= 0; k--) if (nearCreek(creeks, items[k].x, items[k].y, items[k].r + 3)) items.splice(k, 1); // Bäche bleiben frei: Bäume und Büsche stehen daneben, nicht darauf
   for (const it of items) {
@@ -115,7 +158,7 @@ export function drawTerrain(ctx, game) {
   if (!T.canvas || T.river !== r || T.frame % 15 === 0) {
     let sum = 0; for (let i = 0; i < r.top.length; i++) sum += r.top[i] * ((i % 7) + 1);
     const key = `${sum.toFixed(3)}/${r.wl.toFixed(2)}/${r.cols}`, now = performance.now();
-    if (!T.canvas || T.river !== r || (key !== T.key && now - T.at > 350)) { renderTerrain(game); T.key = key; T.at = now; T.river = r; }
+    if (!T.canvas || T.river !== r || (key !== T.key && now - T.at > 600)) { renderTerrain(game); T.key = key; T.at = now; T.river = r; }
   }
   ctx.drawImage(T.canvas, 0, 0);
   return true;
@@ -197,5 +240,9 @@ export function drawAmbient(ctx, game, ui) {
       ctx.restore();
     }
   }
-  const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.55, W / 2, H / 2, W * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,12,26,.26)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  if (!T.vig) { // Vignette einmal in ein Bild zeichnen (ein Vollbild-Farbverlauf je Bild ist teuer)
+    T.vig = document.createElement('canvas'); T.vig.width = W; T.vig.height = H; const vc = T.vig.getContext('2d');
+    const vg = vc.createRadialGradient(W / 2, H / 2, H * 0.55, W / 2, H / 2, W * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,12,26,.26)'); vc.fillStyle = vg; vc.fillRect(0, 0, W, H);
+  }
+  ctx.drawImage(T.vig, 0, 0);
 }
