@@ -255,3 +255,4 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Zuflüsse (Bäche): geschwungenes Band mit Uferrand, Strömung, Schwemmfächer und Trübungsfahne an der Mündung.
 - Hafentiefe: «Ausbautiefe bis» im Hafenbecken-Panel (automatisch = tiefste Klasse des Kais); Hafenkarte zeigt hochkant den ganzen Hafen.
 - Leistung: Gelände wird nur noch bereichsweise neu gezeichnet, Vignette zwischengespeichert, Zeichenauflösung auf Handys höchstens 2-fach.
+- Hafen: ⓘ-Knopf bei jedem Gebäude (gebaut und im Baumenü) erklärt, was es macht.

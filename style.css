@@ -538,3 +538,6 @@ body.mode-map #shift-actions #btn-fleetmenu.open, body #shift-actions #btn-fleet
 body.cam-free #stage canvas { touch-action: none; }
 button.mini { padding: 0 6px; min-width: 0; min-height: 0; width: auto; font-size: 13px; line-height: 1.4; margin: 0 0 0 4px; vertical-align: baseline; }
 .port-card select { background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; border-radius: 6px; padding: 4px 6px; font: inherit; max-width: 100%; }
+.binfo { background: #0d2236; border: 1px solid #ffffff22; border-radius: 8px; padding: 8px 10px; margin: 4px 0; font-size: 13px; line-height: 1.4; } .brow { display: flex; gap: 6px; align-items: center; } .brow > button:first-child { flex: 1; text-align: left; }
+.plot button.mini, .port-card button.mini, .brow button.mini { width: auto; min-width: 32px; min-height: 28px; display: inline-block; padding: 2px 8px; margin: 0 4px; flex: none; font-size: 15px; vertical-align: middle; }
+.phead { display: flex; align-items: center; gap: 4px; }

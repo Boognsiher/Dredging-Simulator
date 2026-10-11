@@ -10,6 +10,7 @@ import { HARBOR } from '../sim/harbor.js';
 const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
 const t = (n) => `${Math.round(n).toLocaleString('de-CH')} t`;
 
+const infoBox = (type) => `<div class="binfo"><b>${PORT.buildings[type].icon} ${PORT.buildings[type].name}</b><br>${PORT.buildings[type].info ?? PORT.buildings[type].text}</div>`;
 function regionTag(g, id) {
   const b = g.market.bias?.[id] ?? 0;
   return Math.abs(b) < 0.06 ? '' : b < 0 ? ` <small class="tr-down">· hier günstig (${Math.round(b * 100)} %)</small>` : ` <small class="tr-up">· hier teuer (+${Math.round(b * 100)} %)</small>`;
@@ -20,6 +21,7 @@ function sourcesNote(g) {
 }
 
 export function setupPort(root, getGame, onChange) {
+  const infoOpen = new Set(); // aufgeklappte Gebäude-Infos (ⓘ)
   let sig = '', pick = null, siteOpen = null, phase = 0, zone = 0.5, flashMsg = '', flashT = 0; // pick = Bauplatz, für den das Baumenü offen ist
   const hit = () => {
     const g = getGame(), M = PORT.machines[machineOf(g)], pos = 0.5 + 0.5 * Math.sin(phase), d = Math.abs(pos - zone) / (M.zone / 2);
@@ -76,11 +78,11 @@ export function setupPort(root, getGame, onChange) {
           const st = p.sites?.[i], ready = st?.ready;
           h += `<div class="plot empty" id="plot-${i}"><b>Bauplatz ${i + 1}</b><small>${ready ? '✓ Gelände eben' : `Unebenes Gelände (${st ? siteWork(st) : '?'} Höheneinheiten)`}</small>`;
           if (!ready) h += `<button data-act="site" data-slot="${i}">🚜 Planieren</button>`;
-          else h += pick === i ? Object.entries(PORT.buildings).map(([k, B]) => { const bl = buildBlock(g, i, k); return `<button data-act="build" data-slot="${i}" data-type="${k}" ${bl ? 'disabled' : ''} title="${B.text} ${bl ?? ''}">${B.icon} ${B.name} · ${chf(B.cost)}</button>`; }).join('') + `<button data-act="pick" data-slot="-1">Abbrechen</button>` : `<button data-act="pick" data-slot="${i}">+ Bauen</button>`;
+          else h += pick === i ? Object.entries(PORT.buildings).map(([k, B]) => { const bl = buildBlock(g, i, k); return `<div class="brow"><button data-act="build" data-slot="${i}" data-type="${k}" ${bl ? 'disabled' : ''} title="${bl ?? ''}">${B.icon} ${B.name} · ${chf(B.cost)}${bl ? `<small> – ${bl}</small>` : ''}</button><button class="mini" data-act="info" data-type="${k}" aria-label="Info zu ${B.name}">ⓘ</button></div>${infoOpen.has(k) ? infoBox(k) : ''}`; }).join('') + `<button data-act="pick" data-slot="-1">Abbrechen</button>` : `<button data-act="pick" data-slot="${i}">+ Bauen</button>`;
           h += `</div>`; return;
         }
         const B = PORT.buildings[sl.type], cm = B.commodity, up = B.up && sl.level <= B.up.length;
-        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'kai' ? `Liegeplätze: ${B.berths[sl.level - 1]}` : sl.type === 'werk' ? `Diese Halle: +${2 * sl.level} Anlagenstufen · Anlage jetzt bis Stufe ${plantLimit(g)} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
+        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><div class="phead"><b>${B.name}</b><button class="mini" data-act="info" data-type="${sl.type}" aria-label="Info zu ${B.name}">ⓘ</button></div><small>Stufe ${sl.level}</small>${infoOpen.has(sl.type) ? infoBox(sl.type) : ''}<small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'kai' ? `Liegeplätze: ${B.berths[sl.level - 1]}` : sl.type === 'werk' ? `Diese Halle: +${2 * sl.level} Anlagenstufen · Anlage jetzt bis Stufe ${plantLimit(g)} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
           ${up ? `<button data-act="up" data-slot="${i}" ${upgradeBlock(g, i) ? 'disabled' : ''}>Ausbauen · ${chf(B.up[sl.level - 1])}</button>` : ''}<button class="ghost" data-act="demo" data-slot="${i}">Abreissen</button></div>`;
       });
       h += `</div>`;
@@ -125,6 +127,7 @@ export function setupPort(root, getGame, onChange) {
     const g = getGame(), a = b.dataset.act, slot = +b.dataset.slot, id = b.dataset.id;
     const was = siteOpen;
     if (a === 'hit') { hit(); return; }
+    if (a === 'info') { const ty = b.dataset.type; infoOpen.has(ty) ? infoOpen.delete(ty) : infoOpen.add(ty); render(true); return; }
     if (a === 'hallup') { upgradeHall(g, b.dataset.hall); render(true); onChange?.(); return; }
     if (a === 'waitcargo') cycleWaitCargo(g, slot);
     else if (a === 'prio') cyclePriority(g);

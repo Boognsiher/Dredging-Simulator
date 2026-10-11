@@ -552,6 +552,9 @@ body.mode-map #shift-actions #btn-fleetmenu.open, body #shift-actions #btn-fleet
 body.cam-free #stage canvas { touch-action: none; }
 button.mini { padding: 0 6px; min-width: 0; min-height: 0; width: auto; font-size: 13px; line-height: 1.4; margin: 0 0 0 4px; vertical-align: baseline; }
 .port-card select { background: #1b3550; color: var(--ink); border: 1px solid #ffffff22; border-radius: 6px; padding: 4px 6px; font: inherit; max-width: 100%; }
+.binfo { background: #0d2236; border: 1px solid #ffffff22; border-radius: 8px; padding: 8px 10px; margin: 4px 0; font-size: 13px; line-height: 1.4; } .brow { display: flex; gap: 6px; align-items: center; } .brow > button:first-child { flex: 1; text-align: left; }
+.plot button.mini, .port-card button.mini, .brow button.mini { width: auto; min-width: 32px; min-height: 28px; display: inline-block; padding: 2px 8px; margin: 0 4px; flex: none; font-size: 15px; vertical-align: middle; }
+.phead { display: flex; align-items: center; gap: 4px; }
 
 </style>
 </head>
@@ -3532,16 +3535,16 @@ const PORT = {
   site: { w: 5, h: 4, maxCarry: 4, fillCost: 35, autoCost: 70, act: 0.3, travel: 0.1 },
   machines: { radlader: { name: 'Radlader', icon: '🚜', speed: 1.6, zone: 0.28, bucket: 14 }, kran: { name: 'Kran', icon: '🏗', speed: 2.3, zone: 0.16, bucket: 32 }, bruecke: { name: 'Containerbrücke', icon: '🏗', speed: 2.6, zone: 0.12, bucket: 60 } },
   buildings: {
-    kai: { name: 'Kai & Verladestation', icon: '🏗', cost: 12000, max: 1, up: [16000, 40000], berths: [2, 3, 5], text: 'Pflicht: Hier laden und entladen die Schiffe. Jede Stufe schafft mehr Liegeplätze: Schiffe legen nur an, wenn ein Platz frei ist (er wird für sie reserviert), und stehen nicht im Fahrwasser.' },
-    kies: { name: 'Kieslager', icon: '⛰', commodity: 'kies', cost: 9000, up: [14000, 30000], cap: [600, 1600, 3600], text: 'Lager für Kies und Sand. Billig im Einkauf, wenig Marge pro Tonne, dafür viel Menge.' },
-    tank: { name: 'Tanklager', icon: '🛢', commodity: 'oel', cost: 20000, up: [28000, 60000], cap: [500, 1300, 3000], text: 'Lager für Mineralöl. Teuer, aber hohe Preise und grosse Preisausschläge.' },
-    kran: { name: 'Portalkran', icon: '🏗', cost: 14000, max: 1, text: 'Grosse Greifer: im Verlade-Minispiel 32 t pro Treffer statt 14 t (aber schnelleres Pendel).' },
-    container: { name: 'Containerterminal', icon: '📦', commodity: 'container', cost: 32000, up: [45000, 90000], cap: [300, 800, 1800], text: 'Umschlag und Lager für Container (Stückgut). Hoher Wert pro Tonne, braucht tiefe Hafenbecken für die grossen Containerschiffe.' },
-    werk: { name: 'Aufbereitungshalle', icon: '🏭', cost: 24000, up: [45000, 90000], max: 1, text: 'Erweitert die Anlage an Land: Jede Stufe schaltet zwei weitere Ausbaustufen der Aufbereitungsanlage frei (über Stufe 6 hinaus).' },
-    cbruecke: { name: 'Containerbrücke', icon: '🏗', cost: 38000, max: 1, up: [65000], text: 'Spezialkran für Container: Containerschiffe legen nur mit Brücke an, Container werden 3× (Stufe 2: 5×) schneller umgeschlagen, im Minispiel 60 t pro Treffer.' },
-    oelfeld: { name: 'Ölfeld (Förderpumpen)', icon: '🛢', cost: 60000, max: 1, up: [90000, 140000], rate: [8, 16, 28], text: 'Fördert Mineralöl aus dem Ölvorkommen dieser Karte ins Tanklager (Förderkosten 35 % des Basispreises je Tonne). Das Vorkommen ist endlich; es gibt nicht auf jeder Karte eines.' },
-    bahn: { name: 'Container-Bahnterminal', icon: '🚆', cost: 120000, max: 1, up: [180000], rate: [20, 45], text: 'Bahnanschluss: bringt täglich Container ins Containerlager (Einstand 60 % des Basispreises je Tonne). Braucht ein Containerterminal; du verkaufst über den Hafen.' },
-    sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
+    kai: { name: 'Kai & Verladestation', icon: '🏗', cost: 12000, max: 1, up: [16000, 40000], berths: [2, 3, 5], info: "Das Herz des Hafens, ohne Kai geht nichts. Hier legen die Schiffe an, um zu laden oder zu entladen. Die Stufe bestimmt, wie viele Liegeplätze es gibt (2 / 3 / 5), wie viele Warteräume im Becken und welche Schiffsklassen der Kai annimmt (Stufe 1: Lastkahn, Stufe 2: auch Motorschiff, Stufe 3: alle). Das Becken muss für die grösste angenommene Klasse tief genug sein (siehe «Ausbautiefe»).", text: 'Pflicht: Hier laden und entladen die Schiffe. Jede Stufe schafft mehr Liegeplätze: Schiffe legen nur an, wenn ein Platz frei ist (er wird für sie reserviert), und stehen nicht im Fahrwasser.' },
+    kies: { name: 'Kieslager', icon: '⛰', commodity: 'kies', cost: 9000, up: [14000, 30000], cap: [600, 1600, 3600], info: "Lager für Kies und Sand. Du kaufst und verkaufst hier von Hand oder automatisch; Schiffe laden aus diesem Lager und entladen in dieses Lager. Kies ist billig, die Marge klein, dafür sind die Mengen gross. Lagerhaltung kostet täglich ein paar Rappen pro Tonne. Mehr Stufen = mehr Kapazität (600 / 1600 / 3600 t).", text: 'Lager für Kies und Sand. Billig im Einkauf, wenig Marge pro Tonne, dafür viel Menge.' },
+    tank: { name: 'Tanklager', icon: '🛢', commodity: 'oel', cost: 20000, up: [28000, 60000], cap: [500, 1300, 3000], info: "Lager für Mineralöl. Öl hat hohe Preise und grosse Preisschwankungen: mit gutem Timing gibt es viel Gewinn, falsches Timing kostet. Einlagern kostet täglich 0.40 CHF pro Tonne. Kapazität 500 / 1300 / 3000 t. Auch das Ölfeld liefert hierher.", text: 'Lager für Mineralöl. Teuer, aber hohe Preise und grosse Preisausschläge.' },
+    kran: { name: 'Portalkran', icon: '🏗', cost: 14000, max: 1, info: "Der Portalkran macht das Beladen im Minispiel schneller: 32 t pro Treffer statt 14 t mit dem Radlader, dafür schwingt das Pendel schneller. Wirkt nur beim selbst gespielten Verladen, nicht bei der automatischen Mannschaft.", text: 'Grosse Greifer: im Verlade-Minispiel 32 t pro Treffer statt 14 t (aber schnelleres Pendel).' },
+    container: { name: 'Containerterminal', icon: '📦', commodity: 'container', cost: 32000, up: [45000, 90000], cap: [300, 800, 1800], info: "Umschlag und Lager für Container. Hoher Wert pro Tonne, aber teure Einlagerung (0.60 CHF pro Tonne und Tag) und tiefe Becken für Containerschiffe. Ohne Containerterminal kannst du keine Container handeln. Kapazität 300 / 800 / 1800 t. Das Bahnterminal liefert hierher.", text: 'Umschlag und Lager für Container (Stückgut). Hoher Wert pro Tonne, braucht tiefe Hafenbecken für die grossen Containerschiffe.' },
+    werk: { name: 'Aufbereitungshalle', icon: '🏭', cost: 24000, up: [45000, 90000], max: 1, info: "Erweitert die Aufbereitungsanlage auf dem Land über Stufe 6 hinaus: jede Stufe der Halle schaltet zwei weitere Ausbaustufen frei.", text: 'Erweitert die Anlage an Land: Jede Stufe schaltet zwei weitere Ausbaustufen der Aufbereitungsanlage frei (über Stufe 6 hinaus).' },
+    cbruecke: { name: 'Containerbrücke', icon: '🏗', cost: 38000, max: 1, up: [65000], info: "Spezialkran für Container: Containerschiffe legen nur mit Brücke an. Container werden 3× (Stufe 2: 5×) schneller umgeschlagen, im Minispiel 60 t pro Treffer. Braucht ein Containerterminal.", text: 'Spezialkran für Container: Containerschiffe legen nur mit Brücke an, Container werden 3× (Stufe 2: 5×) schneller umgeschlagen, im Minispiel 60 t pro Treffer.' },
+    oelfeld: { name: 'Ölfeld (Förderpumpen)', icon: '🛢', cost: 60000, max: 1, up: [90000, 140000], rate: [8, 16, 28], info: "Eigene Ölförderung: Pumpen fördern täglich Öl aus dem Ölvorkommen dieser Karte (8 / 16 / 28 t) direkt ins Tanklager. Kosten nur 35 % des Basispreises pro Tonne, also viel günstiger als Einkaufen. Das Vorkommen ist endlich und nicht jede Karte hat eines. Braucht ein Tanklager mit freier Kapazität.", text: 'Fördert Mineralöl aus dem Ölvorkommen dieser Karte ins Tanklager (Förderkosten 35 % des Basispreises je Tonne). Das Vorkommen ist endlich; es gibt nicht auf jeder Karte eines.' },
+    bahn: { name: 'Container-Bahnterminal', icon: '🚆', cost: 120000, max: 1, up: [180000], rate: [20, 45], info: "Bahnanschluss: bringt täglich Container (20 / 45 t) ins Containerlager, zu 60 % des Basispreises pro Tonne. Du verkaufst sie über den Hafen mit Gewinn. Braucht ein Containerterminal mit freier Kapazität.", text: 'Bahnanschluss: bringt täglich Container ins Containerlager (Einstand 60 % des Basispreises je Tonne). Braucht ein Containerterminal; du verkaufst über den Hafen.' },
+    sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], info: "Reinigt Altlasten aus dem Baggergut: spart 50 % (Stufe 2: 80 %) der Entsorgungskosten für belastetes Material. Lohnt sich, sobald du Altlast-Bereiche baggerst. Die beste Anlage aller Karten zählt.", text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
   },
   commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' }, container: { name: 'Container', lot: 40, icon: '📦' } },
   storage: { kies: 'kies', oel: 'tank', container: 'container' }, label: { kies: 'Kies', oel: 'Öl', container: 'Container' }, // Gebäude je Ware, Anzeigenamen
@@ -6933,6 +6936,7 @@ const { HARBOR } = __m(4);
 const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
 const t = (n) => `${Math.round(n).toLocaleString('de-CH')} t`;
 
+const infoBox = (type) => `<div class="binfo"><b>${PORT.buildings[type].icon} ${PORT.buildings[type].name}</b><br>${PORT.buildings[type].info ?? PORT.buildings[type].text}</div>`;
 function regionTag(g, id) {
   const b = g.market.bias?.[id] ?? 0;
   return Math.abs(b) < 0.06 ? '' : b < 0 ? ` <small class="tr-down">· hier günstig (${Math.round(b * 100)} %)</small>` : ` <small class="tr-up">· hier teuer (+${Math.round(b * 100)} %)</small>`;
@@ -6943,6 +6947,7 @@ function sourcesNote(g) {
 }
 
 function setupPort(root, getGame, onChange) {
+  const infoOpen = new Set(); // aufgeklappte Gebäude-Infos (ⓘ)
   let sig = '', pick = null, siteOpen = null, phase = 0, zone = 0.5, flashMsg = '', flashT = 0; // pick = Bauplatz, für den das Baumenü offen ist
   const hit = () => {
     const g = getGame(), M = PORT.machines[machineOf(g)], pos = 0.5 + 0.5 * Math.sin(phase), d = Math.abs(pos - zone) / (M.zone / 2);
@@ -6999,11 +7004,11 @@ function setupPort(root, getGame, onChange) {
           const st = p.sites?.[i], ready = st?.ready;
           h += `<div class="plot empty" id="plot-${i}"><b>Bauplatz ${i + 1}</b><small>${ready ? '✓ Gelände eben' : `Unebenes Gelände (${st ? siteWork(st) : '?'} Höheneinheiten)`}</small>`;
           if (!ready) h += `<button data-act="site" data-slot="${i}">🚜 Planieren</button>`;
-          else h += pick === i ? Object.entries(PORT.buildings).map(([k, B]) => { const bl = buildBlock(g, i, k); return `<button data-act="build" data-slot="${i}" data-type="${k}" ${bl ? 'disabled' : ''} title="${B.text} ${bl ?? ''}">${B.icon} ${B.name} · ${chf(B.cost)}</button>`; }).join('') + `<button data-act="pick" data-slot="-1">Abbrechen</button>` : `<button data-act="pick" data-slot="${i}">+ Bauen</button>`;
+          else h += pick === i ? Object.entries(PORT.buildings).map(([k, B]) => { const bl = buildBlock(g, i, k); return `<div class="brow"><button data-act="build" data-slot="${i}" data-type="${k}" ${bl ? 'disabled' : ''} title="${bl ?? ''}">${B.icon} ${B.name} · ${chf(B.cost)}${bl ? `<small> – ${bl}</small>` : ''}</button><button class="mini" data-act="info" data-type="${k}" aria-label="Info zu ${B.name}">ⓘ</button></div>${infoOpen.has(k) ? infoBox(k) : ''}`; }).join('') + `<button data-act="pick" data-slot="-1">Abbrechen</button>` : `<button data-act="pick" data-slot="${i}">+ Bauen</button>`;
           h += `</div>`; return;
         }
         const B = PORT.buildings[sl.type], cm = B.commodity, up = B.up && sl.level <= B.up.length;
-        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><b>${B.name}</b> <small>Stufe ${sl.level}</small><small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'kai' ? `Liegeplätze: ${B.berths[sl.level - 1]}` : sl.type === 'werk' ? `Diese Halle: +${2 * sl.level} Anlagenstufen · Anlage jetzt bis Stufe ${plantLimit(g)} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
+        h += `<div class="plot"><div class="plot-icon">${B.icon}</div><div class="phead"><b>${B.name}</b><button class="mini" data-act="info" data-type="${sl.type}" aria-label="Info zu ${B.name}">ⓘ</button></div><small>Stufe ${sl.level}</small>${infoOpen.has(sl.type) ? infoBox(sl.type) : ''}<small>${B.cap ? 'Kapazität ' + t(B.cap[sl.level - 1]) : sl.type === 'kai' ? `Liegeplätze: ${B.berths[sl.level - 1]}` : sl.type === 'werk' ? `Diese Halle: +${2 * sl.level} Anlagenstufen · Anlage jetzt bis Stufe ${plantLimit(g)} ausbaubar (aktuell ${g.levels.plant})` : sl.type === 'sanierung' ? `spart ${Math.round(B.refund[sl.level - 1] * 100)} % der Altlast-Entsorgung` : B.text}</small>
           ${up ? `<button data-act="up" data-slot="${i}" ${upgradeBlock(g, i) ? 'disabled' : ''}>Ausbauen · ${chf(B.up[sl.level - 1])}</button>` : ''}<button class="ghost" data-act="demo" data-slot="${i}">Abreissen</button></div>`;
       });
       h += `</div>`;
@@ -7048,6 +7053,7 @@ function setupPort(root, getGame, onChange) {
     const g = getGame(), a = b.dataset.act, slot = +b.dataset.slot, id = b.dataset.id;
     const was = siteOpen;
     if (a === 'hit') { hit(); return; }
+    if (a === 'info') { const ty = b.dataset.type; infoOpen.has(ty) ? infoOpen.delete(ty) : infoOpen.add(ty); render(true); return; }
     if (a === 'hallup') { upgradeHall(g, b.dataset.hall); render(true); onChange?.(); return; }
     if (a === 'waitcargo') cycleWaitCargo(g, slot);
     else if (a === 'prio') cyclePriority(g);
