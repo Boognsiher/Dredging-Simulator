@@ -20,7 +20,7 @@
     <button id="btn-menu" aria-label="Menü">☰ Menü</button>
     <div id="hud">
       <span title="Level = höchste befahrbare Schiffsklasse">Level <b id="h-rank"></b></span>
-      <span>Tag <b id="h-day"></b> <small id="h-left"></small></span>
+      <span><span id="h-daylab">Tag</span> <b id="h-day"></b> <small id="h-left"></small></span>
       <span>Geld <b id="h-money"></b> <small id="h-income"></small></span>
       <span>Fracht <b id="h-tons"></b></span>
       <span>Pegel <b id="h-wl"></b></span>
@@ -160,6 +160,7 @@
         <div class="row"><button id="btn-import">⬆ Importieren (Datei)</button><input type="file" id="file-import" accept=".json,application/json,text/plain" hidden></div>
         <small id="save-msg"></small>
       </details>
+        <label id="opt-real-box" class="fleet-widen" hidden title="Hoch- und Niedrigwasser nach realen Ereignissen am Rhein seit 2010 (Zeitpunkt und Stärke angenähert), statt Zufall"><input type="checkbox" id="opt-real" checked> 🌍 Reale Hoch- und Niedrigwasser (ab 2010)</label>
         <div class="row"><button id="btn-pause">⏸ Pause (P)</button><button id="btn-ff">⏩ Zeitraffer (V)</button><button id="btn-sound2">🔊 Ton an (M)</button></div>
       </div>
     </aside>

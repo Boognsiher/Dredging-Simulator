@@ -1,3 +1,4 @@
+import { freeName } from './fleet.js';
 import { Game, endlessRiver } from './game.js';
 import { createRng } from './rng.js';
 import { createMarket } from './market.js';
@@ -68,6 +69,7 @@ export function restoreGame(text) {
       if (hs && m.port.harbor) { const hr = new River(hs.cols, hs.rows); for (const [k, v] of Object.entries(hs)) hr[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v; m.port.harbor.river = hr; hr.wl = game.wl; } else if (m.port.harbor) m.port.harbor = null; // kaputter Stand: neu anlegen lassen
     });
     for (const m of game.maps) ensureHarbor(m.port, game.wl); // ältere Stände mit geöffnetem Hafen bekommen die Hafenkarte nachträglich
+    for (const m of game.maps) for (const u of m.fleet?.units ?? []) if (!u.self && /^Ponton \d+$/.test(u.name)) u.name = freeName(game); // ältere Stände: Pontons ohne Eigennamen bekommen einen
     game.rng.setState(s.rng);
     const cur = game.mapIdx;
     for (let i = 0; i < game.maps.length; i++) { game.mapIdx = i; game.analyze(true); game.fairClock = 0; }

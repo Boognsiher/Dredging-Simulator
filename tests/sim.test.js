@@ -2135,3 +2135,16 @@ test('Pontonwerft: erhöht Karten- und Gesamtgrenze zusätzlich zum Level', () =
   assert.equal(g.fleet.units.filter((u) => !u.self && !u.small).length, pm0 + 4);
   assert.match(hireBlock(g), /voll|Karte/);
 });
+
+import { dateOf, dayOfDate, seasonLook, REAL_EVENTS, START_YEAR } from '../src/sim/calendar.js';
+test('Kalender: Start 1. März 2010, Jahreszeiten, reale Ereignisse als Wasserstand', () => {
+  assert.equal(dateOf(1).label, '1. Mär 2010'); assert.equal(START_YEAR, 2010);
+  assert.equal(dateOf(366).year, 2011); assert.equal(dateOf(dayOfDate(2013, 6, 2)).label, '2. Jun 2013');
+  assert.equal(dateOf(dayOfDate(2011, 1, 15)).season, 'winter'); assert.ok(seasonLook(dateOf(dayOfDate(2011, 1, 15)).doy).snow > 0.9);
+  assert.equal(seasonLook(dateOf(dayOfDate(2011, 7, 15)).doy).snow, 0);
+  const g = new Game(5, 'endlos'); g.eventsOn = false;
+  const ev = REAL_EVENTS.find((e) => e.type === 'drought' && e.y === 2011 && e.m === 4);
+  g.day = ev.day - 1; g.time = (ev.day - 1) * CONFIG.daySeconds - 0.02; assert.equal(g.realOn, true);
+  for (let i = 0; i < 4000; i++) g.update(0.05); assert.ok(g.wl < CONFIG.water.base - 0.2, 'Niedrigwasser nach realem Ereignis');
+  g.realEvents = false; assert.equal(g.realOn, false);
+});

@@ -1,4 +1,5 @@
 import { CELL, OX, W, H } from './render.js';
+import { seasonLook } from '../sim/calendar.js';
 
 // Grafik-Aufwertung der Karte: weiches Gelände mit Hillshade und Schaum, Wasserglitzern, Schiffe mit Kielwasser, Ponton-Sprites, Tag-/Nachtlicht.
 // Alles wird im Code gezeichnet (keine Bilddateien). Das Gelände liegt in einem Zwischenbild und wird nur bei Änderungen neu berechnet.
@@ -22,6 +23,9 @@ const WATER = lut([[0, hex('#9be3d6')], [0.6, hex('#62c8cf')], [2, hex('#3b9ac0'
 const LAND = lut([[-0.2, hex('#e5d49a')], [0.5, hex('#cdbd7a')], [1.2, hex('#87a95a')], [3, hex('#5f8c47')], [6, hex('#3f6b3a')], [12, hex('#5d6b4c')]], -0.2, 12);
 const FOREST = hex('#2f5a33'), SAND = hex('#d8c58a');
 
+const q8 = (v) => Math.round(v * 8) / 8;
+const seasonQ = (game) => { const l = seasonLook(game.date?.doy ?? 100); return { snow: q8(l.snow), autumn: q8(l.autumn), spring: q8(l.spring) }; }; // gerastert: Gelände wird nur bei sichtbarer Änderung neu gezeichnet
+const seasonKey = (S) => `${S.snow}/${S.autumn}/${S.spring}`;
 const T = { canvas: null, ctx: null, noise: null, key: '', at: 0, frame: 0, sparks: [], river: null };
 
 function noiseTexture() {
@@ -45,7 +49,8 @@ function renderTerrain(game) {
   if (!T.canvas) { T.canvas = mk(); T.ctx = T.canvas.getContext('2d'); T.base = mk(); T.bctx = T.base.getContext('2d'); T.deco = mk(); T.hm = new Float32Array(W * H); }
   const noise = noiseTexture(), hm = T.hm; detailNoise();
   const dg = (T.dbg ??= { calls: 0, full: 0, ms: 0, cells: 0 }); dg.calls++;
-  const full = T.river !== r || !T.prevTop || T.prevTop.length !== r.top.length || Math.abs(T.prevWl - wl) > 0.04; // der Pegel schwankt dauernd: erst bei sichtbarer Änderung (4 cm) alles neu
+  const SE = seasonQ(game), sk = seasonKey(SE);
+  const full = T.sKey !== sk || T.river !== r || !T.prevTop || T.prevTop.length !== r.top.length || Math.abs(T.prevWl - wl) > 0.04; // der Pegel schwankt dauernd: erst bei sichtbarer Änderung (4 cm) alles neu
   const paint = (x0, y0, x1, y1) => {
     const hx0 = Math.max(0, x0 - S), hx1 = Math.min(W, x1 + S), hy0 = Math.max(0, y0 - S), hy1 = Math.min(H, y1 + S);
     for (let y = hy0; y < hy1; y++) {
@@ -64,7 +69,11 @@ function renderTerrain(game) {
         const hx = hm[i + (x < W - S ? S : 0)] - hm[i - (x >= S ? S : 0)], hy = hm[i + (y < H - S ? S * W : 0)] - hm[i - (y >= S ? S * W : 0)];
         const sh = Math.min(1.25, Math.max(0.72, 1 + (-hx - hy) * 0.55 * 0.35 * 1.4 + (n - 0.5) * 0.12));
         R = LAND[li * 3] * sh; G = LAND[li * 3 + 1] * sh; B = LAND[li * 3 + 2] * sh;
-        if (-d < 0.45) { const wet = 1 - (-d) / 0.45; R *= 1 - wet * 0.22; G *= 1 - wet * 0.18; B *= 1 - wet * 0.1; } // feuchte Uferkante
+        { const SS = T.S ?? SE; // Jahreszeit: Herbstlaub, Frühlingsgrün, Schnee
+        if (SS.autumn > 0 && -d > 0.8) { const f = SS.autumn * 0.5 * Math.min(1, (-d - 0.8) / 1.2); R += (196 - R) * f; G += (118 - G) * f; B += (40 - B) * f; }
+        if (SS.spring > 0 && -d > 0.5) { G += 10 * SS.spring; R += 4 * SS.spring; }
+        if (SS.snow > 0 && -d > 0.2) { const f = Math.min(1, SS.snow * (1.0 + 0.4 * (n - 0.5)) * Math.min(1, (-d - 0.2) / 0.5)); R += (240 - R) * f; G += (246 - G) * f; B += (252 - B) * f; } }
+      if (-d < 0.45) { const wet = 1 - (-d) / 0.45; R *= 1 - wet * 0.22; G *= 1 - wet * 0.18; B *= 1 - wet * 0.1; } // feuchte Uferkante
         if (-d > 2.4) { const f = T.forest[i]; R += (FOREST[0] - R) * f; G += (FOREST[1] - G) * f; B += (FOREST[2] - B) * f; }
       } else {
         const wi = Math.max(0, Math.min(255, ((d + (n - 0.5) * 0.5) / 12) * 255)) | 0;
@@ -72,7 +81,8 @@ function renderTerrain(game) {
         { const wv = T.wave[i] * 16 * Math.min(1, d / 1.2); R += wv * 0.6; G += wv * 0.8; B += wv; } // sanfte Strömungsstreifen
         if (d < 1.6) { const sh2 = (1 - d / 1.6) * 0.16; R *= 1 - sh2; G *= 1 - sh2 * 0.8; B *= 1 - sh2 * 0.5; } // Uferschatten im Wasser
         const sed = Math.max(0, 1 - d / 1.4) * (0.55 + n * 0.3) * 0.55; R += (SAND[0] - R) * sed; G += (SAND[1] - G) * sed; B += (SAND[2] - B) * sed; // Sand im Flachen
-        if (d < 0.28) { const f = Math.pow(1 - d / 0.28, 1.5) * 0.55; R += (235 - R) * f; G += (248 - G) * f; B += (250 - B) * f; } // Schaum am Ufer
+        if ((T.S ?? SE).snow > 0.4 && d < 0.5) { const f = (T.S ?? SE).snow * 0.55 * (1 - d / 0.5); R += (222 - R) * f; G += (238 - G) * f; B += (248 - B) * f; } // Eisrand am Ufer
+      if (d < 0.28) { const f = Math.pow(1 - d / 0.28, 1.5) * 0.55; R += (235 - R) * f; G += (248 - G) * f; B += (250 - B) * f; } // Schaum am Ufer
       }
       const o = ((y - y0) * rw + (x - x0)) * 4; d8[o] = R; d8[o + 1] = G; d8[o + 2] = B; d8[o + 3] = 255;
     }
@@ -81,8 +91,8 @@ function renderTerrain(game) {
   const now = performance.now();
   if (!T.prevTop || T.prevTop.length !== r.top.length) T.prevTop = new Float32Array(r.top.length);
   if (full) {
-    paint(0, 0, W, H); dg.full++;
-    const dc = T.deco.getContext('2d'); dc.clearRect(0, 0, W, H); decorate(dc, hm, wl, r); T.decoAt = now;
+    T.sKey = sk; T.S = SE; paint(0, 0, W, H); dg.full++;
+    const dc = T.deco.getContext('2d'); dc.clearRect(0, 0, W, H); decorate(dc, hm, wl, r, null, T.S ?? SE); T.decoAt = now;
     T.ctx.drawImage(T.base, 0, 0); T.ctx.drawImage(T.deco, 0, 0);
     T.prevTop.set(r.top); T.prevWl = wl;
     T.sparks = []; // Kandidaten für Wasserglitzern: tiefes Wasser
@@ -107,7 +117,7 @@ function renderTerrain(game) {
   for (const [x0, y0, x1, y1] of rects) {
     const ax0 = Math.max(0, x0 - S), ax1 = Math.min(W, x1 + S), ay0 = Math.max(0, y0 - S), ay1 = Math.min(H, y1 + S); if (ax1 <= ax0 || ay1 <= ay0) continue;
     paint(ax0, ay0, ax1, ay1);
-    { const dc = T.deco.getContext('2d'); dc.save(); dc.beginPath(); dc.rect(ax0, ay0, ax1 - ax0, ay1 - ay0); dc.clip(); dc.clearRect(ax0, ay0, ax1 - ax0, ay1 - ay0); decorate(dc, hm, wl, r, [ax0, ay0, ax1, ay1]); dc.restore(); } // Bäume im geänderten Bereich neu setzen (Ufer verschoben)
+    { const dc = T.deco.getContext('2d'); dc.save(); dc.beginPath(); dc.rect(ax0, ay0, ax1 - ax0, ay1 - ay0); dc.clip(); dc.clearRect(ax0, ay0, ax1 - ax0, ay1 - ay0); decorate(dc, hm, wl, r, [ax0, ay0, ax1, ay1], T.S ?? SE); dc.restore(); } // Bäume im geänderten Bereich neu setzen (Ufer verschoben)
     T.ctx.drawImage(T.base, ax0, ay0, ax1 - ax0, ay1 - ay0, ax0, ay0, ax1 - ax0, ay1 - ay0); T.ctx.drawImage(T.deco, ax0, ay0, ax1 - ax0, ay1 - ay0, ax0, ay0, ax1 - ax0, ay1 - ay0);
   }
   dg.ms += performance.now() - t0; dg.rects = rects.length;
@@ -122,7 +132,7 @@ export function tribPoints(r, t, N = 18) {
 const nearCreek = (paths, x, y, pad) => paths.some((P) => { for (let k = 0; k < P.length - 1; k++) { const a = P[k], b = P[k + 1], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)), px = a.x + dx * u, py = a.y + dy * u; if (Math.hypot(x - px, y - py) < pad + a.w * 1.1) return true; } return false; });
 
 // Bäume auf bewaldetem Land (Schatten, Krone mit Lichtkante), Büsche am Ufer, Schilf im Flachwasser; alles deterministisch aus Rasterpositionen
-function decorate(c, hm, wl, river, rect = null) {
+function decorate(c, hm, wl, river, rect = null, SS = { snow: 0, autumn: 0, spring: 0 }) {
   const creeks = (river.tribs ?? []).map((t) => tribPoints(river, t));
   const at = (x, y) => hm[(Math.max(0, Math.min(H - 1, y | 0))) * W + Math.max(0, Math.min(W - 1, x | 0))];
   const items = [];
@@ -138,11 +148,14 @@ function decorate(c, hm, wl, river, rect = null) {
   for (const it of items) {
     if (it.t === 'tree') {
       c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(it.x + it.r * 0.5, it.y + it.r * 0.6, it.r * 1.05, it.r * 0.75, 0, 0, 7); c.fill();
-      const g = c.createRadialGradient(it.x - it.r * 0.35, it.y - it.r * 0.4, 1, it.x, it.y, it.r * 1.15); g.addColorStop(0, '#6fa24f'); g.addColorStop(0.55, '#3f7a3a'); g.addColorStop(1, '#27522b');
+      const hv = hash(it.x, it.y), au = SS.autumn, fall = [[214, 132, 40], [186, 70, 36], [220, 168, 52]][Math.floor(hv * 3) % 3], mixc = (a, b) => `rgb(${Math.round(a[0] + (b[0] - a[0]) * au)},${Math.round(a[1] + (b[1] - a[1]) * au)},${Math.round(a[2] + (b[2] - a[2]) * au)})`;
+      const g = c.createRadialGradient(it.x - it.r * 0.35, it.y - it.r * 0.4, 1, it.x, it.y, it.r * 1.15); g.addColorStop(0, mixc([111, 162, 79], fall.map((v) => Math.min(255, v + 25)))); g.addColorStop(0.55, mixc([63, 122, 58], fall)); g.addColorStop(1, mixc([39, 82, 43], fall.map((v) => v * 0.65)));
       c.fillStyle = g; c.beginPath(); c.arc(it.x, it.y, it.r, 0, 7); c.fill();
+      if (SS.spring > 0.3 && hv < 0.45) { c.fillStyle = `rgba(255,214,230,${0.7 * SS.spring})`; for (let j = 0; j < 4; j++) { c.beginPath(); c.arc(it.x + (hash(j, it.x) - 0.5) * it.r * 1.3, it.y + (hash(it.y, j) - 0.5) * it.r * 1.3, 1.2, 0, 7); c.fill(); } } // Blüte im Frühling
+      if (SS.snow > 0) { c.fillStyle = `rgba(246,250,255,${0.88 * SS.snow})`; c.beginPath(); c.ellipse(it.x - it.r * 0.1, it.y - it.r * 0.15, it.r * 0.8, it.r * 0.7, 0, 0, 7); c.fill(); } // Schnee in der Krone
     } else if (it.t === 'bush') {
       c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(it.x + 1, it.y + 1.5, it.r * 1.1, it.r * 0.7, 0, 0, 7); c.fill();
-      c.fillStyle = '#5d9249'; c.beginPath(); c.arc(it.x, it.y, it.r, 0, 7); c.fill(); c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.arc(it.x - it.r * 0.3, it.y - it.r * 0.3, it.r * 0.5, 0, 7); c.fill();
+      c.fillStyle = SS.autumn > 0.2 ? `rgb(${Math.round(93 + (170 - 93) * SS.autumn)},${Math.round(146 + (110 - 146) * SS.autumn)},${Math.round(73 + (50 - 73) * SS.autumn)})` : '#5d9249'; c.beginPath(); c.arc(it.x, it.y, it.r, 0, 7); c.fill(); if (SS.snow > 0) { c.fillStyle = `rgba(246,250,255,${0.85 * SS.snow})`; c.beginPath(); c.arc(it.x, it.y, it.r * 0.85, 0, 7); c.fill(); } c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.arc(it.x - it.r * 0.3, it.y - it.r * 0.3, it.r * 0.5, 0, 7); c.fill();
     } else {
       c.strokeStyle = 'rgba(86,120,60,.85)'; c.lineWidth = 1.1; c.lineCap = 'round';
       for (let j = -2; j <= 2; j++) { c.beginPath(); c.moveTo(it.x + j * 1.6, it.y + 2); c.lineTo(it.x + j * 2.1, it.y - it.r + Math.abs(j)); c.stroke(); }
@@ -157,7 +170,7 @@ export function drawTerrain(ctx, game) {
   T.frame++;
   if (!T.canvas || T.river !== r || T.frame % 15 === 0) {
     let sum = 0; for (let i = 0; i < r.top.length; i++) sum += r.top[i] * ((i % 7) + 1);
-    const key = `${sum.toFixed(3)}/${r.wl.toFixed(2)}/${r.cols}`, now = performance.now();
+    const key = `${sum.toFixed(3)}/${r.wl.toFixed(2)}/${r.cols}/${seasonKey(seasonQ(game))}`, now = performance.now();
     if (!T.canvas || T.river !== r || (key !== T.key && now - T.at > 600)) { renderTerrain(game); T.key = key; T.at = now; T.river = r; }
   }
   ctx.drawImage(T.canvas, 0, 0);
@@ -240,6 +253,8 @@ export function drawAmbient(ctx, game, ui) {
       ctx.restore();
     }
   }
+  { const sl = seasonLook(game.date?.doy ?? 100).snow; // Schneefall im Winter: leise fallende Flocken
+    if (sl > 0.25) { const t = ui.t ?? 0, n = Math.round(110 * sl); ctx.fillStyle = 'rgba(255,255,255,.85)'; for (let k = 0; k < n; k++) { const sp = 22 + hash(k, 3) * 26, x = ((hash(k, 1) * (W - 2 * OX) + Math.sin(t * 0.8 + k) * 14 + OX) % (W - 2 * OX)) + 0, y = (hash(k, 2) * H + t * sp) % H; ctx.beginPath(); ctx.arc(OX + (x % (W - 2 * OX)), y, 0.9 + hash(k, 4) * 1.3, 0, 7); ctx.fill(); } } }
   if (!T.vig) { // Vignette einmal in ein Bild zeichnen (ein Vollbild-Farbverlauf je Bild ist teuer)
     T.vig = document.createElement('canvas'); T.vig.width = W; T.vig.height = H; const vc = T.vig.getContext('2d');
     const vg = vc.createRadialGradient(W / 2, H / 2, H * 0.55, W / 2, H / 2, W * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,12,26,.26)'); vc.fillStyle = vg; vc.fillRect(0, 0, W, H);

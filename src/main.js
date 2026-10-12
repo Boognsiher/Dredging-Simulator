@@ -4,6 +4,7 @@ import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landO
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
 import { Game } from './sim/game.js';
 import { setupBooks } from './ui/books.js';
+import { SEASON_ICON, seasonLook } from './sim/calendar.js';
 import { setupWorld } from './ui/world.js';
 import { startIcons } from './ui/icons.js';
 import { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } from './sim/rank.js';
@@ -647,7 +648,9 @@ function updateHud() {
   const left = game.timeLeft, mm = Math.floor(left / 60), ss = String(Math.floor(left % 60)).padStart(2, '0');
   const fin = Number.isFinite(game.deadlineDays);
   $('h-rank').textContent = `${rankOf(game) > 9 ? '' : rankOf(game)} · ${rankName(Math.min(5, rankOf(game)))}`;
-  $('h-day').textContent = fin ? `${Math.min(game.day, game.deadlineDays)}/${game.deadlineDays}` : `${game.day}`;
+  $('opt-real-box').hidden = !game.endless; if (game.endless && document.activeElement !== $('opt-real')) $('opt-real').checked = game.realEvents !== false;
+  $('h-daylab').hidden = !fin; // mit Frist (Level): «Tag x/y»; Endlos: Datum ab 2010 mit Jahreszeit
+  $('h-day').textContent = fin ? `${Math.min(game.day, game.deadlineDays)}/${game.deadlineDays}` : `${SEASON_ICON[game.date.season]} ${game.date.label}`;
   $('h-left').textContent = fin ? `(${mm}:${ss})` : '';
   $('h-money').textContent = chf(game.money);
   $('h-money').style.color = game.money < 0 ? 'var(--bad)' : '';
@@ -1217,6 +1220,7 @@ $('btn-ff2').onclick = cycleFF; $('btn-ff').onclick = cycleFF;
 
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
+$('opt-real').onchange = (e) => { game.realEvents = e.target.checked; toast(e.target.checked ? 'Reale Hoch- und Niedrigwasser: an' : 'Reale Ereignisse aus: Zufallsereignisse', 'info', true); };
 const books = setupBooks(() => game);
 const world = setupWorld(() => game, { go: (i) => changeMap(i), add: () => { const k = game.addMap(); if (k !== false) { mapsSig = null; updateMaps(); toast(`Neuer Abschnitt: ${game.maps[k].name}`, 'good', true); } return k; } });
 void world;
@@ -1490,6 +1494,28 @@ function showIntro() {
   }
 }
 showIntro();
+// Zurück-Taste (Handy): schliesst zuerst, was offen ist (Weltkarte, Bilanz, Hafen, Menü, Planung, Hafenkarte, Querschnitt); erst ein zweites Zurück innerhalb von 2 s verlässt das Spiel
+history.pushState({ game: 1 }, '');
+let backAt = -1e9;
+addEventListener('popstate', () => {
+  const closeOne = () => {
+    if (world.isOpen()) { world.toggle(); return true; }
+    if (books.isOpen()) { books.toggle(); return true; }
+    if (portOpen()) { togglePort(); return true; }
+    if (overlayOpen() && game.status === 'playing') { hideOverlay(); return true; }
+    if (menuOpen) { setMenu(false); return true; }
+    if (landMode) { toggleLandMode(); return true; }
+    if (zoneMode) { toggleZoneMode(); return true; }
+    if (pileMode) { togglePileMode(); return true; }
+    if (areaMode) { if (areaKind !== 'rect') finishRoute(); else toggleAreaMode(); return true; }
+    if (harborView) { leaveHarbor(); return true; }
+    if (sim.mode === 'slice') { leave(); return true; }
+    return false;
+  };
+  if (closeOne()) { history.pushState({ game: 1 }, ''); return; }
+  if (performance.now() - backAt < 2000) { saveGame(); history.back(); return; } // zweites Zurück: Spiel verlassen
+  backAt = performance.now(); history.pushState({ game: 1 }, ''); toast('Nochmal Zurück zum Beenden', 'info', true);
+});
 addEventListener('pagehide', saveGame);
 addEventListener('beforeunload', saveGame);
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });

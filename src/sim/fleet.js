@@ -35,9 +35,11 @@ export function hireBlock(g) {
 }
 
 // Eigennamen für neue Pontons (Orts-, Fluss- und Tiernamen), nie doppelt über alle Karten; danach nummeriert
+const NAME_PRE = ['Aare', 'Rhein', 'Inn', 'Ill', 'Neckar', 'Main', 'Mosel', 'Lahn', 'Ruhr', 'Lippe', 'Nahe', 'Murg', 'Kinzig', 'Elz', 'Wiese', 'Donau', 'Isar', 'Lech', 'Saale', 'Weser', 'Ems', 'Eder', 'Fulda', 'Tauber', 'Jagst', 'Alb'];
+const NAME_SUF = ['Biber', 'Otter', 'Hecht', 'Kormoran', 'Möwe', 'Barbe', 'Nase', 'Wels', 'Reiher', 'Eisvogel', 'Schwan', 'Forelle'];
 export function freeName(g) {
   const used = new Set((g.maps ?? [{ fleet: g.fleet }]).flatMap((m) => (m.fleet?.units ?? []).map((u) => u.name)));
-  const free = CONFIG.fleet.names.filter((n) => !used.has(n));
+  const pool = [...CONFIG.fleet.names, ...NAME_PRE.flatMap((a) => NAME_SUF.map((b) => `${a}-${b}`))], free = pool.filter((n) => !used.has(n)); // 16 Einzelnamen, danach Kombinationen wie «Aare-Biber» (über 300)
   return free.length ? free[(used.size * 5 + (g.day ?? 0)) % free.length] : `Ponton ${used.size + 2}`;
 }
 export function renameUnit(g, id, name) {

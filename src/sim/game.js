@@ -15,6 +15,7 @@ import { processPlant, stockTotal, materialPrice } from './plant.js';
 import { updateContracts } from './contracts.js';
 import { createFleet, updateFleet } from './fleet.js';
 import { RHEIN, sectionOf, applySection } from './world.js';
+import { dateOf, waterSeason, realEventOn, LAST_REAL_YEAR } from './calendar.js';
 
 // Zufallsfluss für den Endlos-Modus: Parameter aus (Seed, Kartennummer); spätere Karten sind schwerer
 const MAP_NAMES = ['Rheinfelden', 'Laufenburg', 'Kembs', 'Aare-Mündung', 'Thur-Enge', 'Bingen', 'Wesel', 'Eisernes Tor', 'Straubing', 'Passau', 'Basel', 'Koblenz'];
@@ -156,6 +157,15 @@ export class Game {
   notify(text, kind = 'info', extra = null) { this.notes.push({ text, kind, ...extra }); }
   say(text, kind = 'info') { this.log.unshift({ day: this.day, text, kind }); this.log.length = Math.min(this.log.length, 60); }
 
+  // Kalender: Spieltag als Datum ab 2010 (zwischengespeichert je Tag)
+  get date() { if (this._dd?.day !== this.day) this._dd = { day: this.day, d: dateOf(this.day) }; return this._dd.d; }
+  get seasonOffset() { return this.endless ? waterSeason(this.date.doy) : 0; } // jahreszeitlicher Wasserstand (nur Endlos)
+  get realOn() { return !!this.endless && this.realEvents !== false && this.date.year <= LAST_REAL_YEAR; } // reale Hoch- und Niedrigwasser statt Zufallsereignissen
+  applyReal(ev) {
+    const K = CONFIG.water;
+    if (ev.type === 'flood') { this.setWater(K.base + K.floodMax * ev.s, ev.days); for (const m of this.maps) m.river.flood(this.rng.range(...CONFIG.sediment.floodDeposit) * ev.s); this.say(`${ev.name}: Die Schifffahrt ist gesperrt, Schlick lagert sich ab (${ev.days} Tage).`, 'bad'); this.notify(`Hochwasser: ${ev.name}`, 'bad'); }
+    else { this.setWater(K.base - ev.drop, ev.days); this.say(`${ev.name}: Niedrigwasser (−${Math.round(ev.drop * 100)} cm), die Schiffe laden weniger (${ev.days} Tage).`, 'bad'); this.notify(`Niedrigwasser: ${ev.name}`, 'bad'); }
+  }
   setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
 
   // gesperrt: Anlage über Stufe 6 braucht die Aufbereitungshalle im Hafen
@@ -402,7 +412,8 @@ export class Game {
     if (this.status !== 'playing') return;
     this.time += dt;
     const K = CONFIG.water, W = this.water;
-    if (W.until && this.time >= W.until) { W.target = K.base; W.until = 0; }
+    if (W.until && this.time >= W.until) { W.target = K.base + this.seasonOffset; W.until = 0; }
+    else if (!W.until && this.endless) W.target = K.base + this.seasonOffset; // ohne Ereignis folgt der Pegel dem Jahreslauf
     this.wl += (W.target - this.wl) * Math.min(1, dt * K.followRate);
     for (const m of this.maps) { m.river.wl = this.wl; if (m.port?.harbor) m.port.harbor.river.wl = this.wl; }
     const wasClosed = this.closed;
@@ -466,6 +477,7 @@ export class Game {
     (this.history ??= []).push({ day: this.day - 1, net: Math.round(this.money - (this.dayStartMoney ?? this.money)), cat: Object.fromEntries(Object.entries(y.cat ?? {}).map(([k, v]) => [k, Math.round(v)])) }); if (this.history.length > 40) this.history.shift(); this.dayStartMoney = this.money;
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();
+    if (this.realOn) { const ev = realEventOn(this.day); if (ev) this.applyReal(ev); } // reales Ereignis dieses Datums
     { const c0 = this.mapIdx; for (let k = 0; k < this.maps.length; k++) { this.mapIdx = k; stepMarket(this.market, this.rng); portDay(this); } this.mapIdx = c0; }
     const cur = this.mapIdx;
     for (const e of this.eventsOn ? EVENTS : []) {

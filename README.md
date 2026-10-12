@@ -267,3 +267,7 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Mehr Pontons: Gebäude «Pontonwerft» im Hafen (+2/+4/+6 Pontons je Stufe, gilt für die Karte und gesamt, zusätzlich zur Level-Grenze); optional fester Bonus je Karte über `CONFIG.fleet.mapBonus`. Stapelbecken und Verarbeitung lassen sich bis Stufe 40 ausbauen.
 - Karte: Verdienst je Ponton (Baggerentgelt, Aufschlag minus Bussen) erscheint alle 2 s aufsummiert über dem Ponton; Pegel-Anzeige tiefer; bei der Klassenvorschau steht «1. Rinne: fehlt X m³».
 - Handel: Reederei im Reiter «Handel» mit Routenvorschlägen (beste Strecke je Schiffstyp, Gewinn je Fahrt/Tag, Amortisation, «Übernehmen»).
+- Kalender: Endlos zählt als Datum ab 1. März 2010 (365-Tage-Jahre), Jahreszeiten färben die Karte (Frühlingsblüte, Herbstlaub, Schnee mit Schneefall im Winter), Wasserstand folgt dem Jahreslauf (hoch Juni/Juli, niedrig im Winter), Winter weniger Verkehr.
+- Reale Hoch- und Niedrigwasser (ab 2011, Rhein, angenähert; `src/sim/calendar.js`), im Menü «Mehr» abschaltbar.
+- Handy-Zurücktaste schliesst zuerst offene Fenster und Planungen; erst ein zweites Zurück innerhalb von 2 s verlässt das Spiel.
+- Pontonnamen: über 300 Kombinationen, ältere Pontons ohne Namen werden beim Laden benannt.

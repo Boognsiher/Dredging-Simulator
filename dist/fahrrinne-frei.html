@@ -610,7 +610,7 @@ svg.wmap { width: 100%; max-height: 70vh; border-radius: 8px; background: #0f2f4
     <button id="btn-menu" aria-label="Menü">☰ Menü</button>
     <div id="hud">
       <span title="Level = höchste befahrbare Schiffsklasse">Level <b id="h-rank"></b></span>
-      <span>Tag <b id="h-day"></b> <small id="h-left"></small></span>
+      <span><span id="h-daylab">Tag</span> <b id="h-day"></b> <small id="h-left"></small></span>
       <span>Geld <b id="h-money"></b> <small id="h-income"></small></span>
       <span>Fracht <b id="h-tons"></b></span>
       <span>Pegel <b id="h-wl"></b></span>
@@ -750,6 +750,7 @@ svg.wmap { width: 100%; max-height: 70vh; border-radius: 8px; background: #0f2f4
         <div class="row"><button id="btn-import">⬆ Importieren (Datei)</button><input type="file" id="file-import" accept=".json,application/json,text/plain" hidden></div>
         <small id="save-msg"></small>
       </details>
+        <label id="opt-real-box" class="fleet-widen" hidden title="Hoch- und Niedrigwasser nach realen Ereignissen am Rhein seit 2010 (Zeitpunkt und Stärke angenähert), statt Zufall"><input type="checkbox" id="opt-real" checked> 🌍 Reale Hoch- und Niedrigwasser (ab 2010)</label>
         <div class="row"><button id="btn-pause">⏸ Pause (P)</button><button id="btn-ff">⏩ Zeitraffer (V)</button><button id="btn-sound2">🔊 Ton an (M)</button></div>
       </div>
     </aside>
@@ -762,31 +763,33 @@ const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit:
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(7);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
 const { Game } = __m(11);
-const { setupBooks } = __m(21);
-const { setupWorld } = __m(22);
-const { startIcons } = __m(23);
+const { setupBooks } = __m(22);
+const { SEASON_ICON, seasonLook } = __m(17);
+const { setupWorld } = __m(23);
+const { startIcons } = __m(24);
 const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(10);
-const { acceptContract } = __m(17);
+const { acceptContract } = __m(18);
 const { waitingByClass, shipPos } = __m(16);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, smallBlock, hireSmall, smallCount, perMapMax, totalMax, hiredTotal, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, smallBlock, hireSmall, smallCount, perMapMax, totalMax, hiredTotal, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(19);
 const { bayCapacity, maxZones, zoneClasses } = __m(16);
-const { materialPrice } = __m(19);
-const { TowSim, groundedNear } = __m(24);
+const { materialPrice } = __m(20);
+const { TowSim, groundedNear } = __m(25);
 const { makeHarborView, HARBOR, waitPos } = __m(4);
 const { toolName } = __m(13);
 const { priceOf, trend } = __m(8);
 const { needDepth, minNeedDepth } = __m(3);
-const { Advisor } = __m(25);
-const { serializeGame, restoreGame, savedSummary } = __m(26);
-const { createInput } = __m(27);
-const { setupTouch } = __m(29);
-const { steerToward } = __m(28);
-const { setupPort } = __m(30);
-const { fitSize, renderQuality } = __m(31);
-const { hintsFor } = __m(32);
-const { Fx } = __m(33);
-const { createAudio } = __m(34);
-const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(35);
+const { Advisor } = __m(26);
+const { serializeGame, restoreGame, savedSummary } = __m(27);
+const { createInput } = __m(28);
+const { setupTouch } = __m(30);
+const { steerToward } = __m(29);
+const { setupPort } = __m(31);
+const { fitSize, renderQuality } = __m(32);
+const { hintsFor } = __m(33);
+const { Fx } = __m(34);
+const { createAudio } = __m(35);
+const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(36);
+
 
 
 
@@ -1436,7 +1439,9 @@ function updateHud() {
   const left = game.timeLeft, mm = Math.floor(left / 60), ss = String(Math.floor(left % 60)).padStart(2, '0');
   const fin = Number.isFinite(game.deadlineDays);
   $('h-rank').textContent = `${rankOf(game) > 9 ? '' : rankOf(game)} · ${rankName(Math.min(5, rankOf(game)))}`;
-  $('h-day').textContent = fin ? `${Math.min(game.day, game.deadlineDays)}/${game.deadlineDays}` : `${game.day}`;
+  $('opt-real-box').hidden = !game.endless; if (game.endless && document.activeElement !== $('opt-real')) $('opt-real').checked = game.realEvents !== false;
+  $('h-daylab').hidden = !fin; // mit Frist (Level): «Tag x/y»; Endlos: Datum ab 2010 mit Jahreszeit
+  $('h-day').textContent = fin ? `${Math.min(game.day, game.deadlineDays)}/${game.deadlineDays}` : `${SEASON_ICON[game.date.season]} ${game.date.label}`;
   $('h-left').textContent = fin ? `(${mm}:${ss})` : '';
   $('h-money').textContent = chf(game.money);
   $('h-money').style.color = game.money < 0 ? 'var(--bad)' : '';
@@ -2006,6 +2011,7 @@ $('btn-ff2').onclick = cycleFF; $('btn-ff').onclick = cycleFF;
 
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
+$('opt-real').onchange = (e) => { game.realEvents = e.target.checked; toast(e.target.checked ? 'Reale Hoch- und Niedrigwasser: an' : 'Reale Ereignisse aus: Zufallsereignisse', 'info', true); };
 const books = setupBooks(() => game);
 const world = setupWorld(() => game, { go: (i) => changeMap(i), add: () => { const k = game.addMap(); if (k !== false) { mapsSig = null; updateMaps(); toast(`Neuer Abschnitt: ${game.maps[k].name}`, 'good', true); } return k; } });
 void world;
@@ -2279,6 +2285,28 @@ function showIntro() {
   }
 }
 showIntro();
+// Zurück-Taste (Handy): schliesst zuerst, was offen ist (Weltkarte, Bilanz, Hafen, Menü, Planung, Hafenkarte, Querschnitt); erst ein zweites Zurück innerhalb von 2 s verlässt das Spiel
+history.pushState({ game: 1 }, '');
+let backAt = -1e9;
+addEventListener('popstate', () => {
+  const closeOne = () => {
+    if (world.isOpen()) { world.toggle(); return true; }
+    if (books.isOpen()) { books.toggle(); return true; }
+    if (portOpen()) { togglePort(); return true; }
+    if (overlayOpen() && game.status === 'playing') { hideOverlay(); return true; }
+    if (menuOpen) { setMenu(false); return true; }
+    if (landMode) { toggleLandMode(); return true; }
+    if (zoneMode) { toggleZoneMode(); return true; }
+    if (pileMode) { togglePileMode(); return true; }
+    if (areaMode) { if (areaKind !== 'rect') finishRoute(); else toggleAreaMode(); return true; }
+    if (harborView) { leaveHarbor(); return true; }
+    if (sim.mode === 'slice') { leave(); return true; }
+    return false;
+  };
+  if (closeOne()) { history.pushState({ game: 1 }, ''); return; }
+  if (performance.now() - backAt < 2000) { saveGame(); history.back(); return; } // zweites Zurück: Spiel verlassen
+  backAt = performance.now(); history.pushState({ game: 1 }, ''); toast('Nochmal Zurück zum Beenden', 'info', true);
+});
 addEventListener('pagehide', saveGame);
 addEventListener('beforeunload', saveGame);
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
@@ -4282,10 +4310,12 @@ const { createMarket, stepMarket } = __m(8);
 const { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } = __m(6);
 const { createShipping, updateShipping } = __m(1);
 const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(16);
-const { processPlant, stockTotal, materialPrice } = __m(19);
-const { updateContracts } = __m(17);
-const { createFleet, updateFleet } = __m(18);
-const { RHEIN, sectionOf, applySection } = __m(20);
+const { processPlant, stockTotal, materialPrice } = __m(20);
+const { updateContracts } = __m(18);
+const { createFleet, updateFleet } = __m(19);
+const { RHEIN, sectionOf, applySection } = __m(21);
+const { dateOf, waterSeason, realEventOn, LAST_REAL_YEAR } = __m(17);
+
 
 
 
@@ -4444,6 +4474,15 @@ class Game {
   notify(text, kind = 'info', extra = null) { this.notes.push({ text, kind, ...extra }); }
   say(text, kind = 'info') { this.log.unshift({ day: this.day, text, kind }); this.log.length = Math.min(this.log.length, 60); }
 
+  // Kalender: Spieltag als Datum ab 2010 (zwischengespeichert je Tag)
+  get date() { if (this._dd?.day !== this.day) this._dd = { day: this.day, d: dateOf(this.day) }; return this._dd.d; }
+  get seasonOffset() { return this.endless ? waterSeason(this.date.doy) : 0; } // jahreszeitlicher Wasserstand (nur Endlos)
+  get realOn() { return !!this.endless && this.realEvents !== false && this.date.year <= LAST_REAL_YEAR; } // reale Hoch- und Niedrigwasser statt Zufallsereignissen
+  applyReal(ev) {
+    const K = CONFIG.water;
+    if (ev.type === 'flood') { this.setWater(K.base + K.floodMax * ev.s, ev.days); for (const m of this.maps) m.river.flood(this.rng.range(...CONFIG.sediment.floodDeposit) * ev.s); this.say(`${ev.name}: Die Schifffahrt ist gesperrt, Schlick lagert sich ab (${ev.days} Tage).`, 'bad'); this.notify(`Hochwasser: ${ev.name}`, 'bad'); }
+    else { this.setWater(K.base - ev.drop, ev.days); this.say(`${ev.name}: Niedrigwasser (−${Math.round(ev.drop * 100)} cm), die Schiffe laden weniger (${ev.days} Tage).`, 'bad'); this.notify(`Niedrigwasser: ${ev.name}`, 'bad'); }
+  }
   setWater(target, days) { this.water = { target, until: this.time + days * CONFIG.daySeconds }; }
 
   // gesperrt: Anlage über Stufe 6 braucht die Aufbereitungshalle im Hafen
@@ -4690,7 +4729,8 @@ class Game {
     if (this.status !== 'playing') return;
     this.time += dt;
     const K = CONFIG.water, W = this.water;
-    if (W.until && this.time >= W.until) { W.target = K.base; W.until = 0; }
+    if (W.until && this.time >= W.until) { W.target = K.base + this.seasonOffset; W.until = 0; }
+    else if (!W.until && this.endless) W.target = K.base + this.seasonOffset; // ohne Ereignis folgt der Pegel dem Jahreslauf
     this.wl += (W.target - this.wl) * Math.min(1, dt * K.followRate);
     for (const m of this.maps) { m.river.wl = this.wl; if (m.port?.harbor) m.port.harbor.river.wl = this.wl; }
     const wasClosed = this.closed;
@@ -4754,6 +4794,7 @@ class Game {
     (this.history ??= []).push({ day: this.day - 1, net: Math.round(this.money - (this.dayStartMoney ?? this.money)), cat: Object.fromEntries(Object.entries(y.cat ?? {}).map(([k, v]) => [k, Math.round(v)])) }); if (this.history.length > 40) this.history.shift(); this.dayStartMoney = this.money;
     this.say(`Tag ${this.day - 1}: ${y.ships} Schiffe, ${y.tons.toLocaleString('de-CH')} t · Verkehr +${y.income.toLocaleString('de-CH')} · Anlage ${y.plant >= 0 ? '+' : '−'}${Math.abs(Math.round(y.plant)).toLocaleString('de-CH')} · Kosten −${Math.round(y.costs).toLocaleString('de-CH')}${y.rejected ? ` · ${y.rejected} abgewiesen` : ''}`, 'info');
     this.today = freshDay();
+    if (this.realOn) { const ev = realEventOn(this.day); if (ev) this.applyReal(ev); } // reales Ereignis dieses Datums
     { const c0 = this.mapIdx; for (let k = 0; k < this.maps.length; k++) { this.mapIdx = k; stepMarket(this.market, this.rng); portDay(this); } this.mapIdx = c0; }
     const cur = this.mapIdx;
     for (const e of this.eventsOn ? EVENTS : []) {
@@ -5281,7 +5322,7 @@ const round100 = (v) => Math.round(v / 100) * 100;
 
 const EVENTS = [
   {
-    id: 'flood', chance: 0.022, when: (g) => !g.water.until,
+    id: 'flood', chance: 0.022, when: (g) => !g.water.until && !g.realOn,
     apply: (g) => {
       const days = g.rng.range(2, 3.5);
       g.setWater(CONFIG.water.base + CONFIG.water.floodMax * g.rng.range(0.8, 1), days);
@@ -5290,7 +5331,7 @@ const EVENTS = [
     },
   },
   {
-    id: 'drought', chance: 0.022, when: (g) => !g.water.until,
+    id: 'drought', chance: 0.022, when: (g) => !g.water.until && !g.realOn,
     apply: (g) => {
       const days = g.rng.range(4, 6), drop = g.rng.range(0.2, g.level.lowWater ?? 0.5);
       g.setWater(CONFIG.water.base - drop, days);
@@ -5349,12 +5390,14 @@ function upgradeCost(id, level) {
 return { computeStats: computeStats, upgradeCost: upgradeCost };
 },
 function(){
+const { trafficSeason } = __m(17);
 const { reserveBerth, dockShip } = __m(6);
 const { CONFIG, UPGRADES, SHIPS, CARGOS, DEBRIS, shipById, cargoById } = __m(2);
 const { priceOf, ratioOf } = __m(8);
 const { minDepthAt, pointOnPath } = __m(3);
-const { creditContracts } = __m(17);
-const { fleetSites } = __m(18);
+const { creditContracts } = __m(18);
+const { fleetSites } = __m(19);
+
 
 
 
@@ -5374,7 +5417,7 @@ const createTraffic = () => ({ ships: [], seq: 0, spawnIn: 5 });
 const bayCapacity = (g) => CONFIG.traffic.bay + g.stats.signals + g.stats.tugs;
 const maxZones = (g) => CONFIG.zones.baseMax + g.stats.signals;
 
-const rate = (g) => CONFIG.traffic.shipsPerDay * g.level.traffic * g.stats.trafficMult * (g.time < (g.strikeUntil ?? 0) ? 0.3 : 1);
+const rate = (g) => CONFIG.traffic.shipsPerDay * g.level.traffic * g.stats.trafficMult * (g.time < (g.strikeUntil ?? 0) ? 0.3 : 1) * (g.endless ? trafficSeason(g.date.season) : 1); // Winter weniger Verkehr (Eis), Sommer mehr
 
 function pickWeighted(items, weightOf, rng) {
   const w = items.map(weightOf);
@@ -5671,6 +5714,66 @@ function waitingByClass(g) {
 return { createTraffic: createTraffic, bayCapacity: bayCapacity, maxZones: maxZones, activeClasses: activeClasses, spawnShip: spawnShip, shipPos: shipPos, queuePos: queuePos, zoneSupports: zoneSupports, zoneClasses: zoneClasses, zoneLaneStart: zoneLaneStart, pairFits: pairFits, updateTraffic: updateTraffic, waitingByClass: waitingByClass, CARGOS: CARGOS };
 },
 function(){
+
+// Kalender: der Spieltag zählt als Datum ab dem 1. März 2010 (365-Tage-Jahre, ohne Schaltjahr). Jahreszeiten steuern Aussehen, Wasserstand und Verkehr.
+// REAL_EVENTS: Hoch- und Niedrigwasser, angelehnt an reale Ereignisse am Rhein seit 2010 (Zeitpunkt und Stärke sind Näherungen aus dem Gedächtnis, keine Messdaten).
+const START_YEAR = 2010, START_DOY = 59; // 59 = 1. März (0-basiert: Jan 31 + Feb 28)
+const ML = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const SEASON_NAME = { winter: 'Winter', spring: 'Frühling', summer: 'Sommer', autumn: 'Herbst' };
+const SEASON_ICON = { winter: '❄️', spring: '🌱', summer: '☀️', autumn: '🍂' };
+const CUM = ML.reduce((a, d, i) => (a.push((a[i - 1] ?? 0) + (i ? ML[i - 1] : 0)), a), []).map((v, i) => ML.slice(0, i).reduce((x, y) => x + y, 0));
+
+function dateOf(day) {
+  const n = START_DOY + Math.max(0, Math.floor(day) - 1), year = START_YEAR + Math.floor(n / 365), doy = n % 365;
+  let month = 11; for (let i = 0; i < 12; i++) if (doy < CUM[i] + ML[i]) { month = i; break; }
+  const dom = doy - CUM[month] + 1, season = seasonOf(doy);
+  return { year, doy, month, dom, season, label: `${dom}. ${MONTHS[month]} ${year}` };
+}
+const seasonOf = (doy) => (doy >= 334 || doy < 59 ? 'winter' : doy < 151 ? 'spring' : doy < 243 ? 'summer' : 'autumn');
+// Spieltag (1-basiert) eines Datums
+const dayOfDate = (year, month1, dom) => (year - START_YEAR) * 365 + CUM[month1 - 1] + dom - 1 - START_DOY + 1;
+
+const ramp = (x, a, b) => Math.max(0, Math.min(1, (x - a) / (b - a)));
+// Aussehen im Jahreslauf (0..1): Schnee (Dez bis Anfang März), Herbstfarben (Ende Sep bis Ende Nov), Frühlingsblüte (April)
+function seasonLook(doy) {
+  const wd = doy >= 334 ? doy - 365 : doy; // Winter: -31 (1. Dez) bis 58
+  const snow = wd >= -31 && wd < 68 ? Math.min(ramp(wd, -31, -12), 1 - ramp(wd, 45, 68)) : 0;
+  const autumn = Math.min(ramp(doy, 262, 290), 1 - ramp(doy, 318, 338));
+  const spring = Math.max(0, 1 - Math.abs(doy - 110) / 22);
+  return { snow: Math.max(0, snow), autumn: Math.max(0, autumn), spring };
+}
+// Jahreszeitlicher Wasserstand (m über Bezugspegel): hoch zur Schneeschmelze (Juni, Juli), niedrig im Spätherbst und Winter
+const waterSeason = (doy) => 0.3 * Math.sin((2 * Math.PI * (doy - 84)) / 365);
+// Verkehr im Jahreslauf: Winter weniger (Eis, Kälte), Sommer mehr
+const trafficSeason = (season) => ({ winter: 0.8, spring: 1, summer: 1.1, autumn: 1 })[season] ?? 1;
+
+// Reale Ereignisse (y, m, d = Beginn; days = Dauer in Spieltagen; flood: s = Stärke 0..1; drought: drop = Absenkung in m)
+const REAL_EVENTS = [
+  { y: 2011, m: 1, d: 6, type: 'flood', days: 4, s: 0.85, name: 'Rhein-Hochwasser Januar 2011' },
+  { y: 2011, m: 4, d: 10, type: 'drought', days: 14, drop: 0.45, name: 'Niedrigwasser Frühjahr 2011' },
+  { y: 2011, m: 11, d: 20, type: 'drought', days: 20, drop: 0.55, name: 'Niedrigwasser Herbst 2011' },
+  { y: 2013, m: 6, d: 2, type: 'flood', days: 7, s: 1.0, name: 'Juni-Hochwasser 2013' },
+  { y: 2015, m: 8, d: 10, type: 'drought', days: 20, drop: 0.5, name: 'Niedrigwasser Sommer 2015' },
+  { y: 2016, m: 6, d: 1, type: 'flood', days: 5, s: 0.7, name: 'Hochwasser Frühsommer 2016' },
+  { y: 2018, m: 1, d: 22, type: 'flood', days: 6, s: 0.9, name: 'Rhein-Hochwasser Januar 2018' },
+  { y: 2018, m: 7, d: 20, type: 'drought', days: 30, drop: 0.5, name: 'Dürresommer 2018' },
+  { y: 2018, m: 10, d: 1, type: 'drought', days: 45, drop: 0.75, name: 'Rekord-Niedrigwasser Herbst 2018' },
+  { y: 2019, m: 9, d: 15, type: 'drought', days: 35, drop: 0.5, name: 'Niedrigwasser Herbst 2019' },
+  { y: 2020, m: 4, d: 15, type: 'drought', days: 20, drop: 0.35, name: 'Niedrigwasser Frühjahr 2020' },
+  { y: 2021, m: 7, d: 14, type: 'flood', days: 6, s: 0.9, name: 'Hochwasser Juli 2021' },
+  { y: 2022, m: 8, d: 1, type: 'drought', days: 30, drop: 0.65, name: 'Niedrigwasser Sommer 2022' },
+  { y: 2022, m: 10, d: 10, type: 'drought', days: 20, drop: 0.5, name: 'Niedrigwasser Herbst 2022' },
+  { y: 2023, m: 9, d: 20, type: 'drought', days: 25, drop: 0.4, name: 'Niedrigwasser Herbst 2023' },
+  { y: 2023, m: 12, d: 26, type: 'flood', days: 8, s: 0.85, name: 'Weihnachts-Hochwasser 2023' },
+  { y: 2024, m: 6, d: 2, type: 'flood', days: 6, s: 0.9, name: 'Juni-Hochwasser 2024' },
+].map((e) => ({ ...e, day: dayOfDate(e.y, e.m, e.d) }));
+const LAST_REAL_YEAR = 2024;
+const realEventOn = (day) => REAL_EVENTS.find((e) => e.day === day) ?? null;
+
+return { START_YEAR: START_YEAR, MONTHS: MONTHS, SEASON_NAME: SEASON_NAME, SEASON_ICON: SEASON_ICON, dateOf: dateOf, seasonOf: seasonOf, dayOfDate: dayOfDate, seasonLook: seasonLook, waterSeason: waterSeason, trafficSeason: trafficSeason, REAL_EVENTS: REAL_EVENTS, LAST_REAL_YEAR: LAST_REAL_YEAR, realEventOn: realEventOn };
+},
+function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(2);
 const { priceOf } = __m(8);
 const { activeClasses } = __m(16);
@@ -5783,9 +5886,11 @@ function hireBlock(g) {
 }
 
 // Eigennamen für neue Pontons (Orts-, Fluss- und Tiernamen), nie doppelt über alle Karten; danach nummeriert
+const NAME_PRE = ['Aare', 'Rhein', 'Inn', 'Ill', 'Neckar', 'Main', 'Mosel', 'Lahn', 'Ruhr', 'Lippe', 'Nahe', 'Murg', 'Kinzig', 'Elz', 'Wiese', 'Donau', 'Isar', 'Lech', 'Saale', 'Weser', 'Ems', 'Eder', 'Fulda', 'Tauber', 'Jagst', 'Alb'];
+const NAME_SUF = ['Biber', 'Otter', 'Hecht', 'Kormoran', 'Möwe', 'Barbe', 'Nase', 'Wels', 'Reiher', 'Eisvogel', 'Schwan', 'Forelle'];
 function freeName(g) {
   const used = new Set((g.maps ?? [{ fleet: g.fleet }]).flatMap((m) => (m.fleet?.units ?? []).map((u) => u.name)));
-  const free = CONFIG.fleet.names.filter((n) => !used.has(n));
+  const pool = [...CONFIG.fleet.names, ...NAME_PRE.flatMap((a) => NAME_SUF.map((b) => `${a}-${b}`))], free = pool.filter((n) => !used.has(n)); // 16 Einzelnamen, danach Kombinationen wie «Aare-Biber» (über 300)
   return free.length ? free[(used.size * 5 + (g.day ?? 0)) % free.length] : `Ponton ${used.size + 2}`;
 }
 function renameUnit(g, id, name) {
@@ -6632,7 +6737,7 @@ function setupBooks(getGame) {
 return { bookData: bookData, booksHtml: booksHtml, setupBooks: setupBooks };
 },
 function(){
-const { RHEIN } = __m(20);
+const { RHEIN } = __m(21);
 const { depositType, ENDLESS } = __m(2);
 
 
@@ -6844,7 +6949,7 @@ const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(2);
 const { upgradeCost } = __m(15);
 const { waitingByClass, bayCapacity, activeClasses } = __m(16);
 const { ratioOf } = __m(8);
-const { hireBlock, nextHireCost } = __m(18);
+const { hireBlock, nextHireCost } = __m(19);
 
 
 
@@ -7006,6 +7111,7 @@ class Advisor {
 return { Advisor: Advisor };
 },
 function(){
+const { freeName } = __m(19);
 const { Game, endlessRiver } = __m(11);
 const { createRng } = __m(9);
 const { createMarket } = __m(8);
@@ -7013,6 +7119,7 @@ const { createPort, ensurePort } = __m(6);
 const { ensureHarbor } = __m(4);
 const { levelById, UPGRADES } = __m(2);
 const { River } = __m(5);
+
 
 
 
@@ -7083,6 +7190,7 @@ function restoreGame(text) {
       if (hs && m.port.harbor) { const hr = new River(hs.cols, hs.rows); for (const [k, v] of Object.entries(hs)) hr[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v; m.port.harbor.river = hr; hr.wl = game.wl; } else if (m.port.harbor) m.port.harbor = null; // kaputter Stand: neu anlegen lassen
     });
     for (const m of game.maps) ensureHarbor(m.port, game.wl); // ältere Stände mit geöffnetem Hafen bekommen die Hafenkarte nachträglich
+    for (const m of game.maps) for (const u of m.fleet?.units ?? []) if (!u.self && /^Ponton \d+$/.test(u.name)) u.name = freeName(game); // ältere Stände: Pontons ohne Eigennamen bekommen einen
     game.rng.setState(s.rng);
     const cur = game.mapIdx;
     for (let i = 0; i < game.maps.length; i++) { game.mapIdx = i; game.analyze(true); game.fairClock = 0; }
@@ -7098,7 +7206,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(28);
+const { isTap } = __m(29);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -7196,7 +7304,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(28);
+const { snapStick } = __m(29);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -7619,13 +7727,13 @@ const { SLICE } = __m(12);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
 const { shipPos, queuePos, bayCapacity } = __m(16);
 const { needDepth, minNeedDepth, trasseY } = __m(3);
-const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(36);
+const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(37);
 const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(6);
 const { HARBOR, berthPos, waitPos } = __m(4);
-const { areaWork, wallSpans } = __m(18);
+const { areaWork, wallSpans } = __m(19);
 const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(7);
-const { Chain, drawChain } = __m(37);
-const { groundedNear } = __m(24);
+const { Chain, drawChain } = __m(38);
+const { groundedNear } = __m(25);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 
 
@@ -8625,7 +8733,9 @@ const CONFIG_TOW_SNAP = () => CONFIG.tow.snapAt;
 return { CELL: CELL, MARGIN: MARGIN, OX: OX, W: W, H: H, sizeCanvas: sizeCanvas, view: view, fs: fs, mapPx: mapPx, sliceY: sliceY, drawMap: drawMap, drawHarborScene: drawHarborScene, autoLineX: autoLineX, sliceHeadScreen: sliceHeadScreen, sliceMouthScreen: sliceMouthScreen, drawSlice: drawSlice, drawTowView: drawTowView, CARGOS: CARGOS, groundedNear: groundedNear };
 },
 function(){
-const { CELL, OX, W, H } = __m(35);
+const { CELL, OX, W, H } = __m(36);
+const { seasonLook } = __m(17);
+
 
 
 // Grafik-Aufwertung der Karte: weiches Gelände mit Hillshade und Schaum, Wasserglitzern, Schiffe mit Kielwasser, Ponton-Sprites, Tag-/Nachtlicht.
@@ -8650,6 +8760,9 @@ const WATER = lut([[0, hex('#9be3d6')], [0.6, hex('#62c8cf')], [2, hex('#3b9ac0'
 const LAND = lut([[-0.2, hex('#e5d49a')], [0.5, hex('#cdbd7a')], [1.2, hex('#87a95a')], [3, hex('#5f8c47')], [6, hex('#3f6b3a')], [12, hex('#5d6b4c')]], -0.2, 12);
 const FOREST = hex('#2f5a33'), SAND = hex('#d8c58a');
 
+const q8 = (v) => Math.round(v * 8) / 8;
+const seasonQ = (game) => { const l = seasonLook(game.date?.doy ?? 100); return { snow: q8(l.snow), autumn: q8(l.autumn), spring: q8(l.spring) }; }; // gerastert: Gelände wird nur bei sichtbarer Änderung neu gezeichnet
+const seasonKey = (S) => `${S.snow}/${S.autumn}/${S.spring}`;
 const T = { canvas: null, ctx: null, noise: null, key: '', at: 0, frame: 0, sparks: [], river: null };
 
 function noiseTexture() {
@@ -8673,7 +8786,8 @@ function renderTerrain(game) {
   if (!T.canvas) { T.canvas = mk(); T.ctx = T.canvas.getContext('2d'); T.base = mk(); T.bctx = T.base.getContext('2d'); T.deco = mk(); T.hm = new Float32Array(W * H); }
   const noise = noiseTexture(), hm = T.hm; detailNoise();
   const dg = (T.dbg ??= { calls: 0, full: 0, ms: 0, cells: 0 }); dg.calls++;
-  const full = T.river !== r || !T.prevTop || T.prevTop.length !== r.top.length || Math.abs(T.prevWl - wl) > 0.04; // der Pegel schwankt dauernd: erst bei sichtbarer Änderung (4 cm) alles neu
+  const SE = seasonQ(game), sk = seasonKey(SE);
+  const full = T.sKey !== sk || T.river !== r || !T.prevTop || T.prevTop.length !== r.top.length || Math.abs(T.prevWl - wl) > 0.04; // der Pegel schwankt dauernd: erst bei sichtbarer Änderung (4 cm) alles neu
   const paint = (x0, y0, x1, y1) => {
     const hx0 = Math.max(0, x0 - S), hx1 = Math.min(W, x1 + S), hy0 = Math.max(0, y0 - S), hy1 = Math.min(H, y1 + S);
     for (let y = hy0; y < hy1; y++) {
@@ -8692,7 +8806,11 @@ function renderTerrain(game) {
         const hx = hm[i + (x < W - S ? S : 0)] - hm[i - (x >= S ? S : 0)], hy = hm[i + (y < H - S ? S * W : 0)] - hm[i - (y >= S ? S * W : 0)];
         const sh = Math.min(1.25, Math.max(0.72, 1 + (-hx - hy) * 0.55 * 0.35 * 1.4 + (n - 0.5) * 0.12));
         R = LAND[li * 3] * sh; G = LAND[li * 3 + 1] * sh; B = LAND[li * 3 + 2] * sh;
-        if (-d < 0.45) { const wet = 1 - (-d) / 0.45; R *= 1 - wet * 0.22; G *= 1 - wet * 0.18; B *= 1 - wet * 0.1; } // feuchte Uferkante
+        { const SS = T.S ?? SE; // Jahreszeit: Herbstlaub, Frühlingsgrün, Schnee
+        if (SS.autumn > 0 && -d > 0.8) { const f = SS.autumn * 0.5 * Math.min(1, (-d - 0.8) / 1.2); R += (196 - R) * f; G += (118 - G) * f; B += (40 - B) * f; }
+        if (SS.spring > 0 && -d > 0.5) { G += 10 * SS.spring; R += 4 * SS.spring; }
+        if (SS.snow > 0 && -d > 0.2) { const f = Math.min(1, SS.snow * (1.0 + 0.4 * (n - 0.5)) * Math.min(1, (-d - 0.2) / 0.5)); R += (240 - R) * f; G += (246 - G) * f; B += (252 - B) * f; } }
+      if (-d < 0.45) { const wet = 1 - (-d) / 0.45; R *= 1 - wet * 0.22; G *= 1 - wet * 0.18; B *= 1 - wet * 0.1; } // feuchte Uferkante
         if (-d > 2.4) { const f = T.forest[i]; R += (FOREST[0] - R) * f; G += (FOREST[1] - G) * f; B += (FOREST[2] - B) * f; }
       } else {
         const wi = Math.max(0, Math.min(255, ((d + (n - 0.5) * 0.5) / 12) * 255)) | 0;
@@ -8700,7 +8818,8 @@ function renderTerrain(game) {
         { const wv = T.wave[i] * 16 * Math.min(1, d / 1.2); R += wv * 0.6; G += wv * 0.8; B += wv; } // sanfte Strömungsstreifen
         if (d < 1.6) { const sh2 = (1 - d / 1.6) * 0.16; R *= 1 - sh2; G *= 1 - sh2 * 0.8; B *= 1 - sh2 * 0.5; } // Uferschatten im Wasser
         const sed = Math.max(0, 1 - d / 1.4) * (0.55 + n * 0.3) * 0.55; R += (SAND[0] - R) * sed; G += (SAND[1] - G) * sed; B += (SAND[2] - B) * sed; // Sand im Flachen
-        if (d < 0.28) { const f = Math.pow(1 - d / 0.28, 1.5) * 0.55; R += (235 - R) * f; G += (248 - G) * f; B += (250 - B) * f; } // Schaum am Ufer
+        if ((T.S ?? SE).snow > 0.4 && d < 0.5) { const f = (T.S ?? SE).snow * 0.55 * (1 - d / 0.5); R += (222 - R) * f; G += (238 - G) * f; B += (248 - B) * f; } // Eisrand am Ufer
+      if (d < 0.28) { const f = Math.pow(1 - d / 0.28, 1.5) * 0.55; R += (235 - R) * f; G += (248 - G) * f; B += (250 - B) * f; } // Schaum am Ufer
       }
       const o = ((y - y0) * rw + (x - x0)) * 4; d8[o] = R; d8[o + 1] = G; d8[o + 2] = B; d8[o + 3] = 255;
     }
@@ -8709,8 +8828,8 @@ function renderTerrain(game) {
   const now = performance.now();
   if (!T.prevTop || T.prevTop.length !== r.top.length) T.prevTop = new Float32Array(r.top.length);
   if (full) {
-    paint(0, 0, W, H); dg.full++;
-    const dc = T.deco.getContext('2d'); dc.clearRect(0, 0, W, H); decorate(dc, hm, wl, r); T.decoAt = now;
+    T.sKey = sk; T.S = SE; paint(0, 0, W, H); dg.full++;
+    const dc = T.deco.getContext('2d'); dc.clearRect(0, 0, W, H); decorate(dc, hm, wl, r, null, T.S ?? SE); T.decoAt = now;
     T.ctx.drawImage(T.base, 0, 0); T.ctx.drawImage(T.deco, 0, 0);
     T.prevTop.set(r.top); T.prevWl = wl;
     T.sparks = []; // Kandidaten für Wasserglitzern: tiefes Wasser
@@ -8735,7 +8854,7 @@ function renderTerrain(game) {
   for (const [x0, y0, x1, y1] of rects) {
     const ax0 = Math.max(0, x0 - S), ax1 = Math.min(W, x1 + S), ay0 = Math.max(0, y0 - S), ay1 = Math.min(H, y1 + S); if (ax1 <= ax0 || ay1 <= ay0) continue;
     paint(ax0, ay0, ax1, ay1);
-    { const dc = T.deco.getContext('2d'); dc.save(); dc.beginPath(); dc.rect(ax0, ay0, ax1 - ax0, ay1 - ay0); dc.clip(); dc.clearRect(ax0, ay0, ax1 - ax0, ay1 - ay0); decorate(dc, hm, wl, r, [ax0, ay0, ax1, ay1]); dc.restore(); } // Bäume im geänderten Bereich neu setzen (Ufer verschoben)
+    { const dc = T.deco.getContext('2d'); dc.save(); dc.beginPath(); dc.rect(ax0, ay0, ax1 - ax0, ay1 - ay0); dc.clip(); dc.clearRect(ax0, ay0, ax1 - ax0, ay1 - ay0); decorate(dc, hm, wl, r, [ax0, ay0, ax1, ay1], T.S ?? SE); dc.restore(); } // Bäume im geänderten Bereich neu setzen (Ufer verschoben)
     T.ctx.drawImage(T.base, ax0, ay0, ax1 - ax0, ay1 - ay0, ax0, ay0, ax1 - ax0, ay1 - ay0); T.ctx.drawImage(T.deco, ax0, ay0, ax1 - ax0, ay1 - ay0, ax0, ay0, ax1 - ax0, ay1 - ay0);
   }
   dg.ms += performance.now() - t0; dg.rects = rects.length;
@@ -8750,7 +8869,7 @@ function tribPoints(r, t, N = 18) {
 const nearCreek = (paths, x, y, pad) => paths.some((P) => { for (let k = 0; k < P.length - 1; k++) { const a = P[k], b = P[k + 1], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)), px = a.x + dx * u, py = a.y + dy * u; if (Math.hypot(x - px, y - py) < pad + a.w * 1.1) return true; } return false; });
 
 // Bäume auf bewaldetem Land (Schatten, Krone mit Lichtkante), Büsche am Ufer, Schilf im Flachwasser; alles deterministisch aus Rasterpositionen
-function decorate(c, hm, wl, river, rect = null) {
+function decorate(c, hm, wl, river, rect = null, SS = { snow: 0, autumn: 0, spring: 0 }) {
   const creeks = (river.tribs ?? []).map((t) => tribPoints(river, t));
   const at = (x, y) => hm[(Math.max(0, Math.min(H - 1, y | 0))) * W + Math.max(0, Math.min(W - 1, x | 0))];
   const items = [];
@@ -8766,11 +8885,14 @@ function decorate(c, hm, wl, river, rect = null) {
   for (const it of items) {
     if (it.t === 'tree') {
       c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(it.x + it.r * 0.5, it.y + it.r * 0.6, it.r * 1.05, it.r * 0.75, 0, 0, 7); c.fill();
-      const g = c.createRadialGradient(it.x - it.r * 0.35, it.y - it.r * 0.4, 1, it.x, it.y, it.r * 1.15); g.addColorStop(0, '#6fa24f'); g.addColorStop(0.55, '#3f7a3a'); g.addColorStop(1, '#27522b');
+      const hv = hash(it.x, it.y), au = SS.autumn, fall = [[214, 132, 40], [186, 70, 36], [220, 168, 52]][Math.floor(hv * 3) % 3], mixc = (a, b) => `rgb(${Math.round(a[0] + (b[0] - a[0]) * au)},${Math.round(a[1] + (b[1] - a[1]) * au)},${Math.round(a[2] + (b[2] - a[2]) * au)})`;
+      const g = c.createRadialGradient(it.x - it.r * 0.35, it.y - it.r * 0.4, 1, it.x, it.y, it.r * 1.15); g.addColorStop(0, mixc([111, 162, 79], fall.map((v) => Math.min(255, v + 25)))); g.addColorStop(0.55, mixc([63, 122, 58], fall)); g.addColorStop(1, mixc([39, 82, 43], fall.map((v) => v * 0.65)));
       c.fillStyle = g; c.beginPath(); c.arc(it.x, it.y, it.r, 0, 7); c.fill();
+      if (SS.spring > 0.3 && hv < 0.45) { c.fillStyle = `rgba(255,214,230,${0.7 * SS.spring})`; for (let j = 0; j < 4; j++) { c.beginPath(); c.arc(it.x + (hash(j, it.x) - 0.5) * it.r * 1.3, it.y + (hash(it.y, j) - 0.5) * it.r * 1.3, 1.2, 0, 7); c.fill(); } } // Blüte im Frühling
+      if (SS.snow > 0) { c.fillStyle = `rgba(246,250,255,${0.88 * SS.snow})`; c.beginPath(); c.ellipse(it.x - it.r * 0.1, it.y - it.r * 0.15, it.r * 0.8, it.r * 0.7, 0, 0, 7); c.fill(); } // Schnee in der Krone
     } else if (it.t === 'bush') {
       c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(it.x + 1, it.y + 1.5, it.r * 1.1, it.r * 0.7, 0, 0, 7); c.fill();
-      c.fillStyle = '#5d9249'; c.beginPath(); c.arc(it.x, it.y, it.r, 0, 7); c.fill(); c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.arc(it.x - it.r * 0.3, it.y - it.r * 0.3, it.r * 0.5, 0, 7); c.fill();
+      c.fillStyle = SS.autumn > 0.2 ? `rgb(${Math.round(93 + (170 - 93) * SS.autumn)},${Math.round(146 + (110 - 146) * SS.autumn)},${Math.round(73 + (50 - 73) * SS.autumn)})` : '#5d9249'; c.beginPath(); c.arc(it.x, it.y, it.r, 0, 7); c.fill(); if (SS.snow > 0) { c.fillStyle = `rgba(246,250,255,${0.85 * SS.snow})`; c.beginPath(); c.arc(it.x, it.y, it.r * 0.85, 0, 7); c.fill(); } c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.arc(it.x - it.r * 0.3, it.y - it.r * 0.3, it.r * 0.5, 0, 7); c.fill();
     } else {
       c.strokeStyle = 'rgba(86,120,60,.85)'; c.lineWidth = 1.1; c.lineCap = 'round';
       for (let j = -2; j <= 2; j++) { c.beginPath(); c.moveTo(it.x + j * 1.6, it.y + 2); c.lineTo(it.x + j * 2.1, it.y - it.r + Math.abs(j)); c.stroke(); }
@@ -8785,7 +8907,7 @@ function drawTerrain(ctx, game) {
   T.frame++;
   if (!T.canvas || T.river !== r || T.frame % 15 === 0) {
     let sum = 0; for (let i = 0; i < r.top.length; i++) sum += r.top[i] * ((i % 7) + 1);
-    const key = `${sum.toFixed(3)}/${r.wl.toFixed(2)}/${r.cols}`, now = performance.now();
+    const key = `${sum.toFixed(3)}/${r.wl.toFixed(2)}/${r.cols}/${seasonKey(seasonQ(game))}`, now = performance.now();
     if (!T.canvas || T.river !== r || (key !== T.key && now - T.at > 600)) { renderTerrain(game); T.key = key; T.at = now; T.river = r; }
   }
   ctx.drawImage(T.canvas, 0, 0);
@@ -8868,6 +8990,8 @@ function drawAmbient(ctx, game, ui) {
       ctx.restore();
     }
   }
+  { const sl = seasonLook(game.date?.doy ?? 100).snow; // Schneefall im Winter: leise fallende Flocken
+    if (sl > 0.25) { const t = ui.t ?? 0, n = Math.round(110 * sl); ctx.fillStyle = 'rgba(255,255,255,.85)'; for (let k = 0; k < n; k++) { const sp = 22 + hash(k, 3) * 26, x = ((hash(k, 1) * (W - 2 * OX) + Math.sin(t * 0.8 + k) * 14 + OX) % (W - 2 * OX)) + 0, y = (hash(k, 2) * H + t * sp) % H; ctx.beginPath(); ctx.arc(OX + (x % (W - 2 * OX)), y, 0.9 + hash(k, 4) * 1.3, 0, 7); ctx.fill(); } } }
   if (!T.vig) { // Vignette einmal in ein Bild zeichnen (ein Vollbild-Farbverlauf je Bild ist teuer)
     T.vig = document.createElement('canvas'); T.vig.width = W; T.vig.height = H; const vc = T.vig.getContext('2d');
     const vg = vc.createRadialGradient(W / 2, H / 2, H * 0.55, W / 2, H / 2, W * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,12,26,.26)'); vc.fillStyle = vg; vc.fillRect(0, 0, W, H);

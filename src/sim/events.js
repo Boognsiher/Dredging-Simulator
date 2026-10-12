@@ -7,7 +7,7 @@ const round100 = (v) => Math.round(v / 100) * 100;
 
 export const EVENTS = [
   {
-    id: 'flood', chance: 0.022, when: (g) => !g.water.until,
+    id: 'flood', chance: 0.022, when: (g) => !g.water.until && !g.realOn,
     apply: (g) => {
       const days = g.rng.range(2, 3.5);
       g.setWater(CONFIG.water.base + CONFIG.water.floodMax * g.rng.range(0.8, 1), days);
@@ -16,7 +16,7 @@ export const EVENTS = [
     },
   },
   {
-    id: 'drought', chance: 0.022, when: (g) => !g.water.until,
+    id: 'drought', chance: 0.022, when: (g) => !g.water.until && !g.realOn,
     apply: (g) => {
       const days = g.rng.range(4, 6), drop = g.rng.range(0.2, g.level.lowWater ?? 0.5);
       g.setWater(CONFIG.water.base - drop, days);
