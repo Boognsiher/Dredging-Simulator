@@ -141,7 +141,7 @@ function sinkShip(g, ship, p) {
   const what = hazard ? (ship.cargo === 'oel' ? 'Öl' : 'Chemie') : 'Treibstoff';
   g.say(`${cls.name} gesunken bei Spalte ${hx + 1}! ${what} läuft aus: ${n} Zellen Altlast, Wrack in der Rinne, Umweltbusse −${fine} CHF`, 'bad');
   g.notify(`${cls.name} gesunken! Wrack und Altlast bei Spalte ${hx + 1} (−${fine.toLocaleString('de-CH')} CHF)`, 'bad');
-  g.flash.push({ x: p.x, y: p.y, text: '☢', color: '#ff9d4a' });
+  g.flash.push({ map: g.mapIdx, x: p.x, y: p.y, text: '☢', color: '#ff9d4a' });
 }
 
 export function updateTraffic(g, dt) {
@@ -241,7 +241,7 @@ export function updateTraffic(g, dt) {
       t.ships++; t.tons += ship.tons; t.trafficIncome += inc; t.byCargo[ship.cargo] = (t.byCargo[ship.cargo] ?? 0) + ship.tons; t.byClass[ship.cls] = (t.byClass[ship.cls] ?? 0) + 1;
       g.today.ships++; g.today.tons += ship.tons; g.today.income += inc; g.book('verkehr', inc);
       creditContracts(g, ship.cargo, ship.tons);
-      g.flash.push({ x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
+      g.flash.push({ map: g.mapIdx, x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
       continue;
     }
     const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
@@ -255,7 +255,7 @@ export function updateTraffic(g, dt) {
       g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost; g.book('havarie', -cost);
       g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
       g.notify(`${g.maps.length > 1 ? `${g.map.name}: ` : ''}${cls.name} aufgelaufen bei Spalte ${Math.floor(p.x) + 1}! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad', { goto: { map: g.mapIdx, ship: ship.id } });
-      g.flash.push({ x: p.x, y: p.y, text: '⚠', color: '#ff7a6b' });
+      g.flash.push({ map: g.mapIdx, x: p.x, y: p.y, text: '⚠', color: '#ff7a6b' });
     }
   }
 

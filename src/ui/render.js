@@ -179,6 +179,12 @@ function drawClassOverlay(ctx, game, cls) {
     ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); ctx.stroke();
     ctx.strokeStyle = f.passable ? '#7bf0a0' : '#ffffff'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
     ctx.stroke(); ctx.restore();
+    { // Beschriftung der ersten Rinne: wie viel noch fehlt, bis die Klasse fährt (bzw. bis zur vollen Ladung)
+      const mid1 = pts[Math.floor(pts.length / 2)], fv = f.fullVolume, vol = f.volume;
+      const t1 = !f.passable ? `1. Rinne: fehlt ${vol === Infinity || !Number.isFinite(vol) ? '?' : Math.round(vol)} m³` : Number.isFinite(fv) && fv > 0.5 ? `1. Rinne ✓ · volle Ladung: fehlt ${Math.round(fv)} m³` : '1. Rinne ✓';
+      ctx.font = font(11); const tw1 = ctx.measureText(t1).width + 8, y1 = mid1.y * CELL + fs(11) + 8, dy1 = labelDy(OX + mid1.x * CELL - tw1 / 2, y1 - fs(11), tw1, fs(11) + 4);
+      ctx.fillStyle = '#000b'; ctx.fillRect(OX + mid1.x * CELL - tw1 / 2, y1 - fs(11) + dy1, tw1, fs(11) + 4); ctx.fillStyle = f.passable ? '#b9f5c9' : '#ffffff'; ctx.textAlign = 'start'; ctx.fillText(t1, OX + mid1.x * CELL - tw1 / 2 + 4, y1 - 2 + dy1);
+    }
     if (f.weakest) { // engste Stelle
       const p = mapPx(f.weakest.x + 0.5, f.path.points.find((q) => Math.floor(q.x) === f.weakest.x)?.y ?? r.rows / 2);
       ctx.fillStyle = '#ffd24d'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
@@ -654,7 +660,7 @@ function drawMapHud(ctx, game) {
   lines.push(`Pegel ${game.wl.toFixed(2)} m${game.wl > CONFIG.water.base + 0.25 ? ' ▲' : game.wl < CONFIG.water.base - 0.25 ? ' ▼' : ''}`);
   if (game.closed) lines.push('⛔ Hochwasser: Schifffahrt gesperrt');
   else if (game.time < (game.strikeUntil ?? 0)) lines.push('✊ Streik: kaum Verkehr');
-  let y = 18;
+  let y = 46; // etwas tiefer: nicht unter der Klassenleiste verschwinden
   for (const t of lines) {
     const w = ctx.measureText(t).width + 14;
     ctx.fillStyle = '#000a'; ctx.fillRect(OX + 6, y - 14, w, fs(13) + 6);

@@ -1,4 +1,4 @@
-import { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING, unloadNow, holdInfo } from './sim/shipping.js';
+import { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING, unloadNow, holdInfo, suggestRoutes, applyRoute, routeHints } from './sim/shipping.js';
 import { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit as portLoadHit } from './sim/port.js';
 import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } from './sim/land.js';
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
@@ -292,7 +292,7 @@ const editing = (id) => { const a = document.activeElement; return !!a && (a.tag
 function updateShipping() {
   const on = game.endless && game.maps.length > 1, box = $('shipping');
   $('h-ship').hidden = !on; box.hidden = !on; if (!on) return;
-  const S = game.shipping, sig = JSON.stringify([S.ships.map((s) => [s.id, s.state, s.from, s.to, s.cargo, s.autoBuy, s.toStock, s.note, Math.round(s.profit / 100), s.unload, s.unloadMin]), game.maps.map((m) => m.name), Math.floor(game.money / 2000), game.maps.map((m) => game.maps.length && [Math.round(m.fair.kahn.loadFactor * 20), Math.round(m.fair.motor.loadFactor * 20)])]);
+  const S = game.shipping, sig = JSON.stringify([S.ships.map((s) => [s.id, s.state, s.from, s.to, s.cargo, s.autoBuy, s.toStock, s.note, Math.round(s.profit / 100), s.unload, s.unloadMin]), game.maps.map((m) => m.name), Math.floor(game.money / 2000), suggestRoutes(game).map((r) => [r.type, r.from, r.to, Math.round(r.perDay / 5)]), game.maps.map((m) => game.maps.length && [Math.round(m.fair.kahn.loadFactor * 20), Math.round(m.fair.motor.loadFactor * 20)])]);
   if (sig === shipSig || (shipSig !== null && editing('shipping'))) return; shipSig = sig;
   const mapOpts = (sel) => game.maps.map((m, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${m.name}</option>`).join('');
   const prices = ['kies', 'oel', 'container'].map((id) => `${PORT.label[id]}: ` + game.maps.map((m, i) => `${m.name} <b>${withMap(game, i, () => Math.round(buyPrice(game, id)))}</b>/${withMap(game, i, () => Math.round(sellPrice(game, id)))}`).join(' · ')).join('<br>');
@@ -306,8 +306,11 @@ function updateShipping() {
       <small class="${info.ok ? (info.margin > 0 ? '' : 'warn') : 'warn'}">${info.ok ? `Ladung ${Math.round(info.eff)} t (${Math.round(info.lf * 100)} % je nach Rinne) · Fracht ${info.perT.toFixed(1)} CHF/t · Kauf ${Math.round(info.priceFrom)} ➜ Verkauf ${Math.round(info.priceTo)} · Marge ${info.margin >= 0 ? '+' : ''}${info.margin.toFixed(1)} CHF/t` : info.reason}</small></div>
       <button data-sellship="${s.id}" ${s.state === 'sail' || s.state === 'hold' ? 'disabled' : ''} title="Verkauf: ${Math.round(SHIPPING.sellShare * 100)} % des Preises">Verkaufen</button></div>`;
   }).join('');
+  const sug = suggestRoutes(game), nm = (i) => game.maps[i].name;
+  const hints = routeHints(game), sugHtml = !sug.length && hints.length ? `<div class="routes"><b>💡 Routenvorschläge</b><small><br>Noch keine Route möglich:<br>${hints.join('<br>')}</small></div>` : sug.length ? `<div class="routes"><b>💡 Routenvorschläge</b><small> (beste Strecke je Schiffstyp, nach Fracht und Unterhalt)</small>${sug.map((r, k) => { const T = SHIPPING.types[r.type], blk = game.shipping.ships.some((s) => s.type === r.type && s.state === 'idle') ? null : shipBlock(game, r.type); return `<div class="unit"><div><b>${T.icon} ${PORT.label[r.cargo]}: ${nm(r.from)} ➜ ${nm(r.to)}</b><br><small>Kauf ${Math.round(r.priceFrom)} ➜ Verkauf ${Math.round(r.priceTo)} · Marge ${r.margin.toFixed(1)} CHF/t · ${Math.round(r.eff)} t je Fahrt ≈ <b>+${chf(r.perTrip)}</b> · ca. <b>+${chf(r.perDay)}</b>/Tag · Fahrt ${r.days.toFixed(1)} Tage<br>${game.shipping.ships.some((s) => s.type === r.type && s.state === 'idle') ? 'freies ' + T.name + ' wird umgestellt' : `${T.name} kaufen ${chf(T.cost)} · Amortisation ca. ${Math.round(r.payback)} Tage`}</small></div><button data-sugg="${k}" ${blk ? 'disabled' : ''} title="${blk ?? ''}">Übernehmen</button></div>`; }).join('')}</div>` : '';
   const buys = Object.entries(SHIPPING.types).map(([k, T]) => `<button data-buyship="${k}" ${shipBlock(game, k) ? 'disabled' : ''} title="${shipBlock(game, k) ?? ''}">${T.icon} ${T.name} (${T.cap} t, ${PORT.label[T.cargos[0]]}) ${chf(T.cost)}</button>`).join('');
-  box.innerHTML = `<small>Eigene Frachter fahren Ware zwischen den Häfen der Karten (beide Häfen brauchen Kai, Lager und ein tiefes Hafenbecken). Gewinn = Preisunterschied (Kauf/Verkauf je Karte) minus Fracht; bei Niedrigwasser darf weniger geladen werden, die Fracht wird teurer. Unterhalt läuft täglich.<br>Preise je Karte (Kauf/Verkauf je t):<br>${prices}</small>${cards}<div class="shipbuy">${buys}</div>`;
+  box.innerHTML = `<small>Eigene Frachter fahren Ware zwischen den Häfen der Karten (beide Häfen brauchen Kai, Lager und ein tiefes Hafenbecken). Gewinn = Preisunterschied (Kauf/Verkauf je Karte) minus Fracht; bei Niedrigwasser darf weniger geladen werden, die Fracht wird teurer. Unterhalt läuft täglich.<br>Preise je Karte (Kauf/Verkauf je t):<br>${prices}</small>${sugHtml}${cards}<div class="shipbuy">${buys}</div>`;
+  for (const b of box.querySelectorAll('[data-sugg]')) b.onclick = () => { const r = sug[+b.dataset.sugg], sh = applyRoute(game, r); if (sh) { shipSig = null; updateShipping(); updatePanel(); toast(`${sh.name}: ${nm(r.from)} ➜ ${nm(r.to)} (${PORT.label[r.cargo]})`, 'good', true); } };
   for (const el of box.querySelectorAll('[data-sr]')) el.onchange = () => { const k = el.dataset.sr, id = +el.dataset.id; setRoute(game, id, { [k]: el.type === 'checkbox' ? el.checked : (k === 'unload' ? el.value : +el.value) }); shipSig = null; updateShipping(); };
   for (const b of box.querySelectorAll('[data-unload]')) b.onclick = () => { unloadNow(game, +b.dataset.unload); shipSig = null; updateShipping(); };
   for (const b of box.querySelectorAll('[data-sellship]')) b.onclick = () => { sellShip(game, +b.dataset.sellship); shipSig = null; updateShipping(); };
@@ -1418,7 +1421,7 @@ function frame(now) {
     $('s-turbzone').textContent = sim.mode === 'slice' ? ({ channel: 'Rinne: Busse kaum', altlast: '☢ Altlast: Busse', nature: '🌿 Naturschutz: Busse sehr hoch!' })[sim.turbZone] : '';
     fx.update(dt);
     for (let k = 0; k < ffSpeed; k++) game.update(dt); // Zeitraffer: mehrere Welt-Schritte je Bild (Ponton und Eingabe bleiben in Echtzeit)
-    for (const f of game.flash.splice(0)) ui.floaters.push({ ...f, life: 1.6 });
+    for (const f of game.flash.splice(0)) if (f.map === undefined || f.map === game.mapIdx) ui.floaters.push({ ...f, life: 1.6 }); // nur Beträge der angezeigten Karte
     for (const f of ui.floaters) f.life -= dt;
     ui.floaters = ui.floaters.filter((f) => f.life > 0);
     tipTimer += dt;

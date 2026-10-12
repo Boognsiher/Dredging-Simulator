@@ -362,7 +362,7 @@ export class Game {
     this.money += refund; this.totals.rescued++; this.totals.rescueRefund += refund; this.totals.salvage -= refund;
     this.say(`Schiff freigeschleppt! Bergungskosten −${refund} CHF gespart.`, 'good');
     this.notify(`Schiff frei! +${refund.toLocaleString('de-CH')} CHF zurück`, 'good');
-    this.flash.push({ x: 2, y: 2, text: `+${refund}`, color: '#7bd88f' });
+    this.flash.push({ map: this.mapIdx, x: 2, y: 2, text: `+${refund}`, color: '#7bd88f' });
     return true;
   }
 
@@ -370,7 +370,7 @@ export class Game {
   book(cat, amount) { if (!amount) return; const c = (this.today.cat ??= {}); c[cat] = (c[cat] ?? 0) + amount; const m = this.maps?.[this.mapIdx]; if (m) { m.cat ??= {}; m.cat[cat] = (m.cat[cat] ?? 0) + amount; } } // gesamt und für die Karte, auf der es passiert
 
   // Verbucht, was der Ponton in einem Schritt getan hat (siehe DredgeSim.update)
-  collect(d) {
+  collect(d, unit = null) {
     if (this.status !== 'playing') return;
     for (let k = 0; k < 5; k++) { this.stock[k] += d.by[k]; this.totals.byKind[k] += d.by[k]; }
     if (d.concrete) { this.concrete = Math.max(0, this.concrete - d.concrete); this.totals.concreteUsed += d.concrete; }
@@ -388,7 +388,11 @@ export class Game {
       else if (vol > 0.5) this.depositNoConcession = dep.id;
     }
     for (const id of Object.keys(d.dep ?? {})) { const dep = this.river.deposits[id - 1]; if (dep && !dep.depleted && !dep.regen && this.river.depositRemaining(dep.id) < CONFIG.deposits.emptyBelow) { this.river.retireDeposit(dep.id); this.say(`${dep.name} ist abgebaut und verschwindet von der Karte.`, 'info'); } } // leere Vorkommen sofort entfernen
-    if (premium) { this.book('rohstoff', premium); this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
+    if (premium) { this.book('rohstoff', premium); this.money += premium; this.totals.premium += premium; }
+    // Verdienst des Pontons (Baggerentgelt, Aufschlag, minus Bussen und Reparaturen) alle 2 s aufsummiert über dem Ponton anzeigen
+    { const net = pay + premium - protect - land - d.fines - d.repairs - bomb, h = unit ?? this, pos = unit ? unit : this.site;
+      h.earnAcc = (h.earnAcc ?? 0) + net;
+      if (this.time - (h.earnAt ?? 0) >= 2) { h.earnAt = this.time; const v = Math.round(h.earnAcc); if (Math.abs(v) >= 1 && pos && (unit?.loc ?? 'main') === 'main') this.flash.push({ map: this.mapIdx, x: pos.x, y: pos.y - 1.2, text: `${v > 0 ? '+' : '−'}${Math.abs(v).toLocaleString('de-CH')}`, color: v > 0 ? '#7bd88f' : '#ff8a7a' }); h.earnAcc = 0; } }
     const t = this.totals, y = this.today;
     t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
     y.pay += pay; y.costs += protect + land + d.fines + d.repairs + bomb;

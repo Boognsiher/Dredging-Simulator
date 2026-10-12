@@ -396,7 +396,7 @@ function pileWork(g, u, dt) {
     if (u.pileT >= tt) {
       const back = pileConcrete(g, i) * PILE_REFUND; g.river.setPile(i, false, PILE.top); F.pileRemove = (F.pileRemove ?? []).filter((c) => c !== i);
       g.concrete = Math.min(CONFIG.concrete.stockCap, g.concrete + back); g.totals.pilesRemoved = (g.totals.pilesRemoved ?? 0) + 1;
-      g.flash.push({ x: s.px, y: s.py, text: `+${Math.round(back)} m³`, color: '#cfd3da' }); u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl zurückgebaut'; g.fairClock = 0;
+      g.flash.push({ map: g.mapIdx, x: s.px, y: s.py, text: `+${Math.round(back)} m³`, color: '#cfd3da' }); u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl zurückgebaut'; g.fairClock = 0;
     }
     return;
   }
@@ -406,7 +406,7 @@ function pileWork(g, u, dt) {
   u.pileT = (u.pileT ?? 0) + dt; u.note = `setzt Pfahl bei Spalte ${s.col + 1} (${Math.round((u.pileT / g.stats.pileTime) * 100)} %)`;
   if (u.pileT >= g.stats.pileTime) {
     g.concrete -= need; g.river.setPile(i, true, PILE.top); F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i);
-    g.totals.piles = (g.totals.piles ?? 0) + 1; g.flash.push({ x: s.px, y: s.py, text: 'Pfahl', color: '#cfd3da' });
+    g.totals.piles = (g.totals.piles ?? 0) + 1; g.flash.push({ map: g.mapIdx, x: s.px, y: s.py, text: 'Pfahl', color: '#cfd3da' });
     u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl gesetzt'; g.fairClock = 0; // Fahrrinne neu auswerten
   }
 }
@@ -737,7 +737,7 @@ function stepUnit(g, u, dt) {
   }
   const d = sim.update(dt, inp);
   sim.notes.length = 0;
-  g.collect(d);
+  g.collect(d, u);
   g.totals.fleetRemoved += d.removed; u.removed += d.removed;
   u.x = sim.x; u.y = sim.y; u.px = sim.x; u.py = sim.y;
 }

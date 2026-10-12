@@ -599,6 +599,8 @@ svg.wmap { width: 100%; max-height: 70vh; border-radius: 8px; background: #0f2f4
 .wcard { background: #0d2236; border: 1px solid #ffffff22; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.45; } .wcard p { margin: 4px 0 8px; color: var(--muted); }
 .wprice { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0; } .wact { margin-top: 8px; } .wact button { width: 100%; } .wcard .pos { color: #7bd88f; } .wcard .neg { color: #ff8a7a; } .wcard .zero { color: #9fb3c4; }
 
+.routes { margin: 8px 0; padding: 8px; border: 1px solid #f3cf4a55; border-radius: 8px; background: #f3cf4a0f; } .routes .unit { align-items: center; }
+
 </style>
 </head>
 <body>
@@ -712,12 +714,12 @@ svg.wmap { width: 100%; max-height: 70vh; border-radius: 8px; background: #0f2f4
       <div class="ptab" data-tab="trade" hidden>
         <section class="psec"><h2>Frachtmarkt</h2><div id="market"></div></section>
         <section class="psec"><h2>Frachtaufträge</h2><div id="contracts"></div></section>
+        <h2 id="h-ship" hidden>Reederei</h2>
+        <div id="shipping" hidden></div>
       </div>
       <div class="ptab" data-tab="maps" hidden>
         <h2 id="h-maps" hidden>Karten</h2>
         <div id="maps" hidden></div>
-        <h2 id="h-ship" hidden>Reederei</h2>
-        <div id="shipping" hidden></div>
       </div>
       <div class="ptab" data-tab="more" hidden>
         <details id="help"><summary>Steuerung &amp; Legende</summary>
@@ -755,7 +757,7 @@ svg.wmap { width: 100%; max-height: 70vh; border-radius: 8px; background: #0f2f4
   <script>
 const __defs = [
 function(){
-const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING, unloadNow, holdInfo } = __m(1);
+const { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING, unloadNow, holdInfo, suggestRoutes, applyRoute, routeHints } = __m(1);
 const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit: portLoadHit } = __m(6);
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(7);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
@@ -1079,7 +1081,7 @@ const editing = (id) => { const a = document.activeElement; return !!a && (a.tag
 function updateShipping() {
   const on = game.endless && game.maps.length > 1, box = $('shipping');
   $('h-ship').hidden = !on; box.hidden = !on; if (!on) return;
-  const S = game.shipping, sig = JSON.stringify([S.ships.map((s) => [s.id, s.state, s.from, s.to, s.cargo, s.autoBuy, s.toStock, s.note, Math.round(s.profit / 100), s.unload, s.unloadMin]), game.maps.map((m) => m.name), Math.floor(game.money / 2000), game.maps.map((m) => game.maps.length && [Math.round(m.fair.kahn.loadFactor * 20), Math.round(m.fair.motor.loadFactor * 20)])]);
+  const S = game.shipping, sig = JSON.stringify([S.ships.map((s) => [s.id, s.state, s.from, s.to, s.cargo, s.autoBuy, s.toStock, s.note, Math.round(s.profit / 100), s.unload, s.unloadMin]), game.maps.map((m) => m.name), Math.floor(game.money / 2000), suggestRoutes(game).map((r) => [r.type, r.from, r.to, Math.round(r.perDay / 5)]), game.maps.map((m) => game.maps.length && [Math.round(m.fair.kahn.loadFactor * 20), Math.round(m.fair.motor.loadFactor * 20)])]);
   if (sig === shipSig || (shipSig !== null && editing('shipping'))) return; shipSig = sig;
   const mapOpts = (sel) => game.maps.map((m, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${m.name}</option>`).join('');
   const prices = ['kies', 'oel', 'container'].map((id) => `${PORT.label[id]}: ` + game.maps.map((m, i) => `${m.name} <b>${withMap(game, i, () => Math.round(buyPrice(game, id)))}</b>/${withMap(game, i, () => Math.round(sellPrice(game, id)))}`).join(' · ')).join('<br>');
@@ -1093,8 +1095,11 @@ function updateShipping() {
       <small class="${info.ok ? (info.margin > 0 ? '' : 'warn') : 'warn'}">${info.ok ? `Ladung ${Math.round(info.eff)} t (${Math.round(info.lf * 100)} % je nach Rinne) · Fracht ${info.perT.toFixed(1)} CHF/t · Kauf ${Math.round(info.priceFrom)} ➜ Verkauf ${Math.round(info.priceTo)} · Marge ${info.margin >= 0 ? '+' : ''}${info.margin.toFixed(1)} CHF/t` : info.reason}</small></div>
       <button data-sellship="${s.id}" ${s.state === 'sail' || s.state === 'hold' ? 'disabled' : ''} title="Verkauf: ${Math.round(SHIPPING.sellShare * 100)} % des Preises">Verkaufen</button></div>`;
   }).join('');
+  const sug = suggestRoutes(game), nm = (i) => game.maps[i].name;
+  const hints = routeHints(game), sugHtml = !sug.length && hints.length ? `<div class="routes"><b>💡 Routenvorschläge</b><small><br>Noch keine Route möglich:<br>${hints.join('<br>')}</small></div>` : sug.length ? `<div class="routes"><b>💡 Routenvorschläge</b><small> (beste Strecke je Schiffstyp, nach Fracht und Unterhalt)</small>${sug.map((r, k) => { const T = SHIPPING.types[r.type], blk = game.shipping.ships.some((s) => s.type === r.type && s.state === 'idle') ? null : shipBlock(game, r.type); return `<div class="unit"><div><b>${T.icon} ${PORT.label[r.cargo]}: ${nm(r.from)} ➜ ${nm(r.to)}</b><br><small>Kauf ${Math.round(r.priceFrom)} ➜ Verkauf ${Math.round(r.priceTo)} · Marge ${r.margin.toFixed(1)} CHF/t · ${Math.round(r.eff)} t je Fahrt ≈ <b>+${chf(r.perTrip)}</b> · ca. <b>+${chf(r.perDay)}</b>/Tag · Fahrt ${r.days.toFixed(1)} Tage<br>${game.shipping.ships.some((s) => s.type === r.type && s.state === 'idle') ? 'freies ' + T.name + ' wird umgestellt' : `${T.name} kaufen ${chf(T.cost)} · Amortisation ca. ${Math.round(r.payback)} Tage`}</small></div><button data-sugg="${k}" ${blk ? 'disabled' : ''} title="${blk ?? ''}">Übernehmen</button></div>`; }).join('')}</div>` : '';
   const buys = Object.entries(SHIPPING.types).map(([k, T]) => `<button data-buyship="${k}" ${shipBlock(game, k) ? 'disabled' : ''} title="${shipBlock(game, k) ?? ''}">${T.icon} ${T.name} (${T.cap} t, ${PORT.label[T.cargos[0]]}) ${chf(T.cost)}</button>`).join('');
-  box.innerHTML = `<small>Eigene Frachter fahren Ware zwischen den Häfen der Karten (beide Häfen brauchen Kai, Lager und ein tiefes Hafenbecken). Gewinn = Preisunterschied (Kauf/Verkauf je Karte) minus Fracht; bei Niedrigwasser darf weniger geladen werden, die Fracht wird teurer. Unterhalt läuft täglich.<br>Preise je Karte (Kauf/Verkauf je t):<br>${prices}</small>${cards}<div class="shipbuy">${buys}</div>`;
+  box.innerHTML = `<small>Eigene Frachter fahren Ware zwischen den Häfen der Karten (beide Häfen brauchen Kai, Lager und ein tiefes Hafenbecken). Gewinn = Preisunterschied (Kauf/Verkauf je Karte) minus Fracht; bei Niedrigwasser darf weniger geladen werden, die Fracht wird teurer. Unterhalt läuft täglich.<br>Preise je Karte (Kauf/Verkauf je t):<br>${prices}</small>${sugHtml}${cards}<div class="shipbuy">${buys}</div>`;
+  for (const b of box.querySelectorAll('[data-sugg]')) b.onclick = () => { const r = sug[+b.dataset.sugg], sh = applyRoute(game, r); if (sh) { shipSig = null; updateShipping(); updatePanel(); toast(`${sh.name}: ${nm(r.from)} ➜ ${nm(r.to)} (${PORT.label[r.cargo]})`, 'good', true); } };
   for (const el of box.querySelectorAll('[data-sr]')) el.onchange = () => { const k = el.dataset.sr, id = +el.dataset.id; setRoute(game, id, { [k]: el.type === 'checkbox' ? el.checked : (k === 'unload' ? el.value : +el.value) }); shipSig = null; updateShipping(); };
   for (const b of box.querySelectorAll('[data-unload]')) b.onclick = () => { unloadNow(game, +b.dataset.unload); shipSig = null; updateShipping(); };
   for (const b of box.querySelectorAll('[data-sellship]')) b.onclick = () => { sellShip(game, +b.dataset.sellship); shipSig = null; updateShipping(); };
@@ -2205,7 +2210,7 @@ function frame(now) {
     $('s-turbzone').textContent = sim.mode === 'slice' ? ({ channel: 'Rinne: Busse kaum', altlast: '☢ Altlast: Busse', nature: '🌿 Naturschutz: Busse sehr hoch!' })[sim.turbZone] : '';
     fx.update(dt);
     for (let k = 0; k < ffSpeed; k++) game.update(dt); // Zeitraffer: mehrere Welt-Schritte je Bild (Ponton und Eingabe bleiben in Echtzeit)
-    for (const f of game.flash.splice(0)) ui.floaters.push({ ...f, life: 1.6 });
+    for (const f of game.flash.splice(0)) if (f.map === undefined || f.map === game.mapIdx) ui.floaters.push({ ...f, life: 1.6 }); // nur Beträge der angezeigten Karte
     for (const f of ui.floaters) f.life -= dt;
     ui.floaters = ui.floaters.filter((f) => f.life > 0);
     tipTimer += dt;
@@ -2380,6 +2385,44 @@ function routeInfo(g, s) {
   return out;
 }
 
+// Routenvorschläge: für jeden Schiffstyp und jede Kartenpaarung die erwartete Marge (nach Fracht) und den Gewinn je Tag; beste zuerst.
+// Gewinn je Tag = Marge × Ladung / (2 × Fahrzeit) (Hinfahrt beladen, Rückfahrt leer; Rückfracht bringt zusätzlich etwas). Amortisation = Preis des Schiffs / Gewinn je Tag.
+function suggestRoutes(g, n = 5) {
+  const out = [];
+  if (!g.endless || g.maps.length < 2) return out;
+  for (const [type, T] of Object.entries(SHIPPING.types)) for (const cargo of T.cargos) for (let a = 0; a < g.maps.length; a++) for (let b = 0; b < g.maps.length; b++) {
+    if (a === b) continue;
+    const info = routeInfo(g, { type, cargo, from: a, to: b });
+    if (!info.ok || info.margin <= 0) continue;
+    const perTrip = info.margin * info.eff, perDay = perTrip / (2 * info.days);
+    out.push({ type, cargo, from: a, to: b, margin: info.margin, eff: info.eff, days: info.days, perTrip, perDay, payback: T.cost / perDay, priceFrom: info.priceFrom, priceTo: info.priceTo });
+  }
+  out.sort((x, y) => y.perDay - x.perDay);
+  const seen = new Set(), best = [];
+  for (const r of out) { const k = `${r.type}:${r.cargo}`; if (seen.has(k)) continue; seen.add(k); best.push(r); if (best.length >= n) break; } // je Schiffstyp und Fracht die beste Strecke
+  return best;
+}
+// Warum es für einen Schiffstyp keine Route gibt: je Typ der häufigste Grund über alle Kartenpaare (oder «keine positive Marge»)
+function routeHints(g) {
+  const out = [];
+  if (!g.endless || g.maps.length < 2) return ['Für Routen braucht es mindestens zwei erschlossene Karten.'];
+  for (const [type, T] of Object.entries(SHIPPING.types)) for (const cargo of T.cargos) {
+    const reasons = {}; let anyOk = false, pos = false;
+    for (let a = 0; a < g.maps.length; a++) for (let b = 0; b < g.maps.length; b++) { if (a === b) continue; const i = routeInfo(g, { type, cargo, from: a, to: b }); if (i.ok) { anyOk = true; if (i.margin > 0) pos = true; } else reasons[i.reason] = (reasons[i.reason] ?? 0) + 1; }
+    if (pos) continue;
+    const top = Object.entries(reasons).sort((x, y) => y[1] - x[1])[0];
+    out.push(`${T.icon} ${T.name}: ${anyOk ? 'aktuell keine Strecke mit positiver Marge (Preisunterschied kleiner als die Fracht)' : top ? top[0] : 'nicht möglich'}`);
+  }
+  return out;
+}
+// Vorschlag umsetzen: ein freies eigenes Schiff des Typs umstellen, sonst ein neues kaufen
+function applyRoute(g, r) {
+  const free = g.shipping.ships.find((s) => s.type === r.type && s.state === 'idle' && (s.from !== r.from || s.to !== r.to || s.cargo !== r.cargo));
+  const s = free ?? buyShip(g, r.type); if (!s) return null;
+  setRoute(g, s.id, { from: r.from, to: r.to, cargo: r.cargo, autoBuy: true, backhaul: true });
+  return s;
+}
+
 // Ware im Hafen der Karte i aufnehmen (aus dem Lager, sonst einkaufen). Gibt die geladene Menge zurück (0 = zu wenig)
 function loadAt(g, s, i, info) {
   return withMap(g, i, () => {
@@ -2473,7 +2516,7 @@ function updateShipping(g, dt) {
   }
 }
 
-return { SHIPPING: SHIPPING, createShipping: createShipping, withMap: withMap, shipBlock: shipBlock, buyShip: buyShip, sellShip: sellShip, setRoute: setRoute, routeInfo: routeInfo, unloadNow: unloadNow, holdInfo: holdInfo, updateShipping: updateShipping };
+return { SHIPPING: SHIPPING, createShipping: createShipping, withMap: withMap, shipBlock: shipBlock, buyShip: buyShip, sellShip: sellShip, setRoute: setRoute, routeInfo: routeInfo, suggestRoutes: suggestRoutes, routeHints: routeHints, applyRoute: applyRoute, unloadNow: unloadNow, holdInfo: holdInfo, updateShipping: updateShipping };
 },
 function(){
 
@@ -3910,7 +3953,7 @@ function finishJob(g, job) {
   const frac = Math.max(0, job.left) / J.deadline, pay = late ? job.fee * J.lateFactor : job.fee * (1 + J.bonusMax * frac);
   g.money += pay; p.fees += pay; g.today.income += pay; g.book('hafen', pay); if (!late) p.bonus += pay - job.fee; else p.jobsLate++;
   p.jobsDone++;
-  g.flash.push({ x: 0, y: 0, text: `+${Math.round(pay)}`, color: late ? '#e0a040' : '#7bd88f' });
+  g.flash.push({ map: g.mapIdx, x: 0, y: 0, text: `+${Math.round(pay)}`, color: late ? '#e0a040' : '#7bd88f' });
 }
 // Minispiel-Treffer: quality 0..1 (0 = Fehlwurf). Lädt den ersten Auftrag.
 function loadHit(g, quality) {
@@ -4607,7 +4650,7 @@ class Game {
     this.money += refund; this.totals.rescued++; this.totals.rescueRefund += refund; this.totals.salvage -= refund;
     this.say(`Schiff freigeschleppt! Bergungskosten −${refund} CHF gespart.`, 'good');
     this.notify(`Schiff frei! +${refund.toLocaleString('de-CH')} CHF zurück`, 'good');
-    this.flash.push({ x: 2, y: 2, text: `+${refund}`, color: '#7bd88f' });
+    this.flash.push({ map: this.mapIdx, x: 2, y: 2, text: `+${refund}`, color: '#7bd88f' });
     return true;
   }
 
@@ -4615,7 +4658,7 @@ class Game {
   book(cat, amount) { if (!amount) return; const c = (this.today.cat ??= {}); c[cat] = (c[cat] ?? 0) + amount; const m = this.maps?.[this.mapIdx]; if (m) { m.cat ??= {}; m.cat[cat] = (m.cat[cat] ?? 0) + amount; } } // gesamt und für die Karte, auf der es passiert
 
   // Verbucht, was der Ponton in einem Schritt getan hat (siehe DredgeSim.update)
-  collect(d) {
+  collect(d, unit = null) {
     if (this.status !== 'playing') return;
     for (let k = 0; k < 5; k++) { this.stock[k] += d.by[k]; this.totals.byKind[k] += d.by[k]; }
     if (d.concrete) { this.concrete = Math.max(0, this.concrete - d.concrete); this.totals.concreteUsed += d.concrete; }
@@ -4633,7 +4676,11 @@ class Game {
       else if (vol > 0.5) this.depositNoConcession = dep.id;
     }
     for (const id of Object.keys(d.dep ?? {})) { const dep = this.river.deposits[id - 1]; if (dep && !dep.depleted && !dep.regen && this.river.depositRemaining(dep.id) < CONFIG.deposits.emptyBelow) { this.river.retireDeposit(dep.id); this.say(`${dep.name} ist abgebaut und verschwindet von der Karte.`, 'info'); } } // leere Vorkommen sofort entfernen
-    if (premium) { this.book('rohstoff', premium); this.money += premium; this.totals.premium += premium; if (premium > 40) this.flash.push({ x: this.site?.x ?? 3, y: this.site?.y ?? 3, text: `+${Math.round(premium)}`, color: '#ffd24d' }); }
+    if (premium) { this.book('rohstoff', premium); this.money += premium; this.totals.premium += premium; }
+    // Verdienst des Pontons (Baggerentgelt, Aufschlag, minus Bussen und Reparaturen) alle 2 s aufsummiert über dem Ponton anzeigen
+    { const net = pay + premium - protect - land - d.fines - d.repairs - bomb, h = unit ?? this, pos = unit ? unit : this.site;
+      h.earnAcc = (h.earnAcc ?? 0) + net;
+      if (this.time - (h.earnAt ?? 0) >= 2) { h.earnAt = this.time; const v = Math.round(h.earnAcc); if (Math.abs(v) >= 1 && pos && (unit?.loc ?? 'main') === 'main') this.flash.push({ map: this.mapIdx, x: pos.x, y: pos.y - 1.2, text: `${v > 0 ? '+' : '−'}${Math.abs(v).toLocaleString('de-CH')}`, color: v > 0 ? '#7bd88f' : '#ff8a7a' }); h.earnAcc = 0; } }
     const t = this.totals, y = this.today;
     t.pay += pay; t.removed += d.removed; t.fines += d.fines; t.repairs += d.repairs; t.protectFines += protect; t.landFees += land; t.landRemoved += d.land ?? 0;
     y.pay += pay; y.costs += protect + land + d.fines + d.repairs + bomb;
@@ -5451,7 +5498,7 @@ function sinkShip(g, ship, p) {
   const what = hazard ? (ship.cargo === 'oel' ? 'Öl' : 'Chemie') : 'Treibstoff';
   g.say(`${cls.name} gesunken bei Spalte ${hx + 1}! ${what} läuft aus: ${n} Zellen Altlast, Wrack in der Rinne, Umweltbusse −${fine} CHF`, 'bad');
   g.notify(`${cls.name} gesunken! Wrack und Altlast bei Spalte ${hx + 1} (−${fine.toLocaleString('de-CH')} CHF)`, 'bad');
-  g.flash.push({ x: p.x, y: p.y, text: '☢', color: '#ff9d4a' });
+  g.flash.push({ map: g.mapIdx, x: p.x, y: p.y, text: '☢', color: '#ff9d4a' });
 }
 
 function updateTraffic(g, dt) {
@@ -5551,7 +5598,7 @@ function updateTraffic(g, dt) {
       t.ships++; t.tons += ship.tons; t.trafficIncome += inc; t.byCargo[ship.cargo] = (t.byCargo[ship.cargo] ?? 0) + ship.tons; t.byClass[ship.cls] = (t.byClass[ship.cls] ?? 0) + 1;
       g.today.ships++; g.today.tons += ship.tons; g.today.income += inc; g.book('verkehr', inc);
       creditContracts(g, ship.cargo, ship.tons);
-      g.flash.push({ x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
+      g.flash.push({ map: g.mapIdx, x: ship.dir > 0 ? g.river.cols : 0, y: p0.y, text: `+${inc.toLocaleString('de-CH')}`, color: '#7bd88f' });
       continue;
     }
     const p = shipPos(ship), depth = minDepthAt(g.river, g.wl, p.x, p.y, cls.beam);
@@ -5565,7 +5612,7 @@ function updateTraffic(g, dt) {
       g.money -= cost; g.totals.groundings++; g.totals.salvage += cost; g.today.costs += cost; g.book('havarie', -cost);
       g.say(`Havarie: ${cls.name} auf Grund! Bergung −${cost} CHF`, 'bad');
       g.notify(`${g.maps.length > 1 ? `${g.map.name}: ` : ''}${cls.name} aufgelaufen bei Spalte ${Math.floor(p.x) + 1}! Bergung −${cost.toLocaleString('de-CH')} CHF`, 'bad', { goto: { map: g.mapIdx, ship: ship.id } });
-      g.flash.push({ x: p.x, y: p.y, text: '⚠', color: '#ff7a6b' });
+      g.flash.push({ map: g.mapIdx, x: p.x, y: p.y, text: '⚠', color: '#ff7a6b' });
     }
   }
 
@@ -6097,7 +6144,7 @@ function pileWork(g, u, dt) {
     if (u.pileT >= tt) {
       const back = pileConcrete(g, i) * PILE_REFUND; g.river.setPile(i, false, PILE.top); F.pileRemove = (F.pileRemove ?? []).filter((c) => c !== i);
       g.concrete = Math.min(CONFIG.concrete.stockCap, g.concrete + back); g.totals.pilesRemoved = (g.totals.pilesRemoved ?? 0) + 1;
-      g.flash.push({ x: s.px, y: s.py, text: `+${Math.round(back)} m³`, color: '#cfd3da' }); u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl zurückgebaut'; g.fairClock = 0;
+      g.flash.push({ map: g.mapIdx, x: s.px, y: s.py, text: `+${Math.round(back)} m³`, color: '#cfd3da' }); u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl zurückgebaut'; g.fairClock = 0;
     }
     return;
   }
@@ -6107,7 +6154,7 @@ function pileWork(g, u, dt) {
   u.pileT = (u.pileT ?? 0) + dt; u.note = `setzt Pfahl bei Spalte ${s.col + 1} (${Math.round((u.pileT / g.stats.pileTime) * 100)} %)`;
   if (u.pileT >= g.stats.pileTime) {
     g.concrete -= need; g.river.setPile(i, true, PILE.top); F.pilePlan = (F.pilePlan ?? []).filter((c) => c !== i);
-    g.totals.piles = (g.totals.piles ?? 0) + 1; g.flash.push({ x: s.px, y: s.py, text: 'Pfahl', color: '#cfd3da' });
+    g.totals.piles = (g.totals.piles ?? 0) + 1; g.flash.push({ map: g.mapIdx, x: s.px, y: s.py, text: 'Pfahl', color: '#cfd3da' });
     u.state = 'idle'; u.site = null; u.idle = 0; u.note = 'Pfahl gesetzt'; g.fairClock = 0; // Fahrrinne neu auswerten
   }
 }
@@ -6438,7 +6485,7 @@ function stepUnit(g, u, dt) {
   }
   const d = sim.update(dt, inp);
   sim.notes.length = 0;
-  g.collect(d);
+  g.collect(d, u);
   g.totals.fleetRemoved += d.removed; u.removed += d.removed;
   u.x = sim.x; u.y = sim.y; u.px = sim.x; u.py = sim.y;
 }
@@ -7760,6 +7807,12 @@ function drawClassOverlay(ctx, game, cls) {
     ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(OX + p.x * CELL, p.y * CELL) : ctx.moveTo(OX + p.x * CELL, p.y * CELL))); ctx.stroke();
     ctx.strokeStyle = f.passable ? '#7bf0a0' : '#ffffff'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
     ctx.stroke(); ctx.restore();
+    { // Beschriftung der ersten Rinne: wie viel noch fehlt, bis die Klasse fährt (bzw. bis zur vollen Ladung)
+      const mid1 = pts[Math.floor(pts.length / 2)], fv = f.fullVolume, vol = f.volume;
+      const t1 = !f.passable ? `1. Rinne: fehlt ${vol === Infinity || !Number.isFinite(vol) ? '?' : Math.round(vol)} m³` : Number.isFinite(fv) && fv > 0.5 ? `1. Rinne ✓ · volle Ladung: fehlt ${Math.round(fv)} m³` : '1. Rinne ✓';
+      ctx.font = font(11); const tw1 = ctx.measureText(t1).width + 8, y1 = mid1.y * CELL + fs(11) + 8, dy1 = labelDy(OX + mid1.x * CELL - tw1 / 2, y1 - fs(11), tw1, fs(11) + 4);
+      ctx.fillStyle = '#000b'; ctx.fillRect(OX + mid1.x * CELL - tw1 / 2, y1 - fs(11) + dy1, tw1, fs(11) + 4); ctx.fillStyle = f.passable ? '#b9f5c9' : '#ffffff'; ctx.textAlign = 'start'; ctx.fillText(t1, OX + mid1.x * CELL - tw1 / 2 + 4, y1 - 2 + dy1);
+    }
     if (f.weakest) { // engste Stelle
       const p = mapPx(f.weakest.x + 0.5, f.path.points.find((q) => Math.floor(q.x) === f.weakest.x)?.y ?? r.rows / 2);
       ctx.fillStyle = '#ffd24d'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
@@ -8235,7 +8288,7 @@ function drawMapHud(ctx, game) {
   lines.push(`Pegel ${game.wl.toFixed(2)} m${game.wl > CONFIG.water.base + 0.25 ? ' ▲' : game.wl < CONFIG.water.base - 0.25 ? ' ▼' : ''}`);
   if (game.closed) lines.push('⛔ Hochwasser: Schifffahrt gesperrt');
   else if (game.time < (game.strikeUntil ?? 0)) lines.push('✊ Streik: kaum Verkehr');
-  let y = 18;
+  let y = 46; // etwas tiefer: nicht unter der Klassenleiste verschwinden
   for (const t of lines) {
     const w = ctx.measureText(t).width + 14;
     ctx.fillStyle = '#000a'; ctx.fillRect(OX + 6, y - 14, w, fs(13) + 6);

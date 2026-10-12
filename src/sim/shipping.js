@@ -83,6 +83,44 @@ export function routeInfo(g, s) {
   return out;
 }
 
+// Routenvorschläge: für jeden Schiffstyp und jede Kartenpaarung die erwartete Marge (nach Fracht) und den Gewinn je Tag; beste zuerst.
+// Gewinn je Tag = Marge × Ladung / (2 × Fahrzeit) (Hinfahrt beladen, Rückfahrt leer; Rückfracht bringt zusätzlich etwas). Amortisation = Preis des Schiffs / Gewinn je Tag.
+export function suggestRoutes(g, n = 5) {
+  const out = [];
+  if (!g.endless || g.maps.length < 2) return out;
+  for (const [type, T] of Object.entries(SHIPPING.types)) for (const cargo of T.cargos) for (let a = 0; a < g.maps.length; a++) for (let b = 0; b < g.maps.length; b++) {
+    if (a === b) continue;
+    const info = routeInfo(g, { type, cargo, from: a, to: b });
+    if (!info.ok || info.margin <= 0) continue;
+    const perTrip = info.margin * info.eff, perDay = perTrip / (2 * info.days);
+    out.push({ type, cargo, from: a, to: b, margin: info.margin, eff: info.eff, days: info.days, perTrip, perDay, payback: T.cost / perDay, priceFrom: info.priceFrom, priceTo: info.priceTo });
+  }
+  out.sort((x, y) => y.perDay - x.perDay);
+  const seen = new Set(), best = [];
+  for (const r of out) { const k = `${r.type}:${r.cargo}`; if (seen.has(k)) continue; seen.add(k); best.push(r); if (best.length >= n) break; } // je Schiffstyp und Fracht die beste Strecke
+  return best;
+}
+// Warum es für einen Schiffstyp keine Route gibt: je Typ der häufigste Grund über alle Kartenpaare (oder «keine positive Marge»)
+export function routeHints(g) {
+  const out = [];
+  if (!g.endless || g.maps.length < 2) return ['Für Routen braucht es mindestens zwei erschlossene Karten.'];
+  for (const [type, T] of Object.entries(SHIPPING.types)) for (const cargo of T.cargos) {
+    const reasons = {}; let anyOk = false, pos = false;
+    for (let a = 0; a < g.maps.length; a++) for (let b = 0; b < g.maps.length; b++) { if (a === b) continue; const i = routeInfo(g, { type, cargo, from: a, to: b }); if (i.ok) { anyOk = true; if (i.margin > 0) pos = true; } else reasons[i.reason] = (reasons[i.reason] ?? 0) + 1; }
+    if (pos) continue;
+    const top = Object.entries(reasons).sort((x, y) => y[1] - x[1])[0];
+    out.push(`${T.icon} ${T.name}: ${anyOk ? 'aktuell keine Strecke mit positiver Marge (Preisunterschied kleiner als die Fracht)' : top ? top[0] : 'nicht möglich'}`);
+  }
+  return out;
+}
+// Vorschlag umsetzen: ein freies eigenes Schiff des Typs umstellen, sonst ein neues kaufen
+export function applyRoute(g, r) {
+  const free = g.shipping.ships.find((s) => s.type === r.type && s.state === 'idle' && (s.from !== r.from || s.to !== r.to || s.cargo !== r.cargo));
+  const s = free ?? buyShip(g, r.type); if (!s) return null;
+  setRoute(g, s.id, { from: r.from, to: r.to, cargo: r.cargo, autoBuy: true, backhaul: true });
+  return s;
+}
+
 // Ware im Hafen der Karte i aufnehmen (aus dem Lager, sonst einkaufen). Gibt die geladene Menge zurück (0 = zu wenig)
 function loadAt(g, s, i, info) {
   return withMap(g, i, () => {

@@ -329,7 +329,7 @@ function finishJob(g, job) {
   const frac = Math.max(0, job.left) / J.deadline, pay = late ? job.fee * J.lateFactor : job.fee * (1 + J.bonusMax * frac);
   g.money += pay; p.fees += pay; g.today.income += pay; g.book('hafen', pay); if (!late) p.bonus += pay - job.fee; else p.jobsLate++;
   p.jobsDone++;
-  g.flash.push({ x: 0, y: 0, text: `+${Math.round(pay)}`, color: late ? '#e0a040' : '#7bd88f' });
+  g.flash.push({ map: g.mapIdx, x: 0, y: 0, text: `+${Math.round(pay)}`, color: late ? '#e0a040' : '#7bd88f' });
 }
 // Minispiel-Treffer: quality 0..1 (0 = Fehlwurf). Lädt den ersten Auftrag.
 export function loadHit(g, quality) {

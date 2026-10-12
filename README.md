@@ -265,3 +265,5 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Rohstoffvorkommen mit 0 m³ Rest verschwinden sofort.
 - Weltkarte 🗺 (Endlos): Der Rhein in 10 Abschnitten von Rheinfelden bis Rotterdam, der Reihe nach erschliessbar. Zeigt Vorkommen, Öl, Fels und regionale Preise; Kartenbestand und Kosten: `ENDLESS.mapCosts`, Abschnitte in `src/sim/world.js`.
 - Mehr Pontons: Gebäude «Pontonwerft» im Hafen (+2/+4/+6 Pontons je Stufe, gilt für die Karte und gesamt, zusätzlich zur Level-Grenze); optional fester Bonus je Karte über `CONFIG.fleet.mapBonus`. Stapelbecken und Verarbeitung lassen sich bis Stufe 40 ausbauen.
+- Karte: Verdienst je Ponton (Baggerentgelt, Aufschlag minus Bussen) erscheint alle 2 s aufsummiert über dem Ponton; Pegel-Anzeige tiefer; bei der Klassenvorschau steht «1. Rinne: fehlt X m³».
+- Handel: Reederei im Reiter «Handel» mit Routenvorschlägen (beste Strecke je Schiffstyp, Gewinn je Fahrt/Tag, Amortisation, «Übernehmen»).
