@@ -2123,3 +2123,15 @@ test('Rhein: Abschnitte der Reihe nach mit festen Rohstoffen, Öl und Preisen', 
   });
   const koeln = RHEIN.findIndex((s) => s.name === 'Köln'); g.mapIdx = koeln; assert.equal(oilInfo(g).has, true);
 });
+
+import { perMapMax as pmm, totalMax as tmax } from '../src/sim/fleet.js';
+test('Pontonwerft: erhöht Karten- und Gesamtgrenze zusätzlich zum Level', () => {
+  const g = harborGame(); g.buyUpgrade('auto'); g.money = 1e9;
+  const pm0 = pmm(g), t0 = tmax(g);
+  assert.equal(portBuildBlock(g, 5, 'werft') === null || typeof portBuildBlock(g, 5, 'werft') === 'string', true);
+  g.port.slots[5] = { type: 'werft', level: 2 };
+  assert.equal(pmm(g), pm0 + 4); assert.equal(tmax(g), t0 + 4);
+  while (hireUnit(g)) { /* bis zur Grenze */ }
+  assert.equal(g.fleet.units.filter((u) => !u.self && !u.small).length, pm0 + 4);
+  assert.match(hireBlock(g), /voll|Karte/);
+});

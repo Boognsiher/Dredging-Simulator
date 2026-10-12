@@ -264,3 +264,4 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Hafen: Karte «Warum legt (k)ein Schiff an?» zeigt, was fehlt (Kai, Beckentiefe, Lager, Containerbrücke, Liegeplätze).
 - Rohstoffvorkommen mit 0 m³ Rest verschwinden sofort.
 - Weltkarte 🗺 (Endlos): Der Rhein in 10 Abschnitten von Rheinfelden bis Rotterdam, der Reihe nach erschliessbar. Zeigt Vorkommen, Öl, Fels und regionale Preise; Kartenbestand und Kosten: `ENDLESS.mapCosts`, Abschnitte in `src/sim/world.js`.
+- Mehr Pontons: Gebäude «Pontonwerft» im Hafen (+2/+4/+6 Pontons je Stufe, gilt für die Karte und gesamt, zusätzlich zur Level-Grenze); optional fester Bonus je Karte über `CONFIG.fleet.mapBonus`. Stapelbecken und Verarbeitung lassen sich bis Stufe 40 ausbauen.

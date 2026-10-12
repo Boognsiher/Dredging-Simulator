@@ -3,7 +3,7 @@ import { CONFIG, SHIPS, KIND, shipById } from '../config.js';
 import { toolAvailable } from './slice.js';
 import { zoneSupports } from './traffic.js';
 import { HARBOR, harborTarget } from './harbor.js';
-import { kaiLevel } from './port.js';
+import { kaiLevel, werftBonus } from './port.js';
 
 // Flotte: gemietete Pontons arbeiten selbstständig. Jeder fährt zur nächsten Engstelle der Ausbauklasse, ankert, lässt die Automatik
 // mit dem passenden Gerät (Saugkopf, bei Fels der Löffel) auf die Solltiefe baggern und sucht danach die nächste offene Stelle.
@@ -18,14 +18,16 @@ export const hiredTotal = (g) => (g.maps ?? []).reduce((n, m) => n + (m.fleet?.u
 export const hireCostAt = (n) => { const c = CONFIG.fleet.costs; return n < c.length ? c[n] : Math.round((c[c.length - 1] * 1.35 ** (n - c.length + 1)) / 1000) * 1000; };
 export const nextHireCost = (g) => hireCostAt(hiredTotal(g));
 // Höchstzahl gemieteter Pontons pro Karte (nach Level); ohne Levelsystem (Tests) gilt nur die Gesamtgrenze
-export const perMapMax = (g) => Math.min(fleetMax(g), UNLOCK.enabled ? CONFIG.fleet.perMap[Math.min(4, rankOf(g) - 1)] : CONFIG.fleet.max);
+export const perMapMax = (g, m = g.maps?.[g.mapIdx]) => Math.min(fleetMax(g), UNLOCK.enabled ? CONFIG.fleet.perMap[Math.min(4, rankOf(g) - 1)] : CONFIG.fleet.max) + werftBonus(m?.port ?? g.port) + (CONFIG.fleet.mapBonus ?? 0); // Level-Grenze plus Pontonwerft dieser Karte (plus optional fester Kartenbonus)
+// Gesamtzahl gemieteter Pontons: Level-Grenze plus alle Werften und Kartenboni
+export const totalMax = (g) => fleetMax(g) + (g.maps ?? [{ port: g.port }]).reduce((a, m) => a + werftBonus(m.port), 0) + (CONFIG.fleet.mapBonus ?? 0) * Math.max(0, (g.maps?.length ?? 1) - 1);
 const hiredOn = (m) => (m.fleet?.units ?? []).filter((u) => !u.self && !u.small).length;
 
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 export function hireBlock(g) {
   if (g.status !== 'playing') return 'Spiel beendet';
-  if (hiredCount(g) >= perMapMax(g)) return hiredCount(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : `Diese Karte fasst höchstens ${perMapMax(g)} Pontons (mehr mit dem nächsten Level)`;
-  if (hiredTotal(g) >= Math.min(CONFIG.fleet.max, fleetMax(g))) return hiredTotal(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : 'Mehr Pontons brauchen das nächste Level (grössere Schiffsklasse)';
+  if (hiredCount(g) >= perMapMax(g)) return `Diese Karte ist voll: höchstens ${perMapMax(g)} Pontons (mehr mit dem nächsten Level oder einer Pontonwerft)`;
+  if (hiredTotal(g) >= totalMax(g)) return fleetMax(g) >= CONFIG.fleet.max ? 'Flotte ist voll: mehr Pontons gibt eine Pontonwerft im Hafen' : 'Mehr Pontons brauchen das nächste Level oder eine Pontonwerft im Hafen';
   if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
   const cost = nextHireCost(g);
   if (g.money < cost) return `Braucht ${cost.toLocaleString('de-CH')} CHF`;
@@ -108,7 +110,7 @@ export function moveBlock(g, id, to) {
   if (!T || to === g.mapIdx) return 'Ungültige Zielkarte';
   if (u.state === 'transit') return 'Ist schon unterwegs';
   if (g.time < (u.moveReady ?? 0)) return `Gerade verlegt: wieder möglich in ${Math.ceil(((u.moveReady ?? 0) - g.time) / CONFIG.daySeconds)} Tagen`;
-  if (hiredOn(T) >= perMapMax(g)) return `${T.name} hat schon ${perMapMax(g)} Pontons`;
+  if (hiredOn(T) >= perMapMax(g, T)) return `${T.name} hat schon ${perMapMax(g, T)} Pontons`;
   const c = moveCost(g); if (g.money < c) return `Braucht ${c.toLocaleString('de-CH')} CHF`;
   return null;
 }

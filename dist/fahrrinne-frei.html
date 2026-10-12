@@ -766,7 +766,7 @@ const { startIcons } = __m(23);
 const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(10);
 const { acceptContract } = __m(17);
 const { waitingByClass, shipPos } = __m(16);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, smallBlock, hireSmall, smallCount, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, smallBlock, hireSmall, smallCount, perMapMax, totalMax, hiredTotal, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
 const { bayCapacity, maxZones, zoneClasses } = __m(16);
 const { materialPrice } = __m(19);
 const { TowSim, groundedNear } = __m(24);
@@ -1349,7 +1349,7 @@ function updateFleet() {
   const box = $('fleet'), cls = targetClass(game);
   const rows = F.units.map((u) => `<div class="unit"><div><b>${u.name}</b>${u.self ? '' : ` <button class="mini" data-rename="${u.id}" title="Ponton umbenennen" aria-label="Umbenennen">✎</button>`} <small>${u.state === 'work' ? '⛏' : u.state === 'travel' ? '➜' : u.state === 'transit' ? '⛴' : '⏸'} ${u.note}<br>${num(u.removed)} m³ gebaggert${u.small ? '<br>Klein: halbe Leistung, arbeitet nur im Hafen' : ''}${!u.self && !u.small && game.port.harbor ? `<br>Einsatz: <select data-uloc="${u.id}"><option value="main" ${(u.loc ?? 'main') === 'main' ? 'selected' : ''}>Hauptkarte</option><option value="harbor" ${u.loc === 'harbor' ? 'selected' : ''}>Hafen</option></select>` : ''}${!u.self && !u.small && game.endless && game.maps.length > 1 ? `<br>Verlegen: <select data-umove="${u.id}"><option value="">auf andere Karte …</option>${game.maps.map((mp, k) => k === game.mapIdx ? '' : `<option value="${k}" ${moveBlock(game, u.id, k) ? 'disabled' : ''}>${mp.name} (${chf(moveCost(game))})${moveBlock(game, u.id, k) ? ' – ' + moveBlock(game, u.id, k) : ''}</option>`).join('')}</select>` : ''}</small></div>${u.self ? '<button data-recall="1" title="Eigenen Ponton zurückrufen">Zurückrufen</button>' : `<button data-fire="${u.id}" title="Ponton entlassen (kein Rückkauf)">Entlassen</button>`}</div>`).join('');
   const opts = ['<option value="">automatisch (kleinste Klasse, die noch nicht fährt)</option>', ...game.level.classes.map((id) => `<option value="${id}" ${goal === id ? 'selected' : ''}>${shipById(id).icon} ${shipById(id).name}</option>`)].join('');
-  box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.</small>
+  box.innerHTML = `<small>Gemietete Pontons baggern selbstständig (Automatik, Löhne ${chf(CONFIG.fleet.wage)}/Tag). Du musst den Querschnitt nicht öffnen.<br>Pontons: <b>${hiredTotal(game)}/${totalMax(game)}</b> gesamt, <b>${F.units.filter((u) => !u.self && !u.small).length}/${perMapMax(game)}</b> auf dieser Karte (Level plus Pontonwerft im Hafen).</small>
     ${rows}
     <label class="fleet-widen"><input type="checkbox" id="fleet-widen" ${F.widen ? 'checked' : ''} ${game.stats.loeffel > 0 ? '' : 'disabled'}> Ufer verbreitern (Löffelbagger): der letzte Ponton baut Land im Ausbaustreifen ab <select id="fleet-widthsel">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${F.widenW === n ? 'selected' : ''}>${n} Zeilen</option>`).join('')}</select></label>
     <div class="fleet-lane"><b>Fahrrinne festlegen</b><small> Ohne Vorgabe sucht das Spiel selbst die günstigste Linie. Mit Vorgabe gilt nur noch dein Verlauf (±1 Zelle).</small>
@@ -2599,7 +2599,7 @@ const CONFIG = {
   // und er reicht über den Wasserspiegel: damit lässt sich Ufer im Ausbaustreifen abtragen (der Fluss wird breiter)
   bucket: { hardFactor: 0.5, turbidity: 0.3, reachAbove: 2.2, bombChance: 1 },
   // Flotte: gemietete Pontons arbeiten selbstständig (Automatik), ohne dass du den Querschnitt öffnest
-  fleet: { small: { cost: 15000, wage: 150, power: 0.5, max: 3 }, names: ['Aare-Biber', 'Rheinfelden', 'Thur', 'Sihl', 'Töss', 'Limmat', 'Reuss', 'Birs', 'Emme', 'Saane', 'Glatt', 'Linth', 'Ausdauer', 'Hecht', 'Otter', 'Kormoran'], widenRows: 3, max: 8, perMap: [1, 2, 3, 5, 8], moveCost: 0.1, moveDays: 2, moveCooldownDays: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
+  fleet: { mapBonus: 0, small: { cost: 15000, wage: 150, power: 0.5, max: 3 }, names: ['Aare-Biber', 'Rheinfelden', 'Thur', 'Sihl', 'Töss', 'Limmat', 'Reuss', 'Birs', 'Emme', 'Saane', 'Glatt', 'Linth', 'Ausdauer', 'Hecht', 'Otter', 'Kormoran'], widenRows: 3, max: 8, perMap: [1, 2, 3, 5, 8], moveCost: 0.1, moveDays: 2, moveCooldownDays: 4, costs: [30000, 45000, 65000, 90000], wage: 300, margin: 0.1, soundNoise: 0.03, speedMult: 0.9, idleRetry: 3, rockFirmnessMin: 0.3 },
 };
 
 // Materialindex
@@ -2652,8 +2652,8 @@ const UPGRADES = {
   mixer: { group: 'plant', name: 'Betonwerk', desc: 'Mischt Beton aus Kies und Sand des Flusses (plus Zement), viel billiger als Zukaufen', maxLevel: 3, baseCost: 16000, growth: 1.7, apply: (s, l) => { s.mixer = l; s.mixRate = 0.2 * l; } },
   echolot: { group: 'ponton', name: 'Echolot', desc: 'Genauere Peilung: die Automatik trifft die Solltiefe besser', maxLevel: 2, baseCost: 9000, growth: 1.8, apply: (s, l) => { s.echolot = l; } },
   auto: { group: 'ponton', name: 'Automatik', desc: 'Stufe 1 experimentell (überwachen!), 2 zuverlässig, 3 voll', maxLevel: 3, baseCost: 12000, growth: 1.8, apply: (s, l) => { s.autoLevel = l; } },
-  buffer: { group: 'plant', name: 'Stapelbecken', desc: 'Mehr Puffer vor der Anlage: die Pumpe muss seltener pausieren (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 24, baseCost: 4000, growth: 1.5, costAt: (l) => (l < 12 ? 4000 * 1.5 ** l : 4000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.bufferCapacity += l * 60 + l * l * 5; } },
-  plant: { group: 'plant', name: 'Verarbeitung', desc: 'Mehr Durchsatz: die Anlage sortiert und verkauft schneller (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 24, baseCost: 5000, growth: 1.5, costAt: (l) => (l < 12 ? 5000 * 1.5 ** l : 5000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.plantCapacity += l * 2 + l * l * 0.25; } },
+  buffer: { group: 'plant', name: 'Stapelbecken', desc: 'Mehr Puffer vor der Anlage: die Pumpe muss seltener pausieren (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 40, baseCost: 4000, growth: 1.5, costAt: (l) => (l < 12 ? 4000 * 1.5 ** l : 4000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.bufferCapacity += l * 60 + l * l * 5; } },
+  plant: { group: 'plant', name: 'Verarbeitung', desc: 'Mehr Durchsatz: die Anlage sortiert und verkauft schneller (ab Stufe 7 braucht es Aufbereitungshallen im Hafen, jede weitere Karte mit Halle erlaubt mehr)', maxLevel: 40, baseCost: 5000, growth: 1.5, costAt: (l) => (l < 12 ? 5000 * 1.5 ** l : 5000 * 1.5 ** 12 * (1 + 0.35 * (l - 11))), apply: (s, l) => { s.plantCapacity += l * 2 + l * l * 0.25; } },
   dewater: { group: 'plant', name: 'Entwässerung', desc: 'Trockeneres Material: Entsorgung wird günstiger', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.disposalFactor = Math.max(0.4, 1 - l * 0.15); } },
   sorter: { group: 'plant', name: 'Sortieranlage', desc: 'Kies und Sand besser verkaufen', maxLevel: 4, baseCost: 9000, growth: 1.6, apply: (s, l) => { s.sortBonus = 1 + l * 0.2; } },
   guide: { group: 'traffic', name: 'Leitbaken am Ponton', desc: 'Schiffe fahren am arbeitenden Ponton schneller vorbei: weniger Verlangsamung (Stufe 4: kaum noch)', maxLevel: 4, baseCost: 8000, growth: 1.7, apply: (s, l) => { s.siteRelief = l * 0.2; } },
@@ -3610,6 +3610,7 @@ const PORT = {
     cbruecke: { name: 'Containerbrücke', icon: '🏗', cost: 38000, max: 1, up: [65000], info: "Spezialkran für Container: Containerschiffe legen nur mit Brücke an. Container werden 3× (Stufe 2: 5×) schneller umgeschlagen, im Minispiel 60 t pro Treffer. Braucht ein Containerterminal.", text: 'Spezialkran für Container: Containerschiffe legen nur mit Brücke an, Container werden 3× (Stufe 2: 5×) schneller umgeschlagen, im Minispiel 60 t pro Treffer.' },
     oelfeld: { name: 'Ölfeld (Förderpumpen)', icon: '🛢', cost: 60000, max: 1, up: [90000, 140000], rate: [8, 16, 28], info: "Eigene Ölförderung: Pumpen fördern täglich Öl aus dem Ölvorkommen dieser Karte (8 / 16 / 28 t) direkt ins Tanklager. Kosten nur 35 % des Basispreises pro Tonne, also viel günstiger als Einkaufen. Das Vorkommen ist endlich und nicht jede Karte hat eines. Braucht ein Tanklager mit freier Kapazität.", text: 'Fördert Mineralöl aus dem Ölvorkommen dieser Karte ins Tanklager (Förderkosten 35 % des Basispreises je Tonne). Das Vorkommen ist endlich; es gibt nicht auf jeder Karte eines.' },
     bahn: { name: 'Container-Bahnterminal', icon: '🚆', cost: 120000, max: 1, up: [180000], rate: [20, 45], info: "Bahnanschluss: bringt täglich Container (20 / 45 t) ins Containerlager, zu 60 % des Basispreises pro Tonne. Du verkaufst sie über den Hafen mit Gewinn. Braucht ein Containerterminal mit freier Kapazität.", text: 'Bahnanschluss: bringt täglich Container ins Containerlager (Einstand 60 % des Basispreises je Tonne). Braucht ein Containerterminal; du verkaufst über den Hafen.' },
+    werft: { name: 'Pontonwerft', icon: '🔧', cost: 40000, max: 1, up: [70000, 120000], bonus: [2, 4, 6], info: "Die Werft baut und wartet Pontons: Jede Stufe erlaubt mehr gemietete Pontons (+2 / +4 / +6). Das Plus gilt für diese Karte und für die Gesamtzahl; die Stufe deines Levels zählt zusätzlich. Auf jeder Karte mit Hafen kannst du eine Werft bauen.", text: 'Mehr Pontons: +2 / +4 / +6 je Stufe, zusätzlich zur Grenze deines Levels.' },
     sanierung: { name: 'Sanierungsanlage', icon: '☢', cost: 16000, up: [30000], refund: [0.5, 0.8], info: "Reinigt Altlasten aus dem Baggergut: spart 50 % (Stufe 2: 80 %) der Entsorgungskosten für belastetes Material. Lohnt sich, sobald du Altlast-Bereiche baggerst. Die beste Anlage aller Karten zählt.", text: 'Reinigt Altlasten aus dem Baggergut: spart einen Teil der Entsorgungskosten.' },
   },
   commodities: { kies: { name: 'Kies & Sand', lot: 200, icon: '⛰' }, oel: { name: 'Mineralöl', lot: 50, icon: '🛢' }, container: { name: 'Container', lot: 40, icon: '📦' } },
@@ -3677,6 +3678,8 @@ function harborDiag(g) {
   const busy = berthJobs(g).length, nb = berthsOf(g); if (busy >= nb) out.push({ ok: false, text: `Alle ${nb} Liegeplätze sind belegt; Warteräume: ${waitsOf(g)}.` });
   return out;
 }
+// Zusätzliche Pontons durch die Pontonwerft (Stufe) des Hafens dieser Karte
+const werftBonus = (port) => { const s = (port?.slots ?? []).find((q) => q?.type === 'werft'); return s ? PORT.buildings.werft.bonus[s.level - 1] ?? 0 : 0; };
 // Hafentiefe festlegen: bis zu welcher Schiffsklasse das Becken ausgebaggert wird (null = tiefste Klasse, die der Kai annimmt)
 function setHarborGoal(g, id) { const kc = HARBOR.kaiClasses[Math.max(0, kaiLevel(g) - 1)]; if (id && !SHIPS.slice(0, kc).some((s) => s.id === id)) return false; g.port.harborGoal = id || null; return true; }
 const bayReady = (g) => bayDepth(g) >= bayTarget(g) - 0.12;
@@ -3972,7 +3975,7 @@ function portDay(g) {
 }
 const cargoBase = (id) => CARGOS.find((c) => c.id === id)?.base ?? 1;
 
-return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, harborDiag: harborDiag, setHarborGoal: setHarborGoal, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, oilInfo: oilInfo, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, bridgeLevel: bridgeLevel, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
+return { PORT: PORT, carveBay: carveBay, bayDepth: bayDepth, kaiLevel: kaiLevel, bayTarget: bayTarget, harborDiag: harborDiag, werftBonus: werftBonus, setHarborGoal: setHarborGoal, bayReady: bayReady, createPort: createPort, ensurePort: ensurePort, berthsOf: berthsOf, isDocked: isDocked, waitsOf: waitsOf, berthJobs: berthJobs, waitJobs: waitJobs, cycleWaitCargo: cycleWaitCargo, cyclePriority: cyclePriority, hasKai: hasKai, capacity: capacity, refundFrac: refundFrac, PLANT_BASE: PLANT_BASE, werkLevel: werkLevel, werkLevels: werkLevels, plantLimit: plantLimit, buyPrice: buyPrice, sellPrice: sellPrice, openBlock: openBlock, openPort: openPort, siteWork: siteWork, siteReady: siteReady, siteAct: siteAct, autoLevelCost: autoLevelCost, autoLevel: autoLevel, oilInfo: oilInfo, buildBlock: buildBlock, build: build, upgradeBlock: upgradeBlock, upgrade: upgrade, demolish: demolish, IMPACT: IMPACT, marketImpact: marketImpact, buy: buy, sell: sell, bridgeLevel: bridgeLevel, machineOf: machineOf, reserveBerth: reserveBerth, portShip: portShip, dockShip: dockShip, dockPos: dockPos, loadHit: loadHit, updatePort: updatePort, portDay: portDay };
 },
 function(){
 
@@ -5695,7 +5698,7 @@ const { CONFIG, SHIPS, KIND, shipById } = __m(2);
 const { toolAvailable } = __m(12);
 const { zoneSupports } = __m(16);
 const { HARBOR, harborTarget } = __m(4);
-const { kaiLevel } = __m(6);
+const { kaiLevel, werftBonus } = __m(6);
 
 
 
@@ -5716,14 +5719,16 @@ const hiredTotal = (g) => (g.maps ?? []).reduce((n, m) => n + (m.fleet?.units ??
 const hireCostAt = (n) => { const c = CONFIG.fleet.costs; return n < c.length ? c[n] : Math.round((c[c.length - 1] * 1.35 ** (n - c.length + 1)) / 1000) * 1000; };
 const nextHireCost = (g) => hireCostAt(hiredTotal(g));
 // Höchstzahl gemieteter Pontons pro Karte (nach Level); ohne Levelsystem (Tests) gilt nur die Gesamtgrenze
-const perMapMax = (g) => Math.min(fleetMax(g), UNLOCK.enabled ? CONFIG.fleet.perMap[Math.min(4, rankOf(g) - 1)] : CONFIG.fleet.max);
+const perMapMax = (g, m = g.maps?.[g.mapIdx]) => Math.min(fleetMax(g), UNLOCK.enabled ? CONFIG.fleet.perMap[Math.min(4, rankOf(g) - 1)] : CONFIG.fleet.max) + werftBonus(m?.port ?? g.port) + (CONFIG.fleet.mapBonus ?? 0); // Level-Grenze plus Pontonwerft dieser Karte (plus optional fester Kartenbonus)
+// Gesamtzahl gemieteter Pontons: Level-Grenze plus alle Werften und Kartenboni
+const totalMax = (g) => fleetMax(g) + (g.maps ?? [{ port: g.port }]).reduce((a, m) => a + werftBonus(m.port), 0) + (CONFIG.fleet.mapBonus ?? 0) * Math.max(0, (g.maps?.length ?? 1) - 1);
 const hiredOn = (m) => (m.fleet?.units ?? []).filter((u) => !u.self && !u.small).length;
 
 // Warum lässt sich gerade kein Ponton mieten? null = geht
 function hireBlock(g) {
   if (g.status !== 'playing') return 'Spiel beendet';
-  if (hiredCount(g) >= perMapMax(g)) return hiredCount(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : `Diese Karte fasst höchstens ${perMapMax(g)} Pontons (mehr mit dem nächsten Level)`;
-  if (hiredTotal(g) >= Math.min(CONFIG.fleet.max, fleetMax(g))) return hiredTotal(g) >= CONFIG.fleet.max ? 'Flotte ist voll' : 'Mehr Pontons brauchen das nächste Level (grössere Schiffsklasse)';
+  if (hiredCount(g) >= perMapMax(g)) return `Diese Karte ist voll: höchstens ${perMapMax(g)} Pontons (mehr mit dem nächsten Level oder einer Pontonwerft)`;
+  if (hiredTotal(g) >= totalMax(g)) return fleetMax(g) >= CONFIG.fleet.max ? 'Flotte ist voll: mehr Pontons gibt eine Pontonwerft im Hafen' : 'Mehr Pontons brauchen das nächste Level oder eine Pontonwerft im Hafen';
   if (g.stats.autoLevel < 1) return 'Braucht die Automatik (Ausrüstung)';
   const cost = nextHireCost(g);
   if (g.money < cost) return `Braucht ${cost.toLocaleString('de-CH')} CHF`;
@@ -5806,7 +5811,7 @@ function moveBlock(g, id, to) {
   if (!T || to === g.mapIdx) return 'Ungültige Zielkarte';
   if (u.state === 'transit') return 'Ist schon unterwegs';
   if (g.time < (u.moveReady ?? 0)) return `Gerade verlegt: wieder möglich in ${Math.ceil(((u.moveReady ?? 0) - g.time) / CONFIG.daySeconds)} Tagen`;
-  if (hiredOn(T) >= perMapMax(g)) return `${T.name} hat schon ${perMapMax(g)} Pontons`;
+  if (hiredOn(T) >= perMapMax(g, T)) return `${T.name} hat schon ${perMapMax(g, T)} Pontons`;
   const c = moveCost(g); if (g.money < c) return `Braucht ${c.toLocaleString('de-CH')} CHF`;
   return null;
 }
@@ -6447,7 +6452,7 @@ function fleetSites(g) {
   return g.fleet.units.filter((u) => locOf(u) === 'main' && u.sim?.mode === 'slice').map((u) => ({ x: u.sim.x, y: u.sim.y }));
 }
 
-return { createFleet: createFleet, hiredTotal: hiredTotal, hireCostAt: hireCostAt, nextHireCost: nextHireCost, perMapMax: perMapMax, hireBlock: hireBlock, freeName: freeName, renameUnit: renameUnit, smallCount: smallCount, smallBlock: smallBlock, hireSmall: hireSmall, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, moveCost: moveCost, moveBlock: moveBlock, moveUnit: moveUnit, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, setFocus: setFocus, focusActive: focusActive, setSecond: setSecond, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, startPiles: startPiles, clearPilePlan: clearPilePlan, lineCells: lineCells, wallSpans: wallSpans, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
+return { createFleet: createFleet, hiredTotal: hiredTotal, hireCostAt: hireCostAt, nextHireCost: nextHireCost, perMapMax: perMapMax, totalMax: totalMax, hireBlock: hireBlock, freeName: freeName, renameUnit: renameUnit, smallCount: smallCount, smallBlock: smallBlock, hireSmall: hireSmall, hireUnit: hireUnit, lentUnit: lentUnit, lendBlock: lendBlock, lendPonton: lendPonton, recallPonton: recallPonton, moveCost: moveCost, moveBlock: moveBlock, moveUnit: moveUnit, dismissUnit: dismissUnit, setAvoid: setAvoid, cellAllowed: cellAllowed, setMine: setMine, setPour: setPour, setWiden: setWiden, setGoal: setGoal, targetClass: targetClass, openColumns: openColumns, openWidenColumns: openWidenColumns, laneMargin: laneMargin, setFocus: setFocus, focusActive: focusActive, setSecond: setSecond, MAX_AREAS: MAX_AREAS, addArea: addArea, removeArea: removeArea, setAreaDepth: setAreaDepth, rasterRoute: rasterRoute, addRoute: addRoute, setAreaWidth: setAreaWidth, setZoneUnit: setZoneUnit, setUnitLoc: setUnitLoc, unitsAt: unitsAt, PILE: PILE, pileLength: pileLength, pileConcrete: pileConcrete, pileBlock: pileBlock, planPile: planPile, PILE_REFUND: PILE_REFUND, planRemoval: planRemoval, startPiles: startPiles, clearPilePlan: clearPilePlan, lineCells: lineCells, wallSpans: wallSpans, setAreaUnit: setAreaUnit, openAreaColumns: openAreaColumns, areaWork: areaWork, openPourColumns: openPourColumns, updateFleet: updateFleet, fleetSites: fleetSites };
 },
 function(){
 const { CONFIG } = __m(2);
