@@ -263,3 +263,4 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Verkehr: Die zweite Rinne wird auch genutzt, wenn nur in einer Spur ein Ponton arbeitet; schnellere Schiffe überholen langsamere über die freie zweite Rinne; ein Stau-Wächter (Lotse) löst gegenseitiges Blockieren nach 20 s auf.
 - Hafen: Karte «Warum legt (k)ein Schiff an?» zeigt, was fehlt (Kai, Beckentiefe, Lager, Containerbrücke, Liegeplätze).
 - Rohstoffvorkommen mit 0 m³ Rest verschwinden sofort.
+- Weltkarte 🗺 (Endlos): Der Rhein in 10 Abschnitten von Rheinfelden bis Rotterdam, der Reihe nach erschliessbar. Zeigt Vorkommen, Öl, Fels und regionale Preise; Kartenbestand und Kosten: `ENDLESS.mapCosts`, Abschnitte in `src/sim/world.js`.

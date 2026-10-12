@@ -197,7 +197,7 @@ export function autoLevel(g, slot) {
 export function oilInfo(g) {
   const m = g.maps?.[g.mapIdx];
   if (!m || !g.endless) return { has: false, left: 0, start: 0 };
-  if (m.oilStart === undefined) { const r = createRng(((m.seed ?? 1) ^ 0x51ed270b) >>> 0); m.oilStart = r() < 0.55 ? Math.round(r.range(2500, 6000)) : 0; m.oilLeft = m.oilStart; }
+  if (m.oilStart === undefined) { const r = createRng(((m.seed ?? 1) ^ 0x51ed270b) >>> 0); const has = m.oil !== undefined ? m.oil : r() < 0.55; m.oilStart = has ? Math.round(r.range(2500, 6000)) : 0; m.oilLeft = m.oilStart; }
   return { has: m.oilStart > 0, left: m.oilLeft ?? 0, start: m.oilStart };
 }
 export function buildBlock(g, slot, type) {

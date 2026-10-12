@@ -1410,7 +1410,7 @@ test('Endlos: Seed bestimmt die Karte, weitere Karten erschliessen, alle laufen 
   a.switchMap(1); a.buyUpgrade('auto'); hireUnit(a); a.switchMap(0);
   for (let i = 0; i < 14 * 40 * 20; i++) a.update(0.05);
   assert.ok(a.maps[1].fleet.units[0].removed > 0, 'Flotte der Nebenkarte baggert im Hintergrund');
-  a.money = 1e6; while (a.addMap()) { /* bis zum Maximum */ }
+  a.money = 1e8; while (a.addMap()) { /* bis zum Maximum */ }
   assert.equal(a.maps.length, ENDLESS.maxMaps); assert.ok(a.mapBlock());
   a.switchMap(2);
   const r = restoreGame(serializeGame(a));
@@ -2015,7 +2015,7 @@ test('Lagerkosten: Ware im Hafenlager kostet täglich', () => {
 test('Ölfeld und Bahnterminal: Eigenproduktion mit Förderkosten, Vorkommen endlich, Bedingungen', () => {
   const g = harborGame(); const oi = oilInfo(g);
   // andere Karten testen, bis eine Öl hat (nicht jede Karte hat Öl)
-  let found = oi.has; for (let k = 0; !found && k < 40; k++) { g.maps[0].seed = 1000 + k; delete g.maps[0].oilStart; found = oilInfo(g).has; }
+  let found = oi.has; for (let k = 0; !found && k < 40; k++) { g.maps[0].seed = 1000 + k; delete g.maps[0].oilStart; delete g.maps[0].oil; found = oilInfo(g).has; }
   assert.ok(found, 'es gibt Karten mit Ölvorkommen');
   assert.equal(portBuildBlock(g, 4, 'oelfeld'), 'Gelände muss erst planiert werden'.slice(0, 0) || portBuildBlock(g, 4, 'oelfeld')); // planiert-Bedingung hängt vom Gelände ab
   g.port.slots[4] = { type: 'oelfeld', level: 1 }; g.port.slots[5] = { type: 'bahn', level: 2 };
@@ -2027,8 +2027,8 @@ test('Ölfeld und Bahnterminal: Eigenproduktion mit Förderkosten, Vorkommen end
   g.maps[0].oilLeft = 5; g.port.stock.oel = 0; portDay(g); assert.ok(g.port.stock.oel <= 5 + 1e-9, 'nie mehr als der Rest');
 });
 test('Flussdelta: wächst täglich nach und verschwindet nicht', () => {
-  const g = new Game(8, 'endlos'); g.eventsOn = false; g.money = 1e8; g.addMap();
-  const r = g.maps[1].river, d = r.deposits.find((q) => q.type === 'delta'); assert.ok(d && d.regen > 0, 'Delta auf Folgekarte');
+  const g = new Game(8, 'endlos'); g.eventsOn = false; g.money = 1e8; g.addMap(); g.addMap();
+  const r = g.maps[2].river, d = r.deposits.find((q) => q.type === 'delta'); assert.ok(d && d.regen > 0, 'Delta auf Folgekarte');
   const cells = []; for (let i = 0; i < r.dep.length; i++) if (r.dep[i] === d.id) cells.push(i);
   assert.ok(cells.length > 30, 'gross');
   for (const i of cells) r.depLeft[i] = 0.1; g.depositsDay();
@@ -2107,4 +2107,19 @@ test('Hafen-Diagnose nennt, warum kein Schiff anlegt', () => {
   assert.ok(d.some((x) => !x.ok && /Becken/.test(x.text) || x.ok));
   assert.ok(d.some((x) => /Containerbrücke/.test(x.text)));
   g.port.slots[0] = null; assert.match(harborDiag(g)[0].text, /Kai/);
+});
+
+import { RHEIN } from '../src/sim/world.js';
+test('Rhein: Abschnitte der Reihe nach mit festen Rohstoffen, Öl und Preisen', () => {
+  const g = new Game(5, 'endlos'); g.eventsOn = false; g.money = 1e12; g.unlocked.motor = true;
+  assert.equal(g.maps[0].name, RHEIN[0].name);
+  for (let k = 1; k < RHEIN.length; k++) assert.ok(g.addMap() !== false, 'Abschnitt ' + k);
+  assert.equal(g.maps.length, RHEIN.length); assert.equal(g.addMap(), false);
+  RHEIN.forEach((S, k) => {
+    const m = g.maps[k]; assert.equal(m.name, S.name);
+    const types = new Set(m.river.deposits.map((d) => d.type)); for (const d of S.dep) assert.ok(types.has(d), `${S.name}: ${d}`);
+    assert.equal(!!m.oil, S.oil);
+    assert.ok(Math.abs((m.market.bias.oel ?? 0) - S.bias.oel) < 0.06, `${S.name}: Ölpreis`);
+  });
+  const koeln = RHEIN.findIndex((s) => s.name === 'Köln'); g.mapIdx = koeln; assert.equal(oilInfo(g).has, true);
 });

@@ -58,7 +58,7 @@ export function restoreGame(text) {
     game.maps.forEach((m, i) => {
       const src = s.rivers[i], river = new River(src.cols, src.rows);
       for (const [k, v] of Object.entries(src)) river[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v;
-      const ref = i === 0 ? fresh : River.generate(createRng(m.seed), game.level.endless ? endlessRiver(game.seed, i) : game.level.river);
+      const ref = i === 0 && !game.level.endless ? fresh : River.generate(createRng(i === 0 ? game.seed : m.seed), game.level.endless ? endlessRiver(game.seed, i, m.sec ?? null) : game.level.river); // Referenzfluss nur für die Anzeige-Hilfen (Mittellinie, Breite)
       river.centerY = ref.centerY; river.halfW = ref.halfW;
       m.river = river; m.site = null; m.fair = null;
       m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort(); ensurePort(m.port);

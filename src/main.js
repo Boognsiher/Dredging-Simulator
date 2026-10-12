@@ -4,6 +4,7 @@ import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landO
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
 import { Game } from './sim/game.js';
 import { setupBooks } from './ui/books.js';
+import { setupWorld } from './ui/world.js';
 import { startIcons } from './ui/icons.js';
 import { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } from './sim/rank.js';
 import { acceptContract } from './sim/contracts.js';
@@ -315,6 +316,7 @@ function updateShipping() {
 let mapsSig = null;
 function updateMapSelect() {
   const sel = $('map-select'), show = game.endless && game.maps.length > 1;
+  $('btn-world').hidden = !game.endless; // Weltkarte (Rhein) gibt es im Endlos-Modus
   sel.hidden = !show; if (!show) return;
   const sig = game.maps.map((m) => m.name).join('|');
   if (sel.dataset.sig !== sig) { sel.innerHTML = game.maps.map((m, i) => `<option value="${i}">🗺 ${m.name}</option>`).join(''); sel.dataset.sig = sig; }
@@ -1213,6 +1215,8 @@ $('btn-ff2').onclick = cycleFF; $('btn-ff').onclick = cycleFF;
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
 const books = setupBooks(() => game);
+const world = setupWorld(() => game, { go: (i) => changeMap(i), add: () => { const k = game.addMap(); if (k !== false) { mapsSig = null; updateMaps(); toast(`Neuer Abschnitt: ${game.maps[k].name}`, 'good', true); } return k; } });
+void world;
 $('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
 addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
 

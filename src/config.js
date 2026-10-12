@@ -254,6 +254,6 @@ export const ENDLESS = {
   blurb: 'Zufallskarten mit Seed-Nummer. Du startest wie am Hochrhein und erschliesst mit der Zeit weitere Engstellen als neue Karten, die du alle verwaltest.',
   river: null, classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1, goalTons: Infinity, startMoney: 60000, deadlineDays: Infinity, turbidityMult: 1,
   palette: { water: [44, 112, 150], land: [98, 124, 80] },
-  maxMaps: 6, mapCosts: [0, 45000, 90000, 150000, 240000, 380000],
+  maxMaps: 10, mapCosts: [0, 45000, 90000, 150000, 240000, 380000, 560000, 800000, 1100000, 1500000], // der Rhein: 10 Abschnitte (src/sim/world.js)
 };
 export const levelById = (id) => (id === ENDLESS.id ? ENDLESS : LEVELS.find((l) => l.id === id) ?? LEVELS[0]);

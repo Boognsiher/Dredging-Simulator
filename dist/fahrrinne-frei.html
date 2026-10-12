@@ -588,12 +588,23 @@ body.pile-mode :is(#shift-actions, #tool-row, #touch-ui) { display: none !import
 
 .diag { margin: 6px 0; font-size: 13px; line-height: 1.45; } .diag .dok { color: #7bd88f; } .diag .dno { color: #ffb4a8; }
 
+#btn-world { flex: none; width: auto; min-height: 0; padding: 4px 10px; margin: 0 4px; font-size: 16px; }
+#btn-world[hidden] { display: none; }
+#world { position: fixed; inset: 0; z-index: 41; background: #000c; overflow-y: auto; padding: 12px; } #world[hidden] { display: none; }
+.wlayout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; align-items: start; margin: 8px 0; }
+@media (max-width: 760px) { .wlayout { grid-template-columns: 1fr; } }
+svg.wmap { width: 100%; max-height: 70vh; border-radius: 8px; background: #0f2f4d; }
+.wlab { font-size: 2.6px; fill: #e6f1f8; font-family: system-ui, sans-serif; paint-order: stroke; stroke: #0a1c2c; stroke-width: .5px; } .wlab.dim { fill: #9fb3c4; font-size: 2.3px; }
+.wst { cursor: pointer; } .wst circle { stroke: #0a1c2c; stroke-width: .6; } .wst.on circle { fill: #5cc8f0; } .wst.off circle { fill: #6d7c88; } .wst.next circle { fill: #f3cf4a; } .wst.cur circle { fill: #7bd88f; } .wst.sel circle { stroke: #fff; stroke-width: 1; }
+.wcard { background: #0d2236; border: 1px solid #ffffff22; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.45; } .wcard p { margin: 4px 0 8px; color: var(--muted); }
+.wprice { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0; } .wact { margin-top: 8px; } .wact button { width: 100%; } .wcard .pos { color: #7bd88f; } .wcard .neg { color: #ff8a7a; } .wcard .zero { color: #9fb3c4; }
+
 </style>
 </head>
 <body>
   <header id="header-bar">
     <h1 id="title">Fahrrinne frei! <small id="level-name"></small></h1>
-    <select id="map-select" aria-label="Karte wechseln" hidden></select>
+    <select id="map-select" aria-label="Karte wechseln" hidden></select><button id="btn-world" aria-label="Weltkarte" title="Weltkarte: Rhein" hidden>🗺</button>
     <button id="btn-menu" aria-label="Menü">☰ Menü</button>
     <div id="hud">
       <span title="Level = höchste befahrbare Schiffsklasse">Level <b id="h-rank"></b></span>
@@ -749,30 +760,32 @@ const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit:
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(7);
 const { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
 const { Game } = __m(11);
-const { setupBooks } = __m(20);
-const { startIcons } = __m(21);
+const { setupBooks } = __m(21);
+const { setupWorld } = __m(22);
+const { startIcons } = __m(23);
 const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(10);
 const { acceptContract } = __m(17);
 const { waitingByClass, shipPos } = __m(16);
 const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, smallBlock, hireSmall, smallCount, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(18);
 const { bayCapacity, maxZones, zoneClasses } = __m(16);
 const { materialPrice } = __m(19);
-const { TowSim, groundedNear } = __m(22);
+const { TowSim, groundedNear } = __m(24);
 const { makeHarborView, HARBOR, waitPos } = __m(4);
 const { toolName } = __m(13);
 const { priceOf, trend } = __m(8);
 const { needDepth, minNeedDepth } = __m(3);
-const { Advisor } = __m(23);
-const { serializeGame, restoreGame, savedSummary } = __m(24);
-const { createInput } = __m(25);
-const { setupTouch } = __m(27);
-const { steerToward } = __m(26);
-const { setupPort } = __m(28);
-const { fitSize, renderQuality } = __m(29);
-const { hintsFor } = __m(30);
-const { Fx } = __m(31);
-const { createAudio } = __m(32);
-const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(33);
+const { Advisor } = __m(25);
+const { serializeGame, restoreGame, savedSummary } = __m(26);
+const { createInput } = __m(27);
+const { setupTouch } = __m(29);
+const { steerToward } = __m(28);
+const { setupPort } = __m(30);
+const { fitSize, renderQuality } = __m(31);
+const { hintsFor } = __m(32);
+const { Fx } = __m(33);
+const { createAudio } = __m(34);
+const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(35);
+
 
 
 
@@ -1090,6 +1103,7 @@ function updateShipping() {
 let mapsSig = null;
 function updateMapSelect() {
   const sel = $('map-select'), show = game.endless && game.maps.length > 1;
+  $('btn-world').hidden = !game.endless; // Weltkarte (Rhein) gibt es im Endlos-Modus
   sel.hidden = !show; if (!show) return;
   const sig = game.maps.map((m) => m.name).join('|');
   if (sel.dataset.sig !== sig) { sel.innerHTML = game.maps.map((m, i) => `<option value="${i}">🗺 ${m.name}</option>`).join(''); sel.dataset.sig = sig; }
@@ -1988,6 +2002,8 @@ $('btn-ff2').onclick = cycleFF; $('btn-ff').onclick = cycleFF;
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
 const books = setupBooks(() => game);
+const world = setupWorld(() => game, { go: (i) => changeMap(i), add: () => { const k = game.addMap(); if (k !== false) { mapsSig = null; updateMaps(); toast(`Neuer Abschnitt: ${game.maps[k].name}`, 'good', true); } return k; } });
+void world;
 $('btn-menu').onclick = () => setMenu(!menuOpen); $('btn-menu-close').onclick = () => setMenu(false); $('scrim').onclick = () => setMenu(false);
 addEventListener('resize', () => { if (sheetOpen && !narrow()) setSheet(false); });
 
@@ -2717,7 +2733,7 @@ const ENDLESS = {
   blurb: 'Zufallskarten mit Seed-Nummer. Du startest wie am Hochrhein und erschliesst mit der Zeit weitere Engstellen als neue Karten, die du alle verwaltest.',
   river: null, classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1, goalTons: Infinity, startMoney: 60000, deadlineDays: Infinity, turbidityMult: 1,
   palette: { water: [44, 112, 150], land: [98, 124, 80] },
-  maxMaps: 6, mapCosts: [0, 45000, 90000, 150000, 240000, 380000],
+  maxMaps: 10, mapCosts: [0, 45000, 90000, 150000, 240000, 380000, 560000, 800000, 1100000, 1500000], // der Rhein: 10 Abschnitte (src/sim/world.js)
 };
 const levelById = (id) => (id === ENDLESS.id ? ENDLESS : LEVELS.find((l) => l.id === id) ?? LEVELS[0]);
 
@@ -3762,7 +3778,7 @@ function autoLevel(g, slot) {
 function oilInfo(g) {
   const m = g.maps?.[g.mapIdx];
   if (!m || !g.endless) return { has: false, left: 0, start: 0 };
-  if (m.oilStart === undefined) { const r = createRng(((m.seed ?? 1) ^ 0x51ed270b) >>> 0); m.oilStart = r() < 0.55 ? Math.round(r.range(2500, 6000)) : 0; m.oilLeft = m.oilStart; }
+  if (m.oilStart === undefined) { const r = createRng(((m.seed ?? 1) ^ 0x51ed270b) >>> 0); const has = m.oil !== undefined ? m.oil : r() < 0.55; m.oilStart = has ? Math.round(r.range(2500, 6000)) : 0; m.oilLeft = m.oilStart; }
   return { has: m.oilStart > 0, left: m.oilLeft ?? 0, start: m.oilStart };
 }
 function buildBlock(g, slot, type) {
@@ -4223,6 +4239,8 @@ const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activ
 const { processPlant, stockTotal, materialPrice } = __m(19);
 const { updateContracts } = __m(17);
 const { createFleet, updateFleet } = __m(18);
+const { RHEIN, sectionOf, applySection } = __m(20);
+
 
 
 
@@ -4243,7 +4261,7 @@ const { createFleet, updateFleet } = __m(18);
 // Zufallsfluss für den Endlos-Modus: Parameter aus (Seed, Kartennummer); spätere Karten sind schwerer
 const MAP_NAMES = ['Rheinfelden', 'Laufenburg', 'Kembs', 'Aare-Mündung', 'Thur-Enge', 'Bingen', 'Wesel', 'Eisernes Tor', 'Straubing', 'Passau', 'Basel', 'Koblenz'];
 const mapSeed = (seed, k) => ((seed >>> 0) * 2654435761 + k * 40503 + 12345) >>> 0;
-function endlessRiver(seed, k) {
+function endlessRiver(seed, k, sec = null) {
   const r = createRng(mapSeed(seed, k)), hard = Math.min(1, k / 5);
   const bars = [8, 22, 36].map((x) => ({ x: Math.round(x + r.range(-2, 2)), w: +r.range(3, 4).toFixed(1), raise: +r.range(0.45, 0.6).toFixed(2) }));
   const ridgeN = k === 0 ? 1 : 1 + (k >= 2 ? 1 : 0) + (k >= 4 ? 1 : 0), ridges = [];
@@ -4251,14 +4269,15 @@ function endlessRiver(seed, k) {
   const kinds = ['kiesbank', 'quarz', 'seife'], deposits = ['kiesbank'];
   for (let i = 0; i < 2 + (k >= 2 ? 1 : 0); i++) deposits.push(kinds[r.int(0, 2)]);
   if (k >= 1) deposits.push('delta'); // jede weitere Karte hat ein grosses Kies-Flussdelta (erkunden und Konzession kaufen)
-  return { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
+  const cfg = { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
     bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
+  return sec != null ? applySection(cfg, sectionOf(sec)) : cfg; // Rhein-Abschnitt: feste Rohstoffe und Eigenschaften
 }
 // Regionale Preise (Endlos): dauerhafter Aufschlag/Abschlag je Fracht und Karte, aus Seed und Kartennummer
 const BIAS_SPAN = { kies: 0.4, oel: 0.25, container: 0.3 }; // max. Abweichung des regionalen Preises
-function regionBias(seed, k) {
-  const br = createRng(mapSeed(seed, k) ^ 0x9e3779b9), span = BIAS_SPAN, bias = {};
-  for (const id of ['kies', 'oel', 'container']) bias[id] = +br.range(-span[id], span[id]).toFixed(2);
+function regionBias(seed, k, sec = null) {
+  const br = createRng(mapSeed(seed, k) ^ 0x9e3779b9), span = BIAS_SPAN, bias = {}, S = sec != null ? sectionOf(sec) : null;
+  for (const id of ['kies', 'oel', 'container']) { const r0 = +br.range(-span[id], span[id]).toFixed(2); bias[id] = S ? +Math.max(-span[id], Math.min(span[id], S.bias[id] + r0 * 0.15)).toFixed(2) : r0; } // Rhein: feste Lage, nur ein kleiner Zufallsanteil
   return bias;
 }
 const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0, cat: {} });
@@ -4273,9 +4292,9 @@ class Game {
     this.levelId = levelById(levelId).id;
     this.rng = createRng(seed);
     const L = levelById(this.levelId);
-    this.maps = [{ id: 0, name: MAP_NAMES[(seed >>> 0) % MAP_NAMES.length], seed, difficulty: 0 }]; // Karten (Engstellen); die Felder river, traffic, fleet, zones ... gehören zur aktuellen Karte (mapIdx)
+    this.maps = [{ id: 0, name: levelById(levelId).endless ? RHEIN[0].name : MAP_NAMES[(seed >>> 0) % MAP_NAMES.length], seed, difficulty: 0, ...(levelById(levelId).endless ? { sec: 0, oil: RHEIN[0].oil } : {}) }]; // Karten (Engstellen); die Felder river, traffic, fleet, zones ... gehören zur aktuellen Karte (mapIdx)
     this.mapIdx = 0;
-    this.river = River.generate(this.rng, L.endless ? endlessRiver(seed, 0) : L.river);
+    this.river = River.generate(this.rng, L.endless ? endlessRiver(seed, 0, 0) : L.river);
     this.wl = this.river.wl;
     this.water = { target: CONFIG.water.base, until: 0 };
     this.closed = false; // Hochwasser: Schifffahrt gesperrt
@@ -4292,7 +4311,7 @@ class Game {
     this.concrete = 0; // Betonvorrat in m³ (gekauft oder im Betonwerk gemischt)
     this.agg = { kies: 0, sand: 0 }; // Lager für das Betonwerk (m³)
     this.divertAgg = true; // Kies und Sand ins Betonwerk statt verkaufen
-    this.market = createMarket(L.endless ? regionBias(seed, 0) : {});
+    this.market = createMarket(L.endless ? regionBias(seed, 0, 0) : {});
     this.traffic = createTraffic();
     this.fleet = createFleet();
     this.shipping = createShipping(); // eigene Reederei (global)
@@ -4353,10 +4372,11 @@ class Game {
     if (this.mapBlock()) return false;
     const k = this.maps.length, cost = this.mapCost(), seed = mapSeed(this.seed, k), cur = this.mapIdx;
     this.money -= cost;
-    let name = MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
-    const river = River.generate(createRng(seed), endlessRiver(this.seed, k)); river.wl = this.wl;
-    const bias = regionBias(this.seed, k); // regionale Preise: Handel zwischen den Karten lohnt sich
-    this.maps.push({ id: k, name, seed, difficulty: k, river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
+    const sec = sectionOf(k) ? k : null, S = sectionOf(k);
+    let name = S ? S.name : MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
+    const river = River.generate(createRng(seed), endlessRiver(this.seed, k, sec)); river.wl = this.wl;
+    const bias = regionBias(this.seed, k, sec); // regionale Preise: Handel zwischen den Karten lohnt sich
+    this.maps.push({ id: k, name, seed, difficulty: k, ...(S ? { sec: k, oil: S.oil } : {}), river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
     this.mapIdx = k;
     this.port.bay = carveBay(this.river, this.wl);
     this.analyze();
@@ -6468,6 +6488,41 @@ function processPlant(stock, dt, stats, market, divert = null) {
 return { stockTotal: stockTotal, materialPrice: materialPrice, processPlant: processPlant };
 },
 function(){
+
+// Der Rhein als Folge von Flussabschnitten (Karten) im Endlos-Modus: flussabwärts von Rheinfelden bis Rotterdam.
+// Jeder Abschnitt hat feste Eigenschaften (Rohstoffe, Öl, Fels, regionale Preise); die Form des Flussbetts bleibt aus dem Seed erzeugt.
+// pos: Lage auf der Weltkarte (0..100 × 0..100, schematisch). bias: regionaler Preisaufschlag/-abschlag je Fracht. dep: Vorkommen (kiesbank, quarz, seife, delta).
+const RHEIN = [
+  { name: 'Rheinfelden', pos: [64, 91], dep: ['quarz'], oil: false, bias: { kies: -0.15, oel: 0.10, container: 0.15 }, note: 'Hochrhein: ruhiger Einstieg, günstiger Kies.' },
+  { name: 'Basel', pos: [57, 81], dep: ['kiesbank'], oil: false, bias: { kies: -0.05, oel: 0.05, container: -0.15 }, note: 'Hafenstadt mit Containerumschlag.' },
+  { name: 'Kembs', pos: [53, 71], dep: ['kiesbank', 'kiesbank', 'delta'], oil: false, bias: { kies: -0.30, oel: 0.10, container: 0.15 }, note: 'Oberrhein: Kiesbänke und Kies-Delta, Kies sehr günstig.' },
+  { name: 'Strassburg', pos: [50, 61], dep: ['quarz', 'delta'], oil: false, bias: { kies: -0.10, oel: 0.0, container: -0.05 }, note: 'Grosser Binnenhafen.' },
+  { name: 'Karlsruhe', pos: [54, 51], dep: ['quarz'], oil: true, bias: { kies: 0.05, oel: -0.20, container: 0.0 }, note: 'Raffinerie: Ölvorkommen, Öl günstig.' },
+  { name: 'Mannheim', pos: [52, 42], dep: ['kiesbank', 'delta'], oil: false, bias: { kies: 0.05, oel: -0.05, container: -0.20 }, note: 'Chemie und Container, Container günstig.' },
+  { name: 'Bingen', pos: [43, 35], dep: ['kiesbank', 'seife'], oil: false, hard: true, bias: { kies: 0.25, oel: 0.05, container: 0.10 }, note: 'Mittelrhein (Loreley): Felsriegel und enge Rinne, Erzseife.' },
+  { name: 'Köln', pos: [35, 26], dep: ['quarz', 'delta'], oil: true, bias: { kies: 0.15, oel: -0.22, container: -0.15 }, note: 'Raffinerien: Ölvorkommen, Öl günstig.' },
+  { name: 'Duisburg', pos: [30, 17], dep: ['quarz', 'delta'], oil: false, wide: true, bias: { kies: 0.20, oel: -0.10, container: -0.28 }, note: 'Grösster Binnenhafen Europas: Container sehr günstig.' },
+  { name: 'Rotterdam', pos: [21, 9], dep: ['kiesbank', 'delta'], oil: true, wide: true, bias: { kies: 0.30, oel: -0.25, container: -0.30 }, note: 'Seehafen: Öl und Container sehr günstig, Kies teuer.' },
+];
+
+const sectionOf = (k) => RHEIN[k] ?? null;
+
+// Eigenschaften des Abschnitts auf die zufälligen Flussparameter anwenden
+function applySection(cfg, sec) {
+  if (!sec) return cfg;
+  const kinds = sec.dep.filter((d) => d !== 'delta');
+  cfg.deposits = ['kiesbank', ...kinds, ...(sec.dep.includes('delta') ? ['delta'] : [])];
+  if (sec.hard) { // Felsriegel des Mittelrheins: schmaler, drei Riegel, mehr harte Schichten
+    cfg.halfWidth = +(cfg.halfWidth - 0.8).toFixed(2); cfg.hardBlobs += 3;
+    cfg.ridges = [8, 22, 36].map((x, i) => ({ x: x + (i - 1), w: 4, depth: 3.1 + 0.1 * i }));
+  }
+  if (sec.wide) cfg.halfWidth = +(cfg.halfWidth + 0.5).toFixed(2);
+  return cfg;
+}
+
+return { RHEIN: RHEIN, sectionOf: sectionOf, applySection: applySection };
+},
+function(){
 const { BOOK } = __m(11);
 
 
@@ -6523,6 +6578,80 @@ function setupBooks(getGame) {
 }
 
 return { bookData: bookData, booksHtml: booksHtml, setupBooks: setupBooks };
+},
+function(){
+const { RHEIN } = __m(20);
+const { depositType, ENDLESS } = __m(2);
+
+
+
+// Weltkarte: der Rhein als Folge von Abschnitten (= Karten). Zeigt, welche erschlossen sind, was sie bieten (Rohstoffe, Öl, regionale Preise) und was der nächste Abschnitt kostet.
+const chf = (n) => `${Math.round(n).toLocaleString('de-CH')} CHF`;
+const PRICE = { kies: 'Kies', oel: 'Öl', container: 'Container' };
+const tag = (b) => (b <= -0.08 ? `<span class="pos">günstig ${Math.round(b * 100)} %</span>` : b >= 0.08 ? `<span class="neg">teuer +${Math.round(b * 100)} %</span>` : '<span class="zero">normal</span>');
+
+// Daten eines Abschnitts: erschlossene Karten zeigen die echten Werte, noch gesperrte die festen Eigenschaften des Rheins
+function stationInfo(g, k) {
+  const S = RHEIN[k], m = g.maps[k] ?? null;
+  const dep = m ? m.river.deposits.filter((d) => !d.depleted) : null;
+  const oil = m ? (m.oilStart !== undefined ? m.oilStart > 0 : m.oil ?? null) : S?.oil ?? null;
+  const bias = m ? m.market?.bias ?? S?.bias : S?.bias;
+  const known = dep ? dep.filter((d) => d.known) : null;
+  return { name: m?.name ?? S?.name ?? `Abschnitt ${k + 1}`, note: S?.note ?? '', unlocked: !!m, current: m && k === g.mapIdx, pos: S?.pos ?? [50, 50], dep, known, depTypes: S?.dep ?? [], oil, bias, hard: !!S?.hard };
+}
+
+function worldHtml(g, sel) {
+  const n = Math.min(RHEIN.length, ENDLESS.maxMaps), st = Array.from({ length: n }, (_, k) => stationInfo(g, k));
+  const pts = st.map((s) => s.pos), path = (a, b) => pts.slice(a, b).map((p, i) => `${i ? 'L' : 'M'}${p[0]},${p[1]}`).join(' ');
+  const open = g.maps.length; // Anzahl erschlossener Abschnitte
+  const svg = `<svg viewBox="0 0 100 100" class="wmap" role="img" aria-label="Rhein von Rheinfelden bis Rotterdam">
+    <rect width="100" height="100" rx="4" fill="#0f2f4d"/>
+    <path d="M0,0 H46 C40,8 32,4 24,14 C16,22 10,18 0,26 Z" fill="#18517a"/>
+    <path d="M28,100 L100,100 L100,0 L52,0 C46,12 40,16 36,26 C32,38 26,46 30,60 C34,72 24,86 28,100 Z" fill="#3f6b3a" opacity=".9"/>
+    <path d="M60,100 L100,100 L100,60 C86,66 74,62 68,74 C62,84 66,92 60,100 Z" fill="#8a8f98" opacity=".75"/>
+    <text x="8" y="8" class="wlab dim">Nordsee</text><text x="78" y="92" class="wlab dim">Alpen</text>
+    <path d="${path(0, n)}" fill="none" stroke="#5a7a8f" stroke-width="1.4" stroke-dasharray="1.6 1.6" stroke-linecap="round"/>
+    ${open > 1 ? `<path d="${path(0, Math.min(open, n))}" fill="none" stroke="#5cc8f0" stroke-width="1.8" stroke-linecap="round"/>` : ''}
+    ${st.map((s, k) => `<g data-st="${k}" class="wst ${s.unlocked ? 'on' : k === open ? 'next' : 'off'} ${s.current ? 'cur' : ''} ${k === sel ? 'sel' : ''}">
+      <circle cx="${s.pos[0]}" cy="${s.pos[1]}" r="${k === sel ? 3.6 : 3}"/>
+      <text x="${s.pos[0] + 5}" y="${s.pos[1] + 1}" class="wlab">${s.unlocked ? '' : '🔒 '}${s.name}</text>
+      <text x="${s.pos[0] + 5}" y="${s.pos[1] + 4.4}" class="wlab dim">${[s.oil ? '🛢' : '', (s.dep ?? s.depTypes).some((d) => (d.type ?? d) === 'seife') ? '💎' : '', (s.dep ?? s.depTypes).some((d) => (d.type ?? d) === 'delta') ? '🌾' : '', s.hard ? '🪨' : ''].join(' ')}</text>
+    </g>`).join('')}
+  </svg>`;
+  const s = st[sel] ?? st[0], k = st[sel] ? sel : 0, cost = g.mapCost?.();
+  let action = '';
+  if (s.current) action = '<button disabled>▶ Aktuelle Karte</button>';
+  else if (s.unlocked) action = `<button class="primary" data-world="go" data-k="${k}">▶ Hierher wechseln</button>`;
+  else if (k === open) { const blk = g.mapBlock(); action = `<button class="primary" data-world="add" ${blk ? 'disabled' : ''}>Erschliessen (${cost === null ? '–' : chf(cost)})</button>${blk ? `<small class="warn">${blk}</small>` : ''}`; }
+  else action = `<small>Erst «${st[open]?.name ?? 'der vorherige Abschnitt'}» erschliessen.</small>`;
+  const depNames = s.dep ? [...s.known.map((d) => depositType(d.type)?.name ?? d.name), ...(s.dep.length > s.known.length ? [`${s.dep.length - s.known.length}× unerkundet`] : [])] : [...new Set(s.depTypes)].map((t) => depositType(t)?.name ?? t);
+  const card = `<div class="wcard"><b>${s.unlocked ? '' : '🔒 '}${s.name}</b> <small>Abschnitt ${k + 1} von ${n} · Schwierigkeit ${k + 1}</small><p>${s.note}</p>
+    <div><b>Vorkommen:</b> ${depNames.length ? depNames.join(', ') : '–'}</div>
+    <div><b>Öl:</b> ${s.oil === null ? '?' : s.oil ? 'Ölvorkommen (Ölfeld bauen)' : 'kein Öl'}${s.hard ? ' · <b>Fels</b>: Löffel/Fräse nötig' : ''}</div>
+    <div class="wprice">${Object.entries(PRICE).map(([id, nm]) => `<span>${nm}: ${tag(s.bias?.[id] ?? 0)}</span>`).join('')}</div>
+    <div class="wact">${action}</div></div>`;
+  return `<div class="books-head"><h2>🗺 Rhein</h2><button data-world="close" aria-label="Schliessen">✕</button></div>
+    <div class="wlayout">${svg}${card}</div>
+    <small>Der Rhein von Rheinfelden bis Rotterdam, Abschnitt für Abschnitt flussabwärts. 🛢 Öl · 💎 Erzseife · 🌾 Kies-Delta · 🪨 Felsriegel. Preise zeigen, wo Kies, Öl und Container günstig zu kaufen oder teuer zu verkaufen sind.</small>`;
+}
+
+function setupWorld(getGame, { go, add }) {
+  const el = document.createElement('div'); el.id = 'world'; el.hidden = true; document.body.append(el);
+  let open = false, sel = 0;
+  const render = () => { const g = getGame(); if (sel >= RHEIN.length) sel = 0; el.innerHTML = `<div class="books-card">${worldHtml(g, sel)}</div>`; };
+  const set = (v) => { open = v; el.hidden = !v; if (v) { sel = getGame().mapIdx; render(); } };
+  el.addEventListener('click', (e) => {
+    const st = e.target.closest('[data-st]'); if (st) { sel = +st.dataset.st; render(); return; }
+    const a = e.target.closest('[data-world]');
+    if (a) { const w = a.dataset.world; if (w === 'close') set(false); else if (w === 'go') { go(+a.dataset.k); set(false); } else if (w === 'add') { const k = add(); if (k !== false && k != null) sel = k; render(); } return; }
+    if (e.target === el) set(false);
+  });
+  addEventListener('keydown', (e) => { if (open && e.code === 'Escape') set(false); });
+  const btn = document.getElementById('btn-world'); if (btn) btn.onclick = () => set(!open);
+  return { toggle: () => set(!open), isOpen: () => open };
+}
+
+return { stationInfo: stationInfo, worldHtml: worldHtml, setupWorld: setupWorld };
 },
 function(){
 
@@ -6892,7 +7021,7 @@ function restoreGame(text) {
     game.maps.forEach((m, i) => {
       const src = s.rivers[i], river = new River(src.cols, src.rows);
       for (const [k, v] of Object.entries(src)) river[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v;
-      const ref = i === 0 ? fresh : River.generate(createRng(m.seed), game.level.endless ? endlessRiver(game.seed, i) : game.level.river);
+      const ref = i === 0 && !game.level.endless ? fresh : River.generate(createRng(i === 0 ? game.seed : m.seed), game.level.endless ? endlessRiver(game.seed, i, m.sec ?? null) : game.level.river); // Referenzfluss nur für die Anzeige-Hilfen (Mittellinie, Breite)
       river.centerY = ref.centerY; river.halfW = ref.halfW;
       m.river = river; m.site = null; m.fair = null;
       m.market ??= i === 0 ? (topMarket ?? createMarket()) : createMarket(); m.port ??= i === 0 ? (topPort ?? createPort()) : createPort(); ensurePort(m.port);
@@ -6917,7 +7046,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(26);
+const { isTap } = __m(28);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -7015,7 +7144,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(26);
+const { snapStick } = __m(28);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -7438,13 +7567,13 @@ const { SLICE } = __m(12);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
 const { shipPos, queuePos, bayCapacity } = __m(16);
 const { needDepth, minNeedDepth, trasseY } = __m(3);
-const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(34);
+const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(36);
 const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(6);
 const { HARBOR, berthPos, waitPos } = __m(4);
 const { areaWork, wallSpans } = __m(18);
 const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(7);
-const { Chain, drawChain } = __m(35);
-const { groundedNear } = __m(22);
+const { Chain, drawChain } = __m(37);
+const { groundedNear } = __m(24);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 
 
@@ -8438,7 +8567,7 @@ const CONFIG_TOW_SNAP = () => CONFIG.tow.snapAt;
 return { CELL: CELL, MARGIN: MARGIN, OX: OX, W: W, H: H, sizeCanvas: sizeCanvas, view: view, fs: fs, mapPx: mapPx, sliceY: sliceY, drawMap: drawMap, drawHarborScene: drawHarborScene, autoLineX: autoLineX, sliceHeadScreen: sliceHeadScreen, sliceMouthScreen: sliceMouthScreen, drawSlice: drawSlice, drawTowView: drawTowView, CARGOS: CARGOS, groundedNear: groundedNear };
 },
 function(){
-const { CELL, OX, W, H } = __m(33);
+const { CELL, OX, W, H } = __m(35);
 
 
 // Grafik-Aufwertung der Karte: weiches Gelände mit Hillshade und Schaum, Wasserglitzern, Schiffe mit Kielwasser, Ponton-Sprites, Tag-/Nachtlicht.
