@@ -24,6 +24,7 @@ export function createAudio() {
     o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur);
   };
   return {
+    ctx: () => ac, // für die Musik (gleicher AudioContext)
     // load 0..1: wie viel die Pumpe gerade wirklich saugt; on = Pumpe läuft
     hum(on, load) {
       if (!gain) return;

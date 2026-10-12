@@ -21,7 +21,7 @@ const ramp = (x, a, b) => Math.max(0, Math.min(1, (x - a) / (b - a)));
 // Aussehen im Jahreslauf (0..1): Schnee (Dez bis Anfang März), Herbstfarben (Ende Sep bis Ende Nov), Frühlingsblüte (April)
 export function seasonLook(doy) {
   const wd = doy >= 334 ? doy - 365 : doy; // Winter: -31 (1. Dez) bis 58
-  const snow = wd >= -31 && wd < 68 ? Math.min(ramp(wd, -31, -12), 1 - ramp(wd, 45, 68)) : 0;
+  const snow = wd >= -31 && wd < 68 ? Math.min(ramp(wd, -31, -12), 1 - ramp(wd, 28, 56)) : 0;
   const autumn = Math.min(ramp(doy, 262, 290), 1 - ramp(doy, 318, 338));
   const spring = Math.max(0, 1 - Math.abs(doy - 110) / 22);
   return { snow: Math.max(0, snow), autumn: Math.max(0, autumn), spring };

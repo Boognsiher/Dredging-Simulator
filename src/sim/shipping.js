@@ -16,6 +16,10 @@ export const SHIPPING = {
   },
 };
 
+// Erfahrung: je mehr Fahrten, desto besser das Schiff (Stufe 0..5): +5 % Ladung, −5 % Unterhalt, −4 % Fahrzeit je Stufe
+export const SHIP_XP = [0, 5, 15, 35, 70, 120]; // Fahrten ab denen Stufe 1..5 erreicht sind (Index = Stufe)
+export const shipLevel = (s) => { let l = 0; SHIP_XP.forEach((n, i) => { if ((s?.trips ?? 0) >= n) l = i; }); return l; };
+export const shipPerk = (s) => { const L = shipLevel(s); return { L, cap: 1 + 0.05 * L, upkeep: 1 - 0.05 * L, time: 1 - 0.04 * L }; };
 export const createShipping = () => ({ ships: [], seq: 0, trips: 0, profit: 0 });
 
 // Funktion fn im Kontext der Karte i ausführen (Markt, Hafen und Flussbett sind je Karte)
@@ -34,7 +38,7 @@ export function buyShip(g, type) {
   if (shipBlock(g, type)) return null;
   const T = SHIPPING.types[type], S = g.shipping;
   g.money -= T.cost;
-  const s = { id: ++S.seq, type, name: `${T.name} ${S.seq}`, from: 0, to: Math.min(1, g.maps.length - 1), cargo: T.cargos[0], autoBuy: true, toStock: false, backhaul: true, unload: 'manual', unloadMin: 0, minMargin: 1, state: 'idle', leg: 'out', t: 0, dur: 0, load: 0, basis: 0, trips: 0, profit: 0, note: 'startet' };
+  const s = { id: ++S.seq, type, name: `${T.name} ${S.seq}`, from: 0, to: Math.min(1, g.maps.length - 1), cargo: T.cargos[0], autoBuy: true, toStock: false, backhaul: true, unload: 'manual', unloadMin: 0, minMargin: 1, auto: true, trips: 0, state: 'idle', leg: 'out', t: 0, dur: 0, load: 0, basis: 0, trips: 0, profit: 0, note: 'startet' };
   S.ships.push(s);
   g.say(`${s.name} gekauft (−${T.cost.toLocaleString('de-CH')} CHF): Route im Menü unter «Reederei» einstellen.`, 'upgrade');
   return s;
@@ -50,6 +54,7 @@ export function setRoute(g, id, r) {
   if (r.from !== undefined && g.maps[r.from]) s.from = r.from;
   if (r.to !== undefined && g.maps[r.to]) s.to = r.to;
   if (r.autoBuy !== undefined) s.autoBuy = !!r.autoBuy;
+  if (r.auto !== undefined) s.auto = !!r.auto;
   if (r.toStock !== undefined) s.toStock = !!r.toStock;
   if (r.backhaul !== undefined) s.backhaul = !!r.backhaul;
   if (r.minMargin !== undefined) s.minMargin = Math.max(-50, Math.min(200, +r.minMargin || 0));
@@ -73,9 +78,10 @@ export function routeInfo(g, s) {
     if (why) { out.reason = `${why} (${m.name})`; return out; }
   }
   out.lf = Math.min(...ends.map((i) => g.maps[i].fair[cid].loadFactor));
-  out.eff = T.cap * out.lf;
-  out.days = SHIPPING.baseDays + SHIPPING.daysPerHop * Math.abs(s.from - s.to);
-  out.perT = (T.perDay * 2 * out.days) / Math.max(1, out.eff); // Fracht je Tonne: wenig Ladung (Niedrigwasser) = teurer
+  const P = shipPerk(s);
+  out.eff = T.cap * out.lf * P.cap;
+  out.days = (SHIPPING.baseDays + SHIPPING.daysPerHop * Math.abs(s.from - s.to)) * P.time;
+  out.perT = (T.perDay * P.upkeep * 2 * out.days) / Math.max(1, out.eff); // Fracht je Tonne: wenig Ladung (Niedrigwasser) = teurer
   out.priceFrom = withMap(g, s.from, () => buyPrice(g, s.cargo));
   out.priceTo = withMap(g, s.to, () => sellPrice(g, s.cargo));
   out.margin = out.priceTo - out.priceFrom - out.perT;
@@ -99,6 +105,19 @@ export function suggestRoutes(g, n = 5) {
   const seen = new Set(), best = [];
   for (const r of out) { const k = `${r.type}:${r.cargo}`; if (seen.has(k)) continue; seen.add(k); best.push(r); if (best.length >= n) break; } // je Schiffstyp und Fracht die beste Strecke
   return best;
+}
+// Beste Strecke für dieses Schiff nach Gewinn je Tag (Marge × Ladung ÷ Rundreise); die laufende Strecke bleibt, solange sie nicht klar schlechter ist
+export function bestRoute(g, s) {
+  let best = null, cur = null;
+  for (let a = 0; a < g.maps.length; a++) for (let b = 0; b < g.maps.length; b++) {
+    if (a === b) continue;
+    const info = routeInfo(g, { ...s, from: a, to: b }); if (!info.ok) continue;
+    const perDay = (info.margin * info.eff) / (2 * info.days), r = { from: a, to: b, perDay, margin: info.margin };
+    if (a === s.from && b === s.to) cur = r;
+    if (info.margin >= (s.minMargin ?? 0) && (!best || perDay > best.perDay)) best = r;
+  }
+  if (cur && best && cur.margin >= (s.minMargin ?? 0) && cur.perDay >= best.perDay * 0.9) return cur;
+  return best ?? cur;
 }
 // Warum es für einen Schiffstyp keine Route gibt: je Typ der häufigste Grund über alle Kartenpaare (oder «keine positive Marge»)
 export function routeHints(g) {
@@ -187,8 +206,9 @@ export function updateShipping(g, dt) {
   const day = CONFIG.daySeconds;
   for (const s of S.ships) {
     const T = SHIPPING.types[s.type];
-    const up = (T.perDay * dt * (s.state === 'idle' ? SHIPPING.idleUpkeep : 1)) / day; g.money -= up; g.today.costs += up; g.book('reederei', -up);
+    const up = (T.perDay * shipPerk(s).upkeep * dt * (s.state === 'idle' ? SHIPPING.idleUpkeep : 1)) / day; g.money -= up; g.today.costs += up; g.book('reederei', -up);
     if (s.state === 'idle') {
+      if (s.auto) { const b = bestRoute(g, s); if (b && (s.from !== b.from || s.to !== b.to)) { s.from = b.from; s.to = b.to; } } // Auto: jedes Mal die aktuell beste Strecke wählen (Preise ändern sich durch eigenen Handel)
       const info = routeInfo(g, s);
       if (!info.ok) { s.note = info.reason; continue; }
       if (info.margin < (s.minMargin ?? 0)) { s.note = `Marge ${info.margin.toFixed(1)} CHF/t unter ${s.minMargin ?? 0}: wartet auf bessere Preise`; continue; } // Preise hängen von Marktwirkung und Schwankungen ab

@@ -1,4 +1,5 @@
 import { CONFIG, KIND, DEBRIS, DEPOSITS } from '../config.js';
+import { createRng } from './rng.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -33,6 +34,8 @@ export class River {
     this.deposits = []; // { id, type, name, kind, mult, cx, cy, rx, ry, owned, known, cost }
     this.armor = new Float32Array(n); // Dicke der Betonschicht (m), die die Oberfläche der Zelle verhärtet; 0 = unbehandelt
     this.ext = new Uint8Array(n); // Ausbaustreifen am Ufer: 1 = Land, 2 = Flachwasser. Mit dem Löffelbagger abtragbar (wird dann zum Korridor), sonst Schutzgebiet
+    this.keep = new Uint8Array(n); // unbaubares Land: Randstreifen der Karte und Felsgebiete (wird nie abgetragen, rutscht nicht)
+    this.blobs = []; // Felsgebiete: { x, y, rx, ry } (Zellkoordinaten), nur für die Anzeige
     this.pending = new Set(); // Zellen, deren Böschung noch nachrutscht (abgeleitet, wird nicht gespeichert)
     this.slumpedTotal = 0; // m³ nachgerutscht (Anzeige)
   }
@@ -141,6 +144,7 @@ export class River {
       const spot = r.tribSpot(x, side, water); if (!spot) continue;
       r.tribs.push({ x, side, ...spot, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
     }
+    r.markKeep(createRng(Math.floor(ph[0] * 1e6) ^ (Math.floor(ph[1] * 1e6) * 31) ^ (Math.floor(ph[2] * 1e6) * 17))); // unbaubares Land (eigener Zufall)
     return r;
   }
 
@@ -205,7 +209,7 @@ export class River {
         if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
         const j = ny * cols + nx;
         const hi = this.top[i] > this.top[j] ? i : j, lo = hi === i ? j : i, diff = this.top[hi] - this.top[lo];
-        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0 || this.bay[hi] || this.bay[lo] || this.pile[hi] || this.pile[lo]) continue; // Beton und die Spundwände des Hafenbeckens halten die Böschung
+        if (diff <= S + 1e-6 || this.armor[hi] > 0 || this.armor[lo] > 0 || this.bay[hi] || this.bay[lo] || this.pile[hi] || this.pile[lo] || this.keep[hi]) continue; // Beton und die Spundwände des Hafenbeckens halten die Böschung
         const sed = this.top[hi] - this.rock[hi];
         if (sed <= 1e-6) continue; // Fels rutscht nicht
         const m = Math.min(sed, (diff - S) / 2);
@@ -243,6 +247,29 @@ export class River {
         this.pending.add(i);
       }
     }
+  }
+
+  // Unbaubares Land: die äusseren Zeilen der Karte (Uferrand) und 4 bis 6 Felsgebiete hinter dem Ausbaustreifen. Zufall aus eigenem Generator (verändert die übrige Welt nicht).
+  markKeep(rng) {
+    const { cols, rows } = this, BAND = 3;
+    this.keep.fill(0); this.blobs = [];
+    for (let x = 0; x < cols; x++) for (let y = 0; y < rows; y++) if ((y < BAND || y >= rows - BAND) && this.top[this.idx(x, y)] >= this.wl - 0.05) this.keep[this.idx(x, y)] = 1;
+    const yc = (x) => (this.centerY ? this.centerY(x) : rows / 2), hw = (x) => (this.halfW ? this.halfW(x) : 6.8), tx = (this.tribs ?? []).map((t) => [t.x, t.side]);
+    const want = 4 + (rng.chance(0.5) ? 1 : 0) + (rng.chance(0.3) ? 1 : 0);
+    for (let n = 0, tries = 0; n < want && tries < 80; tries++) {
+      const side = n % 2 ? 1 : -1, x = rng.int(4, cols - 5), off = hw(x) * rng.range(2.1, 2.7), y = yc(x) + side * off, rx = +rng.range(1.7, 3.2).toFixed(1), ry = +rng.range(1.3, 2.3).toFixed(1);
+      if (y - ry < 1 || y + ry > rows - 2 || tx.some(([t, s]) => s === side && Math.abs(t - x) < rx + 4) || this.blobs.some((b) => Math.hypot(b.x - x, b.y - y) < b.rx + rx + 2)) continue;
+      let ok = true; const cells = [];
+      for (let yy = Math.floor(y - ry); yy <= Math.ceil(y + ry) && ok; yy++) for (let xx = Math.floor(x - rx); xx <= Math.ceil(x + rx); xx++) {
+        if (xx < 0 || yy < 0 || xx >= cols || yy >= rows) continue;
+        if (Math.hypot((xx + 0.5 - x) / rx, (yy + 0.5 - y) / ry) >= 1) continue;
+        const i = this.idx(xx, yy); if (this.top[i] < this.wl + 0.1 || this.zone[i] || this.ext[i] || this.bay[i]) { ok = false; break; } cells.push(i);
+      }
+      if (!ok || cells.length < 4) continue;
+      for (const i of cells) { this.keep[i] = 1; this.ext[i] = 0; }
+      this.blobs.push({ x: +x.toFixed(1), y: +y.toFixed(1), rx, ry }); n++;
+    }
+    return this.blobs.length;
   }
 
   // Hochwasser bringt auf einen Schlag Schwebstoffe: am Rand mehr als in der Mitte
@@ -365,7 +392,7 @@ export class River {
     if (wSum === 0) return res;
     amount *= Math.min(1, wSum / CONFIG.pump.fullDraw); // im freien Wasser über dem Boden ist die Saugkraft schwach
     for (const [i, w] of cells) {
-      if (this.pile[i]) continue; // Pfähle sind fest
+      if (this.pile[i] || this.keep[i]) continue; // Pfähle und unbaubares Land sind fest
       const sed = this.top[i] - this.rock[i];
       let eff = 1 / (1 + this.hard[i] * hardFactor);
       if (sed <= 1e-6) eff *= firmness;

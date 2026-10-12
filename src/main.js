@@ -1,4 +1,4 @@
-import { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING, unloadNow, holdInfo, suggestRoutes, applyRoute, routeHints } from './sim/shipping.js';
+import { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING, unloadNow, holdInfo, suggestRoutes, applyRoute, routeHints, shipPerk, SHIP_XP } from './sim/shipping.js';
 import { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit as portLoadHit } from './sim/port.js';
 import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } from './sim/land.js';
 import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
@@ -28,6 +28,7 @@ import { fitSize, renderQuality } from './ui/layout.js';
 import { hintsFor } from './ui/hints.js';
 import { Fx } from './ui/fx.js';
 import { createAudio } from './ui/audio.js';
+import { createMusic } from './ui/music.js';
 import { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } from './ui/render.js';
 
 const $ = (id) => document.getElementById(id);
@@ -59,6 +60,8 @@ advisor.enabled = fritzOn();
 let tipOpen = false, tipTimer = 0;
 const fx = new Fx();
 const audio = createAudio();
+const music = createMusic(audio); // Jahreszeiten-Musik (synthetisch oder aus music/)
+let musicT = 0;
 let game = new Game();
 let sim = game.createSession(); sim.autoRange = game.autoRange ?? null;
 let paused = false, endShown = false;
@@ -298,12 +301,13 @@ function updateShipping() {
   const mapOpts = (sel) => game.maps.map((m, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${m.name}</option>`).join('');
   const prices = ['kies', 'oel', 'container'].map((id) => `${PORT.label[id]}: ` + game.maps.map((m, i) => `${m.name} <b>${withMap(game, i, () => Math.round(buyPrice(game, id)))}</b>/${withMap(game, i, () => Math.round(sellPrice(game, id)))}`).join(' · ')).join('<br>');
   const cards = S.ships.map((s) => {
-    const T = SHIPPING.types[s.type], info = routeInfo(game, s);
-    return `<div class="unit ship"><div><b>${T.icon} ${s.name}</b> <small>${s.state === 'sail' ? (s.leg === 'out' ? `unterwegs mit ${Math.round(s.load)} t` : 'Rückfahrt') : s.state === 'hold' ? 'wartet im Zielhafen' : 'im Hafen'} · ${s.trips} Fahrten · ${s.profit >= 0 ? '+' : '−'}${chf(Math.abs(s.profit))}<br>${s.note}</small>
+    const T = SHIPPING.types[s.type], info = routeInfo(game, s), P = shipPerk(s);
+    return `<div class="unit ship"><div><b>${T.icon} ${s.name}</b> <span class="shiplvl" title="Je mehr Fahrten, desto besser: +5 % Ladung, −5 % Unterhalt, −4 % Fahrzeit je Stufe">Stufe ${P.L}/${SHIP_XP.length - 1}</span> <small>${s.state === 'sail' ? (s.leg === 'out' ? `unterwegs mit ${Math.round(s.load)} t` : 'Rückfahrt') : s.state === 'hold' ? 'wartet im Zielhafen' : 'im Hafen'} · ${s.trips} Fahrten · ${s.profit >= 0 ? '+' : '−'}${chf(Math.abs(s.profit))}<br>${s.note}</small>
       <div class="row"><select data-sr="from" data-id="${s.id}">${mapOpts(s.from)}</select> ➜ <select data-sr="to" data-id="${s.id}">${mapOpts(s.to)}</select> <b>${PORT.label[s.cargo]}</b></div>
-      <label title="Auf der Rückfahrt in die Gegenrichtung laden, wenn es sich lohnt"><input type="checkbox" data-sr="backhaul" data-id="${s.id}" ${s.backhaul !== false ? 'checked' : ''}> Rückfracht</label> <label><input type="checkbox" data-sr="autoBuy" data-id="${s.id}" ${s.autoBuy ? 'checked' : ''}> im Starthafen einkaufen</label> <label title="Das Schiff fährt nur, wenn die erwartete Marge mindestens so hoch ist">Mindestmarge <input type="number" step="1" min="-50" max="200" value="${s.minMargin ?? 0}" data-sr="minMargin" data-id="${s.id}" style="width:54px"> CHF/t</label> <label><input type="checkbox" data-sr="toStock" data-id="${s.id}" ${s.toStock ? 'checked' : ''}> im Zielhafen einlagern</label>
+      <label title="Das Schiff wählt vor jeder Fahrt die Strecke mit dem besten Gewinn je Tag (Preise ändern sich durch deinen eigenen Handel)"><input type="checkbox" data-sr="auto" data-id="${s.id}" ${s.auto ? 'checked' : ''}> 🧠 beste Route automatisch</label> <label title="Auf der Rückfahrt in die Gegenrichtung laden, wenn es sich lohnt"><input type="checkbox" data-sr="backhaul" data-id="${s.id}" ${s.backhaul !== false ? 'checked' : ''}> Rückfracht</label> <label><input type="checkbox" data-sr="autoBuy" data-id="${s.id}" ${s.autoBuy ? 'checked' : ''}> im Starthafen einkaufen</label> <label title="Das Schiff fährt nur, wenn die erwartete Marge mindestens so hoch ist">Mindestmarge <input type="number" step="1" min="-50" max="200" value="${s.minMargin ?? 0}" data-sr="minMargin" data-id="${s.id}" style="width:54px"> CHF/t</label> <label><input type="checkbox" data-sr="toStock" data-id="${s.id}" ${s.toStock ? 'checked' : ''}> im Zielhafen einlagern</label>
       <div class="row"><label title="Was passiert bei der Ankunft im Zielhafen: sofort abladen, auf deine Entscheidung warten oder automatisch ab einem Mindestpreis abladen (Wartezeit kostet Unterhalt)">Ankunft <select data-sr="unload" data-id="${s.id}"><option value="manual" ${(s.unload ?? 'now') === 'manual' ? 'selected' : ''}>warten, ich entscheide</option><option value="limit" ${s.unload === 'limit' ? 'selected' : ''}>abladen ab Preis</option><option value="now" ${(s.unload ?? 'now') === 'now' ? 'selected' : ''}>sofort abladen</option></select></label> ${s.unload === 'limit' ? `<input type="number" min="0" max="5000" step="1" style="width:5em" data-sr="unloadMin" data-id="${s.id}" value="${Math.round(s.unloadMin ?? 0)}"> CHF/t` : ''}</div>
       ${s.state === 'hold' ? (() => { const h = holdInfo(game, s); return `<div class="holdbox"><b>Angekommen in ${game.maps[h.at].name}: ${Math.round(s.load)} t ${PORT.label[s.cargo]}</b><br><small>Preis jetzt <b>${Math.round(h.price)}</b> CHF/t · Einkauf ${Math.round(h.basis)} · Gewinn bei Verkauf <b class="${h.gain >= 0 ? '' : 'warn'}">${h.gain >= 0 ? '+' : '−'}${chf(Math.abs(h.gain))}</b><br>Durchschnitt der letzten Tage ${Math.round(h.avg)} (${h.vsAvg >= 0 ? '+' : ''}${Math.round(h.vsAvg * 100)} %) · Trend ${h.trend > 0.02 ? '▲ steigt' : h.trend < -0.02 ? '▼ fällt' : '► ruhig'} · Wartezeit kostet Unterhalt</small><br><button data-unload="${s.id}" class="primary">Jetzt abladen</button></div>`; })() : ''}
+      <small>Erfahrung: ${s.trips ?? 0} Fahrten${P.L < SHIP_XP.length - 1 ? `, Stufe ${P.L + 1} ab ${SHIP_XP[P.L + 1]}` : ' (höchste Stufe)'} · Ladung +${Math.round((P.cap - 1) * 100)} % · Unterhalt −${Math.round((1 - P.upkeep) * 100)} % · Fahrzeit −${Math.round((1 - P.time) * 100)} %</small>
       <small class="${info.ok ? (info.margin > 0 ? '' : 'warn') : 'warn'}">${info.ok ? `Ladung ${Math.round(info.eff)} t (${Math.round(info.lf * 100)} % je nach Rinne) · Fracht ${info.perT.toFixed(1)} CHF/t · Kauf ${Math.round(info.priceFrom)} ➜ Verkauf ${Math.round(info.priceTo)} · Marge ${info.margin >= 0 ? '+' : ''}${info.margin.toFixed(1)} CHF/t` : info.reason}</small></div>
       <button data-sellship="${s.id}" ${s.state === 'sail' || s.state === 'hold' ? 'disabled' : ''} title="Verkauf: ${Math.round(SHIPPING.sellShare * 100)} % des Preises">Verkaufen</button></div>`;
   }).join('');
@@ -1210,6 +1214,8 @@ $('btn-pump').onclick = togglePump;
 $('chk-fritz').checked = advisor.enabled;
 $('chk-fritz').onchange = (e) => setFritz(e.target.checked);
 $('btn-sound').onclick = toggleSound; $('btn-sound2').onclick = toggleSound;
+const syncMusicBtn = () => { $('btn-music').textContent = music.on ? '🎵 Musik an' : '🎵 Musik aus'; }; syncMusicBtn();
+$('btn-music').onclick = () => { music.setOn(!music.on); syncMusicBtn(); musicT = 99; };
 for (const id of ['btn-sound', 'btn-sound2']) $(id).textContent = audio.muted ? '🔇 Ton aus (M)' : '🔊 Ton an (M)';
 $('btn-pause').onclick = togglePause;
 let resizeT = 0;
@@ -1323,6 +1329,7 @@ function frame(now) {
 
   if (!running) audio.hum(false, 0);
   if (readInput.tap('KeyM')) toggleSound();
+  musicT += dt; if (musicT > 1) { musicT = 0; music.update(game.date.season, running); }
   if (running) {
     saveClock += dt;
     if (game.day !== savedDay || saveClock > 10) saveGame();

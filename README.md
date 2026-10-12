@@ -271,3 +271,6 @@ Gesperrte Technik zeigt «🔒 Level N»; im Kopf steht das aktuelle Level. Best
 - Reale Hoch- und Niedrigwasser (ab 2011, Rhein, angenähert; `src/sim/calendar.js`), im Menü «Mehr» abschaltbar.
 - Handy-Zurücktaste schliesst zuerst offene Fenster und Planungen; erst ein zweites Zurück innerhalb von 2 s verlässt das Spiel.
 - Pontonnamen: über 300 Kombinationen, ältere Pontons ohne Namen werden beim Laden benannt.
+- Reederei: Schiffe haben Erfahrungsstufen (0 bis 5 nach Fahrten: +5 % Ladung, −5 % Unterhalt, −4 % Fahrzeit je Stufe) und können die beste Route automatisch wählen.
+- Musik: vier Jahreszeiten-Melodien, im Browser erzeugt (Frühling heiter, Sommer warm, Herbst wehmütig, Winter still), mit weicher Überblendung; Ein/Aus im Menü «Mehr» (🎵). Eigene Stücke: Dateien `music/fruehling|sommer|herbst|winter.mp3` (oder .ogg) neben das Spiel legen, dann werden sie statt der erzeugten Melodien gespielt (nur über http, nicht als lokale Datei).
+- Unbaubares Land: die äusseren Zeilen der Karte und 4 bis 6 Felsgebiete am Ufer werden nie abgetragen und rutschen nicht.

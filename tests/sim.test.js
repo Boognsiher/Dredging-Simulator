@@ -2148,3 +2148,9 @@ test('Kalender: Start 1. März 2010, Jahreszeiten, reale Ereignisse als Wasserst
   for (let i = 0; i < 4000; i++) g.update(0.05); assert.ok(g.wl < CONFIG.water.base - 0.2, 'Niedrigwasser nach realem Ereignis');
   g.realEvents = false; assert.equal(g.realOn, false);
 });
+
+import { shipLevel, shipPerk, SHIP_XP } from '../src/sim/shipping.js';
+test('Reederei: Erfahrungsstufen nach Fahrten', () => {
+  assert.equal(shipLevel({ trips: 0 }), 0); assert.equal(shipLevel({ trips: 5 }), 1); assert.equal(shipLevel({ trips: 36 }), 3); assert.equal(shipLevel({ trips: 500 }), SHIP_XP.length - 1);
+  const P = shipPerk({ trips: 70 }); assert.equal(P.L, 4); assert.ok(Math.abs(P.cap - 1.2) < 1e-9 && Math.abs(P.upkeep - 0.8) < 1e-9);
+});

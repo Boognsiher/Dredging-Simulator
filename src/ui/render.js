@@ -62,6 +62,7 @@ export function drawMap(ctx, game, sim, ui = {}) {
   if (drawTerrain(ctx, game)) drawWaterFx(ctx, ui); // weiches Gelände und Wasser (gfx.js)
   else { ctx.fillStyle = rgb(pal.land); ctx.fillRect(0, 0, W, H);
     for (let y = 0; y < rows; y++) for (let x = -MARGIN; x < cols + MARGIN; x++) { const cx = Math.min(cols - 1, Math.max(0, x)), i = y * cols + cx; ctx.fillStyle = rgb(cellColor(r, i, pal)); ctx.fillRect(OX + x * CELL, y * CELL, CELL + 0.5, CELL + 0.5); } }
+  drawKeep(ctx, r);
   // Baggerkorridor: ausserhalb (Ufer und Flachwasser) liegt die Naturschutzzone
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
@@ -651,6 +652,20 @@ function drawFleet(ctx, game, ui = {}) {
     drawPontoonSprite(ctx, q.x, q.y, !!u.self, sim?.mode === 'slice' && sim.slice.suctioning, ui);
     ctx.font = font(11); ctx.textAlign = 'center'; const nw = ctx.measureText(u.name).width + 4, ndy = labelDy(q.x - nw / 2, q.y - CELL - fs(11), nw, fs(11) + 3);
     ctx.fillStyle = '#000b'; ctx.fillText(u.name, q.x + 1, q.y - CELL + 1 + ndy); ctx.fillStyle = '#d9f7ff'; ctx.fillText(u.name, q.x, q.y - CELL + ndy); ctx.textAlign = 'start';
+  }
+}
+
+// Unbaubare Felsgebiete am Ufer: Felsbrocken mit Schatten und Lichtkante (dahinter steht nie abgetragenes Land)
+function drawKeep(ctx, r) {
+  for (const b of r.blobs ?? []) {
+    const cx = OX + b.x * CELL, cy = b.y * CELL, rx = b.rx * CELL, ry = b.ry * CELL;
+    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(cx + 4, cy + 5, rx * 1.02, ry * 1.0, 0, 0, 7); ctx.fill();
+    const n = 7 + Math.round(b.rx * 2);
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * 6.283 + b.x, d = k % 3 ? 0.55 : 0.12, px = cx + Math.cos(a) * rx * d * (0.6 + 0.5 * ((k * 7) % 5) / 5), py = cy + Math.sin(a) * ry * d, rr = (0.38 + 0.12 * ((k * 3) % 4)) * Math.min(rx, ry) * 1.15;
+      const g = ctx.createRadialGradient(px - rr * 0.35, py - rr * 0.4, 1, px, py, rr * 1.1); g.addColorStop(0, '#c9ccd0'); g.addColorStop(0.6, '#8f949b'); g.addColorStop(1, '#5c6168');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, rr, 0, 7); ctx.fill();
+    }
   }
 }
 
