@@ -43,6 +43,18 @@ function detailNoise() {
 }
 export const terrainDebug = () => T.dbg;
 // Gelände neu berechnen: komplett (neuer Fluss, Pegel stark geändert) oder nur die Bereiche um sichtbar geänderte Zellen (Baggern, Rutschung)
+// Felsgebiete (unbaubares Land): sanfte Kuppeln, nur für Schattierung und Farbe des Geländes
+function buildBump(r) {
+  const b = new Float32Array(W * H);
+  for (const k of r.blobs ?? []) {
+    const cx = OX + k.x * CELL, cy = k.y * CELL, rx = k.rx * CELL * 1.1, ry = k.ry * CELL * 1.1;
+    for (let y = Math.max(0, Math.floor(cy - ry)); y < Math.min(H, Math.ceil(cy + ry)); y++) for (let x = Math.max(0, Math.floor(cx - rx)); x < Math.min(W, Math.ceil(cx + rx)); x++) {
+      const d2 = (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2) * (0.55 + 0.9 * vnoise(x * 0.09 + k.x, y * 0.09 + k.y)); if (d2 >= 1) continue; // unregelmässiger Umriss
+      const v = (1 - d2) ** 1.1 * 4.2 * (0.7 + 0.6 * vnoise(x * 0.16, y * 0.16)); if (v > b[y * W + x]) b[y * W + x] = v;
+    }
+  }
+  return b;
+}
 function renderTerrain(game) {
   const t0 = performance.now(), r = game.river, wl = r.wl, { cols, rows } = r, S = 3;
   const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
@@ -57,7 +69,7 @@ function renderTerrain(game) {
       const c = Math.min(rows - 1, Math.max(0, y / CELL - 0.5)), ya = Math.floor(c), yb = Math.min(rows - 1, ya + 1), fy = c - ya;
       for (let x = hx0; x < hx1; x++) {
         const cxp = Math.min(cols - 1, Math.max(0, (x - OX) / CELL - 0.5)), xa = Math.floor(cxp), xb = Math.min(cols - 1, xa + 1), fx = cxp - xa;
-        hm[y * W + x] = (r.top[ya * cols + xa] * (1 - fx) + r.top[ya * cols + xb] * fx) * (1 - fy) + (r.top[yb * cols + xa] * (1 - fx) + r.top[yb * cols + xb] * fx) * fy;
+        hm[y * W + x] = (r.top[ya * cols + xa] * (1 - fx) + r.top[ya * cols + xb] * fx) * (1 - fy) + (r.top[yb * cols + xa] * (1 - fx) + r.top[yb * cols + xb] * fx) * fy + (T.bump ? T.bump[y * W + x] : 0);
       }
     }
     const rw = x1 - x0, rh = y1 - y0, img = T.bctx.createImageData(rw, rh), d8 = img.data;
@@ -75,6 +87,10 @@ function renderTerrain(game) {
         if (SS.snow > 0 && -d > 0.2) { const f = Math.min(1, SS.snow * (1.0 + 0.4 * (n - 0.5)) * Math.min(1, (-d - 0.2) / 0.5)); R += (240 - R) * f; G += (246 - G) * f; B += (252 - B) * f; } }
       if (-d < 0.45) { const wet = 1 - (-d) / 0.45; R *= 1 - wet * 0.22; G *= 1 - wet * 0.18; B *= 1 - wet * 0.1; } // feuchte Uferkante
         if (-d > 2.4) { const f = T.forest[i]; R += (FOREST[0] - R) * f; G += (FOREST[1] - G) * f; B += (FOREST[2] - B) * f; }
+        { const bp = T.bump ? T.bump[i] : 0; if (bp > 0.03) { // Fels: Felskuppe mit weichem Rand, Schichten und Moos
+          const f = Math.min(1, (bp / 1.6) ** 1.3) * 0.94, wx = (x - OX) / CELL, wy = y / CELL, strata = vnoise(wx * 1.4 + wy * 0.5, wy * 5.5), crag = vnoise(wx * 4.2, wy * 4.2), sp = 0.62 + 0.5 * strata + 0.28 * crag;
+          let rr = 150 * sp, gg = 142 * sp, bb = 128 * sp; const moss = Math.max(0, vnoise(wx * 2.4 + 9, wy * 2.4) - 0.58) * 2.2; rr += (92 * sp - rr) * moss; gg += (118 * sp - gg) * moss; bb += (70 * sp - bb) * moss;
+          R += (rr - R) * f; G += (gg - G) * f; B += (bb - B) * f; } }
       } else {
         const wi = Math.max(0, Math.min(255, ((d + (n - 0.5) * 0.5) / 12) * 255)) | 0;
         R = WATER[wi * 3]; G = WATER[wi * 3 + 1]; B = WATER[wi * 3 + 2];
@@ -91,7 +107,7 @@ function renderTerrain(game) {
   const now = performance.now();
   if (!T.prevTop || T.prevTop.length !== r.top.length) T.prevTop = new Float32Array(r.top.length);
   if (full) {
-    T.sKey = sk; T.S = SE; paint(0, 0, W, H); dg.full++;
+    T.sKey = sk; T.S = SE; T.bump = buildBump(r); paint(0, 0, W, H); dg.full++;
     const dc = T.deco.getContext('2d'); dc.clearRect(0, 0, W, H); decorate(dc, hm, wl, r, null, T.S ?? SE); T.decoAt = now;
     T.ctx.drawImage(T.base, 0, 0); T.ctx.drawImage(T.deco, 0, 0);
     T.prevTop.set(r.top); T.prevWl = wl;
@@ -143,7 +159,12 @@ function decorate(c, hm, wl, river, rect = null, SS = { snow: 0, autumn: 0, spri
     else if (d > 0.1 && d < 0.65 && k < 0.55) items.push({ t: 'reed', x, y, r: 3 + k * 4 });
   }
   if (rect) for (let k = items.length - 1; k >= 0; k--) { const it = items[k]; if (it.x + it.r < rect[0] || it.x - it.r > rect[2] || it.y + it.r < rect[1] || it.y - it.r > rect[3]) items.splice(k, 1); } // nur der aktualisierte Bereich
+  for (const k of river.blobs ?? []) { // einzelne Felsbrocken auf dem Felsgebiet
+    const n = 7 + Math.round(k.rx * 3);
+    for (let j = 0; j < n; j++) { const a = hash(j, k.x * 7) * 6.283, d = Math.sqrt(hash(k.y * 3, j)) * 0.85, x = OX + (k.x + Math.cos(a) * k.rx * d) * CELL, y = (k.y + Math.sin(a) * k.ry * d) * CELL; if (T.bump && T.bump[(y | 0) * W + (x | 0)] > 0.5) items.push({ t: 'stone', x, y, r: 2.2 + hash(j, k.y) * 3.4 }); }
+  }
   items.sort((a, b) => a.y - b.y);
+  if (T.bump) for (let k = items.length - 1; k >= 0; k--) if (T.bump[(items[k].y | 0) * W + (items[k].x | 0)] > 0.05) items.splice(k, 1); // keine Bäume auf dem Fels
   for (let k = items.length - 1; k >= 0; k--) if (nearCreek(creeks, items[k].x, items[k].y, items[k].r + 3)) items.splice(k, 1); // Bäche bleiben frei: Bäume und Büsche stehen daneben, nicht darauf
   for (const it of items) {
     if (it.t === 'tree') {
@@ -153,6 +174,10 @@ function decorate(c, hm, wl, river, rect = null, SS = { snow: 0, autumn: 0, spri
       c.fillStyle = g; c.beginPath(); c.arc(it.x, it.y, it.r, 0, 7); c.fill();
       if (SS.spring > 0.3 && hv < 0.45) { c.fillStyle = `rgba(255,214,230,${0.7 * SS.spring})`; for (let j = 0; j < 4; j++) { c.beginPath(); c.arc(it.x + (hash(j, it.x) - 0.5) * it.r * 1.3, it.y + (hash(it.y, j) - 0.5) * it.r * 1.3, 1.2, 0, 7); c.fill(); } } // Blüte im Frühling
       if (SS.snow > 0) { c.fillStyle = `rgba(246,250,255,${0.88 * SS.snow})`; c.beginPath(); c.ellipse(it.x - it.r * 0.1, it.y - it.r * 0.15, it.r * 0.8, it.r * 0.7, 0, 0, 7); c.fill(); } // Schnee in der Krone
+    } else if (it.t === 'stone') {
+      c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(it.x + it.r * 0.35, it.y + it.r * 0.45, it.r * 1.05, it.r * 0.7, 0, 0, 7); c.fill();
+      const sg = c.createLinearGradient(it.x - it.r, it.y - it.r, it.x + it.r, it.y + it.r); sg.addColorStop(0, '#d2d0c8'); sg.addColorStop(0.5, '#9a968c'); sg.addColorStop(1, '#6a665e');
+      c.fillStyle = sg; c.beginPath(); c.ellipse(it.x, it.y, it.r, it.r * 0.78, 0.4, 0, 7); c.fill();
     } else if (it.t === 'bush') {
       c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(it.x + 1, it.y + 1.5, it.r * 1.1, it.r * 0.7, 0, 0, 7); c.fill();
       c.fillStyle = SS.autumn > 0.2 ? `rgb(${Math.round(93 + (170 - 93) * SS.autumn)},${Math.round(146 + (110 - 146) * SS.autumn)},${Math.round(73 + (50 - 73) * SS.autumn)})` : '#5d9249'; c.beginPath(); c.arc(it.x, it.y, it.r, 0, 7); c.fill(); if (SS.snow > 0) { c.fillStyle = `rgba(246,250,255,${0.85 * SS.snow})`; c.beginPath(); c.arc(it.x, it.y, it.r * 0.85, 0, 7); c.fill(); } c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.arc(it.x - it.r * 0.3, it.y - it.r * 0.3, it.r * 0.5, 0, 7); c.fill();
