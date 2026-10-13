@@ -29,7 +29,7 @@ export function endlessRiver(seed, k, sec = null) {
   for (let i = 0; i < 2 + (k >= 2 ? 1 : 0); i++) deposits.push(kinds[r.int(0, 2)]);
   if (k >= 1) deposits.push('delta'); // jede weitere Karte hat ein grosses Kies-Flussdelta (erkunden und Konzession kaufen)
   const cfg = { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
-    bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
+    bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, rockLevel: +Math.min(1, k / 5).toFixed(2), deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
   return sec != null ? applySection(cfg, sectionOf(sec)) : cfg; // Rhein-Abschnitt: feste Rohstoffe und Eigenschaften
 }
 // Regionale Preise (Endlos): dauerhafter Aufschlag/Abschlag je Fracht und Karte, aus Seed und Kartennummer

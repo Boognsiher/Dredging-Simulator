@@ -144,7 +144,7 @@ export class River {
       const spot = r.tribSpot(x, side, water); if (!spot) continue;
       r.tribs.push({ x, side, ...spot, kind: rng.chance(0.5) ? KIND.kies : KIND.sand, rate: cfg.tribRate ?? 0.008 });
     }
-    r.markKeep(createRng(Math.floor(ph[0] * 1e6) ^ (Math.floor(ph[1] * 1e6) * 31) ^ (Math.floor(ph[2] * 1e6) * 17))); // unbaubares Land (eigener Zufall)
+    r.markKeep(createRng(Math.floor(ph[0] * 1e6) ^ (Math.floor(ph[1] * 1e6) * 31) ^ (Math.floor(ph[2] * 1e6) * 17)), cfg.rockLevel ?? 0); // unbaubares Land (eigener Zufall)
     return r;
   }
 
@@ -250,23 +250,37 @@ export class River {
   }
 
   // Unbaubares Land: die äusseren Zeilen der Karte (Uferrand) und 4 bis 6 Felsgebiete hinter dem Ausbaustreifen. Zufall aus eigenem Generator (verändert die übrige Welt nicht).
-  markKeep(rng) {
+  markKeep(rng, level = 0) {
     const { cols, rows } = this, BAND = 3;
     this.keep.fill(0); this.blobs = [];
     for (let x = 0; x < cols; x++) for (let y = 0; y < rows; y++) if ((y < BAND || y >= rows - BAND) && this.top[this.idx(x, y)] >= this.wl - 0.05) this.keep[this.idx(x, y)] = 1;
     const yc = (x) => (this.centerY ? this.centerY(x) : rows / 2), hw = (x) => (this.halfW ? this.halfW(x) : 6.8), tx = (this.tribs ?? []).map((t) => [t.x, t.side]);
     const want = 4 + (rng.chance(0.5) ? 1 : 0) + (rng.chance(0.3) ? 1 : 0);
     for (let n = 0, tries = 0; n < want && tries < 80; tries++) {
-      const side = n % 2 ? 1 : -1, x = rng.int(4, cols - 5), off = hw(x) * rng.range(2.1, 2.7), y = yc(x) + side * off, rx = +rng.range(1.7, 3.2).toFixed(1), ry = +rng.range(1.3, 2.3).toFixed(1);
+      const side = n % 2 ? 1 : -1, x = rng.int(4, cols - 5), off = hw(x) * Math.max(1.4, rng.range(2.1, 2.7) - level * rng.range(0.5, 1.1)), y = yc(x) + side * off, rx = +rng.range(1.7, 3.2).toFixed(1), ry = +rng.range(1.3, 2.3).toFixed(1);
       if (y - ry < 1 || y + ry > rows - 2 || tx.some(([t, s]) => s === side && Math.abs(t - x) < rx + 4) || this.blobs.some((b) => Math.hypot(b.x - x, b.y - y) < b.rx + rx + 2)) continue;
       let ok = true; const cells = [];
       for (let yy = Math.floor(y - ry); yy <= Math.ceil(y + ry) && ok; yy++) for (let xx = Math.floor(x - rx); xx <= Math.ceil(x + rx); xx++) {
         if (xx < 0 || yy < 0 || xx >= cols || yy >= rows) continue;
         if (Math.hypot((xx + 0.5 - x) / rx, (yy + 0.5 - y) / ry) >= 1) continue;
-        const i = this.idx(xx, yy); if (this.top[i] < this.wl + 0.1 || this.zone[i] || this.ext[i] || this.bay[i]) { ok = false; break; } cells.push(i);
+        const i = this.idx(xx, yy); if (this.top[i] < this.wl + 0.1 || this.zone[i] || (this.ext[i] && level < 0.2) || this.bay[i]) { ok = false; break; } cells.push(i);
       }
       if (!ok || cells.length < 4) continue;
       for (const i of cells) { this.keep[i] = 1; this.ext[i] = 0; }
+      this.blobs.push({ x: +x.toFixed(1), y: +y.toFixed(1), rx, ry }); n++;
+    }
+    // Hohe Schwierigkeit: Felsen mitten im Fluss (Insel). Die Schiffe müssen herumfahren, links und rechts bleibt die Rinne frei.
+    const isl = level >= 0.4 ? 1 + (level >= 0.8 ? 1 : 0) : 0, bx = Math.round(cols * 0.62);
+    for (let n = 0, tries = 0; n < isl && tries < 1500; tries++) {
+      const x = rng.int(8, cols - 9), side = rng.chance(0.5) ? -1 : 1, rx = +rng.range(2.0, 3.0).toFixed(1), ry = +rng.range(1.2, 1.9).toFixed(1), y = yc(x) + side * hw(x) * rng.range(0.05, 0.3);
+      if (Math.abs(x - bx) < 9 || Math.abs(x - 3) < 4 || this.blobs.some((b) => Math.hypot(b.x - x, b.y - y) < b.rx + rx + 3)) continue;
+      const cells = []; let ok = true;
+      for (let yy = Math.floor(y - ry); yy <= Math.ceil(y + ry) && ok; yy++) for (let xx = Math.floor(x - rx); xx <= Math.ceil(x + rx); xx++) {
+        if (Math.hypot((xx + 0.5 - x) / rx, (yy + 0.5 - y) / ry) >= 1) continue;
+        const i = this.idx(xx, yy); if (this.bay[i] || this.pile[i]) { ok = false; break; } cells.push(i);
+      }
+      if (!ok || cells.length < 4) continue;
+      for (const i of cells) { const h = this.wl + 0.45; this.top[i] = h; this.rock[i] = h; this.cap[i] = 0; this.keep[i] = 1; this.ext[i] = 0; this.debris[i] = 0; this.hard[i] = 0; this.kind[i] = KIND.schlick; this.dep[i] = 0; if (this.depLeft) this.depLeft[i] = 0; this.pending.add(i); }
       this.blobs.push({ x: +x.toFixed(1), y: +y.toFixed(1), rx, ry }); n++;
     }
     return this.blobs.length;

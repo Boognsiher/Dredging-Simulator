@@ -235,14 +235,14 @@ export const LEVELS = [
   {
     id: 'loreley', name: 'Mittelrhein: Loreley-Enge', short: 'Loreley',
     blurb: 'Schmal, felsig und viel Verkehr. Zwei Felsriegel sperren die Grossen aus: ohne Felsfräse kommt kein Schubverband durch, und an der Enge ist Gegenverkehr ein Thema.',
-    river: { halfWidth: 5.6, depthMax: 2.3, rockDepth: 5.2, meander: 2.8, bars: [{ x: 7, w: 3, raise: 0.5 }, { x: 18, w: 3.5, raise: 0.5 }, { x: 38, w: 3, raise: 0.5 }], ridges: [{ x: 13, w: 4.5, depth: 3.6 }, { x: 30, w: 4, depth: 3.3 }], shoals: 4, altlast: 3, hardBlobs: 7, debris: 18, deposits: ['kiesbank', 'quarz', 'quarz', 'seife'] },
+    river: { halfWidth: 5.6, depthMax: 2.3, rockDepth: 5.2, meander: 2.8, bars: [{ x: 7, w: 3, raise: 0.5 }, { x: 18, w: 3.5, raise: 0.5 }, { x: 38, w: 3, raise: 0.5 }], ridges: [{ x: 13, w: 4.5, depth: 3.6 }, { x: 30, w: 4, depth: 3.3 }], shoals: 4, rockLevel: 0.5, altlast: 3, hardBlobs: 7, debris: 18, deposits: ['kiesbank', 'quarz', 'quarz', 'seife'] },
     classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.3, goalTons: 110000, startMoney: 55000, deadlineDays: 120, turbidityMult: 1.1,
     palette: { water: [44, 104, 124], land: [92, 100, 84] },
   },
   {
     id: 'donau', name: 'Donau: Eisernes Tor', short: 'Eisernes Tor',
     blurb: 'Breiter Strom, harter Fels und alte Industrie am Ufer: viele Altlasten, viele Blindgänger. Wer hier den Schubverbänden die Rinne öffnet, verdient richtig.',
-    river: { halfWidth: 7.4, depthMax: 2.6, rockDepth: 5.0, meander: 2.2, bars: [{ x: 8, w: 3.5, raise: 0.6 }, { x: 20, w: 4, raise: 0.6 }, { x: 33, w: 3.5, raise: 0.6 }], ridges: [{ x: 14, w: 4, depth: 3.5 }, { x: 27, w: 5, depth: 3.2 }, { x: 40, w: 3, depth: 3.6 }], shoals: 6, altlast: 6, hardBlobs: 8, debris: 22, deposits: ['kiesbank', 'kiesbank', 'quarz', 'seife', 'seife'] },
+    river: { halfWidth: 7.4, depthMax: 2.6, rockDepth: 5.0, meander: 2.2, bars: [{ x: 8, w: 3.5, raise: 0.6 }, { x: 20, w: 4, raise: 0.6 }, { x: 33, w: 3.5, raise: 0.6 }], ridges: [{ x: 14, w: 4, depth: 3.5 }, { x: 27, w: 5, depth: 3.2 }, { x: 40, w: 3, depth: 3.6 }], shoals: 6, rockLevel: 0.9, altlast: 6, hardBlobs: 8, debris: 22, deposits: ['kiesbank', 'kiesbank', 'quarz', 'seife', 'seife'] },
     classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.5, goalTons: 160000, startMoney: 60000, deadlineDays: 130, turbidityMult: 1,
     palette: { water: [56, 110, 110], land: [108, 112, 80] },
   },
