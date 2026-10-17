@@ -1,7 +1,7 @@
 import { buyShip, sellShip, setRoute, routeInfo, shipBlock, withMap, SHIPPING, unloadNow, holdInfo, suggestRoutes, applyRoute, routeHints, shipPerk, SHIP_XP } from './sim/shipping.js';
 import { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit as portLoadHit } from './sim/port.js';
 import { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } from './sim/land.js';
-import { LEVELS, ENDLESS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
+import { LEVELS, ENDLESS, ENDLESS_WORLDS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } from './config.js';
 import { Game } from './sim/game.js';
 import { setupBooks } from './ui/books.js';
 import { SEASON_ICON, seasonLook } from './sim/calendar.js';
@@ -652,7 +652,7 @@ function updateHud() {
   const left = game.timeLeft, mm = Math.floor(left / 60), ss = String(Math.floor(left % 60)).padStart(2, '0');
   const fin = Number.isFinite(game.deadlineDays);
   $('h-rank').textContent = `${rankOf(game) > 9 ? '' : rankOf(game)} · ${rankName(Math.min(5, rankOf(game)))}`;
-  $('opt-real-box').hidden = !game.endless; if (game.endless && document.activeElement !== $('opt-real')) $('opt-real').checked = game.realEvents !== false;
+  $('opt-real-box').hidden = !game.endless || (game.level.world ?? 'rhein') !== 'rhein'; if (game.endless && document.activeElement !== $('opt-real')) $('opt-real').checked = game.realEvents !== false;
   $('h-daylab').hidden = !fin; // mit Frist (Level): «Tag x/y»; Endlos: Datum ab 2010 mit Jahreszeit
   $('h-day').textContent = fin ? `${Math.min(game.day, game.deadlineDays)}/${game.deadlineDays}` : `${SEASON_ICON[game.date.season]} ${game.date.label}`;
   $('h-left').textContent = fin ? `(${mm}:${ss})` : '';
@@ -1160,12 +1160,12 @@ function showLevels(note = '') {
       <span class="ltxt"><b>${open ? '' : '🔒 '}${l.name}</b><small>${l.blurb}</small>
       <small>Ziel ${num(l.goalTons)} t · ${l.deadlineDays} Tage · Start ${chf(l.startMoney)}${b !== undefined ? ` · Rekord ${chf(b)}` : ''}${open ? '' : ` · erreiche das Ziel in ${LEVELS[i - 1].short} und schliesse mit Gewinn ab`}</small></span></button>`;
   }).join('');
-  const endless = `<div class="endless-row"><b>♾ ${ENDLESS.name}</b><small>${ENDLESS.blurb}</small>
-      <div class="seedrow"><label>Seed <input id="seed-in" type="number" min="0" max="99999999" value="${Math.floor(Math.random() * 90000) + 1000}"></label><button id="btn-seed" title="Zufälliger Seed">🎲</button><button id="btn-endless" class="primary">Endlos starten</button></div></div>`;
+  const endless = `<div class="seedrow"><label>Seed <input id="seed-in" type="number" min="0" max="99999999" value="${Math.floor(Math.random() * 90000) + 1000}"></label><button id="btn-seed" title="Zufälliger Seed">🎲</button><small>gilt für die Endlos-Spiele</small></div>` +
+    ENDLESS_WORLDS.map((w) => `<div class="endless-row"><b>${w.icon} ${w.name}</b><small>${w.blurb}</small><div class="seedrow"><button class="primary" data-endless="${w.id}">${w.short} starten</button></div></div>`).join('');
   showOverlay(`<h2>Fahrrinne frei!</h2>${note ? `<p class="good">${note}</p>` : ''}<p>Welcher Fluss soll es sein?</p><div class="levels">${rows}</div>${endless}`);
   for (const b of document.querySelectorAll('#overlay .level:not(.locked)')) b.onclick = () => restart(b.dataset.level);
   $('btn-seed').onclick = () => { $('seed-in').value = Math.floor(Math.random() * 90000000); };
-  $('btn-endless').onclick = () => restart({ levelId: ENDLESS.id, seed: Math.max(0, Math.floor(+$('seed-in').value) || 0) });
+  for (const b of document.querySelectorAll('#overlay [data-endless]')) b.onclick = () => restart({ levelId: b.dataset.endless, seed: Math.max(0, Math.floor(+$('seed-in').value) || 0) });
 }
 
 function restart(loaded = null) {

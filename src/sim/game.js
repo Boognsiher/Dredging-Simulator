@@ -14,13 +14,13 @@ import { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, acti
 import { processPlant, stockTotal, materialPrice } from './plant.js';
 import { updateContracts } from './contracts.js';
 import { createFleet, updateFleet } from './fleet.js';
-import { RHEIN, sectionOf, applySection } from './world.js';
-import { dateOf, waterSeason, realEventOn, LAST_REAL_YEAR } from './calendar.js';
+import { sectionOf, applySection } from './world.js';
+import { dateOf, waterSeason, realEventOn, LAST_REAL_YEAR, tideAt } from './calendar.js';
 
 // Zufallsfluss für den Endlos-Modus: Parameter aus (Seed, Kartennummer); spätere Karten sind schwerer
 const MAP_NAMES = ['Rheinfelden', 'Laufenburg', 'Kembs', 'Aare-Mündung', 'Thur-Enge', 'Bingen', 'Wesel', 'Eisernes Tor', 'Straubing', 'Passau', 'Basel', 'Koblenz'];
 export const mapSeed = (seed, k) => ((seed >>> 0) * 2654435761 + k * 40503 + 12345) >>> 0;
-export function endlessRiver(seed, k, sec = null) {
+export function endlessRiver(seed, k, sec = null, world = 'rhein') {
   const r = createRng(mapSeed(seed, k)), hard = Math.min(1, k / 5);
   const bars = [8, 22, 36].map((x) => ({ x: Math.round(x + r.range(-2, 2)), w: +r.range(3, 4).toFixed(1), raise: +r.range(0.45, 0.6).toFixed(2) }));
   const ridgeN = k === 0 ? 1 : 1 + (k >= 2 ? 1 : 0) + (k >= 4 ? 1 : 0), ridges = [];
@@ -30,12 +30,12 @@ export function endlessRiver(seed, k, sec = null) {
   if (k >= 1) deposits.push('delta'); // jede weitere Karte hat ein grosses Kies-Flussdelta (erkunden und Konzession kaufen)
   const cfg = { halfWidth: +(r.range(6.2, 7.4) - 0.7 * hard).toFixed(2), depthMax: +r.range(2.2, 2.6).toFixed(2), rockDepth: +(r.range(5.4, 6.6) - 1.0 * hard).toFixed(2), meander: +r.range(2.0, 3.0).toFixed(2),
     bars, ridges, shoals: r.int(4, 6), altlast: 2 + k, hardBlobs: 3 + k, debris: 14 + 2 * k, rockLevel: +Math.min(1, k / 5).toFixed(2), deposits, tribs: k === 0 ? 0 : k >= 3 ? 2 : 1 };
-  return sec != null ? applySection(cfg, sectionOf(sec)) : cfg; // Rhein-Abschnitt: feste Rohstoffe und Eigenschaften
+  return sec != null ? applySection(cfg, sectionOf(sec, world)) : cfg; // Rhein-Abschnitt: feste Rohstoffe und Eigenschaften
 }
 // Regionale Preise (Endlos): dauerhafter Aufschlag/Abschlag je Fracht und Karte, aus Seed und Kartennummer
 export const BIAS_SPAN = { kies: 0.4, oel: 0.25, container: 0.3 }; // max. Abweichung des regionalen Preises
-export function regionBias(seed, k, sec = null) {
-  const br = createRng(mapSeed(seed, k) ^ 0x9e3779b9), span = BIAS_SPAN, bias = {}, S = sec != null ? sectionOf(sec) : null;
+export function regionBias(seed, k, sec = null, world = 'rhein') {
+  const br = createRng(mapSeed(seed, k) ^ 0x9e3779b9), span = BIAS_SPAN, bias = {}, S = sec != null ? sectionOf(sec, world) : null;
   for (const id of ['kies', 'oel', 'container']) { const r0 = +br.range(-span[id], span[id]).toFixed(2); bias[id] = S ? +Math.max(-span[id], Math.min(span[id], S.bias[id] + r0 * 0.15)).toFixed(2) : r0; } // Rhein: feste Lage, nur ein kleiner Zufallsanteil
   return bias;
 }
@@ -51,9 +51,9 @@ export class Game {
     this.levelId = levelById(levelId).id;
     this.rng = createRng(seed);
     const L = levelById(this.levelId);
-    this.maps = [{ id: 0, name: levelById(levelId).endless ? RHEIN[0].name : MAP_NAMES[(seed >>> 0) % MAP_NAMES.length], seed, difficulty: 0, ...(levelById(levelId).endless ? { sec: 0, oil: RHEIN[0].oil } : {}) }]; // Karten (Engstellen); die Felder river, traffic, fleet, zones ... gehören zur aktuellen Karte (mapIdx)
+    this.maps = [{ id: 0, name: levelById(levelId).endless ? sectionOf(0, levelById(levelId).world).name : MAP_NAMES[(seed >>> 0) % MAP_NAMES.length], seed, difficulty: 0, ...(levelById(levelId).endless ? { sec: 0, oil: sectionOf(0, levelById(levelId).world).oil } : {}) }]; // Karten (Engstellen); die Felder river, traffic, fleet, zones ... gehören zur aktuellen Karte (mapIdx)
     this.mapIdx = 0;
-    this.river = River.generate(this.rng, L.endless ? endlessRiver(seed, 0, 0) : L.river);
+    this.river = River.generate(this.rng, L.endless ? endlessRiver(seed, 0, 0, L.world) : L.river);
     this.wl = this.river.wl;
     this.water = { target: CONFIG.water.base, until: 0 };
     this.closed = false; // Hochwasser: Schifffahrt gesperrt
@@ -70,7 +70,7 @@ export class Game {
     this.concrete = 0; // Betonvorrat in m³ (gekauft oder im Betonwerk gemischt)
     this.agg = { kies: 0, sand: 0 }; // Lager für das Betonwerk (m³)
     this.divertAgg = true; // Kies und Sand ins Betonwerk statt verkaufen
-    this.market = createMarket(L.endless ? regionBias(seed, 0, 0) : {});
+    this.market = createMarket(L.endless ? regionBias(seed, 0, 0, L.world) : {});
     this.traffic = createTraffic();
     this.fleet = createFleet();
     this.shipping = createShipping(); // eigene Reederei (global)
@@ -111,14 +111,14 @@ export class Game {
   glutTarget() {
     const K = CONFIG.water;
     if (this.closed) return 0.3;
-    const low = Math.min(1, Math.max(0, (K.base - 0.1 - this.wl) / 0.5)), act = SHIPS.filter((s) => this.unlocked[s.id]);
+    const low = Math.min(1, Math.max(0, (K.base - 0.1 - (this.wl - (this._tide ?? 0))) / 0.5)), act = SHIPS.filter((s) => this.unlocked[s.id]);
     const blocked = act.length ? act.filter((s) => !this.fair?.[s.id]?.passable).length / act.length : 0;
     return Math.max(0.25 * low, 0.2 * blocked);
   }
   updateGlut(dt) { const m = this.market; m.glut = (m.glut ?? 0) + (this.glutTarget() - (m.glut ?? 0)) * Math.min(1, dt * 0.1); }
 
   // Weitere Karte (Engstelle) erschliessen: nur im Endlos-Modus; jede kostet mehr und ist schwerer
-  mapCost() { return this.maps.length >= (ENDLESS.maxMaps) ? null : ENDLESS.mapCosts[this.maps.length]; }
+  mapCost() { const L = this.level.endless ? this.level : ENDLESS; return this.maps.length >= L.maxMaps ? null : L.mapCosts[this.maps.length]; }
   mapBlock() {
     if (!this.endless) return 'Nur im Endlos-Modus';
     if (rankOf(this) < NEED.maps) return `Braucht Level ${NEED.maps} (${rankName(NEED.maps)} fährt)`;
@@ -131,10 +131,10 @@ export class Game {
     if (this.mapBlock()) return false;
     const k = this.maps.length, cost = this.mapCost(), seed = mapSeed(this.seed, k), cur = this.mapIdx;
     this.money -= cost;
-    const sec = sectionOf(k) ? k : null, S = sectionOf(k);
+    const world = this.level.world, sec = sectionOf(k, world) ? k : null, S = sectionOf(k, world);
     let name = S ? S.name : MAP_NAMES[((this.seed >>> 0) + k * 5) % MAP_NAMES.length]; while (this.maps.some((m) => m.name === name)) name += '+';
-    const river = River.generate(createRng(seed), endlessRiver(this.seed, k, sec)); river.wl = this.wl;
-    const bias = regionBias(this.seed, k, sec); // regionale Preise: Handel zwischen den Karten lohnt sich
+    const river = River.generate(createRng(seed), endlessRiver(this.seed, k, sec, world)); river.wl = this.wl;
+    const bias = regionBias(this.seed, k, sec, world); // regionale Preise: Handel zwischen den Karten lohnt sich
     this.maps.push({ id: k, name, seed, difficulty: k, ...(S ? { sec: k, oil: S.oil } : {}), river, traffic: createTraffic(), fleet: createFleet(), zones: [], zoneSeq: 0, unlocked: {}, fairSig: {}, fair: null, fairClock: 0, sedClock: 0, rejectedBy: {}, site: null, market: createMarket(bias), port: createPort() });
     this.mapIdx = k;
     this.port.bay = carveBay(this.river, this.wl);
@@ -159,8 +159,8 @@ export class Game {
 
   // Kalender: Spieltag als Datum ab 2010 (zwischengespeichert je Tag)
   get date() { if (this._dd?.day !== this.day) this._dd = { day: this.day, d: dateOf(this.day) }; return this._dd.d; }
-  get seasonOffset() { return this.endless ? waterSeason(this.date.doy) : 0; } // jahreszeitlicher Wasserstand (nur Endlos)
-  get realOn() { return !!this.endless && this.realEvents !== false && this.date.year <= LAST_REAL_YEAR; } // reale Hoch- und Niedrigwasser statt Zufallsereignissen
+  get seasonOffset() { return this.endless ? waterSeason(this.date.doy, this.level.world) : 0; } // jahreszeitlicher Wasserstand (nur Endlos)
+  get realOn() { return !!this.endless && (this.level.world ?? 'rhein') === 'rhein' && this.realEvents !== false && this.date.year <= LAST_REAL_YEAR; } // reale Hoch- und Niedrigwasser statt Zufallsereignissen
   applyReal(ev) {
     const K = CONFIG.water;
     if (ev.type === 'flood') { this.setWater(K.base + K.floodMax * ev.s, ev.days); for (const m of this.maps) m.river.flood(this.rng.range(...CONFIG.sediment.floodDeposit) * ev.s); this.say(`${ev.name}: Die Schifffahrt ist gesperrt, Schlick lagert sich ab (${ev.days} Tage).`, 'bad'); this.notify(`Hochwasser: ${ev.name}`, 'bad'); }
@@ -414,7 +414,9 @@ export class Game {
     const K = CONFIG.water, W = this.water;
     if (W.until && this.time >= W.until) { W.target = K.base + this.seasonOffset; W.until = 0; }
     else if (!W.until && this.endless) W.target = K.base + this.seasonOffset; // ohne Ereignis folgt der Pegel dem Jahreslauf
+    this.wl -= this._tide ?? 0; // Gezeiten (nur Seehafen): Pegel = Jahreslauf/Ereignis + Tidenhub
     this.wl += (W.target - this.wl) * Math.min(1, dt * K.followRate);
+    this._tide = this.level.tide ? tideAt(this.time, this.level.tide) : 0; this.wl += this._tide;
     for (const m of this.maps) { m.river.wl = this.wl; if (m.port?.harbor) m.port.harbor.river.wl = this.wl; }
     const wasClosed = this.closed;
     this.closed = this.wl > K.base + K.floodClose;
@@ -445,7 +447,7 @@ export class Game {
       this.river.settle();
       const hb = this.port.harbor?.river; if (hb) hb.settle(); // Hafenbecken: rutscht und verlandet wie der Fluss, langsamer
       this.sedClock += dt;
-      if (this.sedClock >= 1) { this.river.deposit(this.sedClock); this.river.tribDeposit(this.sedClock); if (hb) hb.deposit(this.sedClock, 0.15); this.sedClock = 0; }
+      if (this.sedClock >= 1) { this.river.deposit(this.sedClock, this.level.sandRate ?? 1); this.river.tribDeposit(this.sedClock); if (hb) hb.deposit(this.sedClock, 0.15); this.sedClock = 0; }
       this.fairClock -= dt;
       if (this.fairClock <= 0) { this.analyze(); this.fairClock = 0.6; }
       this.updateGlut(dt);

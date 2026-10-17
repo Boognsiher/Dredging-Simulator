@@ -595,7 +595,7 @@ test('Stabilität: lange Läufe bleiben endlich und ohne NaN', () => {
   for (let i = 0; i < 12 * 80 * 10; i++) g.update(0.1);
   assert.ok(Number.isFinite(g.money));
   for (let i = 0; i < g.river.top.length; i++) assert.ok(Number.isFinite(g.river.top[i]));
-  assert.ok(SHIPS.length === 5);
+  assert.ok(SHIPS.length === 6, 'fünf Flussklassen plus Megaschiff (nur Seehafen)');
 });
 
 // ---------- Löffelbagger, Land abtragen, Flotte ----------
@@ -1881,7 +1881,7 @@ test('Pfahlwand-Planung: zeigt je Abschnitt Breite zwischen den Wänden sowie fa
   r.setPile(r.idx(x, c - 4), true); planPile(g, [r.idx(x, c + 3)]); // 6 Zellen dazwischen (eine Wand geplant)
   planPile(g, [r.idx(x + 1, c - 4), r.idx(x + 1, c + 3)]); r.setPile(r.idx(x + 1, c - 4), true);
   let sp = wallSpans(g); assert.equal(sp.length, 1, 'zwei Spalten mit gleichem Ergebnis werden zusammengefasst'); assert.equal(sp[0].w, 6); assert.deepEqual([sp[0].x0, sp[0].x1], [x, x + 1]);
-  assert.deepEqual(sp[0].pass, ['kahn', 'motor', 'tank', 'container', 'schub'].filter((id) => shipById(id).beam <= 6)); assert.deepEqual(sp[0].cross, ['kahn', 'motor'], 'kreuzen: 2 × Breite + 1 ≤ 6');
+  assert.deepEqual(sp[0].pass, ['kahn', 'motor', 'tank', 'container', 'schub', 'mega'].filter((id) => shipById(id).beam <= 6)); assert.deepEqual(sp[0].cross, ['kahn', 'motor'], 'kreuzen: 2 × Breite + 1 ≤ 6');
   planRemoval(g, [r.idx(x, c - 4)]); sp = wallSpans(g); assert.equal(sp.length, 1, 'zum Rückbau vorgemerkte Pfähle zählen nicht'); assert.equal(sp[0].x0, x + 1);
 });
 
@@ -2153,4 +2153,42 @@ import { shipLevel, shipPerk, SHIP_XP } from '../src/sim/shipping.js';
 test('Reederei: Erfahrungsstufen nach Fahrten', () => {
   assert.equal(shipLevel({ trips: 0 }), 0); assert.equal(shipLevel({ trips: 5 }), 1); assert.equal(shipLevel({ trips: 36 }), 3); assert.equal(shipLevel({ trips: 500 }), SHIP_XP.length - 1);
   const P = shipPerk({ trips: 70 }); assert.equal(P.L, 4); assert.ok(Math.abs(P.cap - 1.2) < 1e-9 && Math.abs(P.upkeep - 0.8) < 1e-9);
+});
+
+// ---------- Schauplätze: Nil und Seehafen ----------
+import { NIL, SEE, sectionsOf } from '../src/sim/world.js';
+import { NIL_WORLD, SEE_WORLD, levelById as lvById } from '../src/config.js';
+import { waterSeason as wSeason, tideAt as tAt, trafficSeason as tSeason } from '../src/sim/calendar.js';
+test('Nil: Abschnitte von Assuan bis Damietta, Nilflut im September, kein Winterverkehr, keine realen Rhein-Ereignisse', () => {
+  const g = new Game(5, 'nil'); g.eventsOn = false;
+  assert.equal(g.endless, true); assert.equal(g.level.id, NIL_WORLD.id); assert.equal(g.maps[0].name, NIL[0].name);
+  g.money = 1e8; g.rank = 5;
+  for (let k = 1; k < NIL.length; k++) assert.ok(g.addMap() !== false, 'Abschnitt ' + k);
+  assert.equal(g.maps.length, NIL.length); assert.equal(g.addMap(), false);
+  assert.equal(g.maps[NIL.length - 1].name, 'Damietta');
+  assert.ok(wSeason(256, 'nil') > 0.4 && wSeason(166 - 1, 'nil') < 0.05 && wSeason(350, 'nil') < wSeason(256, 'nil'));
+  assert.equal(tSeason('winter', 'nil'), 1); assert.equal(tSeason('winter', 'rhein'), 0.8);
+  assert.equal(g.realOn, false);
+});
+test('Seehafen: Gezeiten heben und senken den Pegel, Megaschiff fährt als sechste Klasse, Sand wandert schneller', () => {
+  const g = new Game(8, 'seehafen'); g.eventsOn = false; g.traffic.spawnIn = 1e9;
+  assert.equal(g.level.id, SEE_WORLD.id); assert.ok(g.level.classes.includes('mega')); assert.equal(g.maps[0].name, SEE[0].name);
+  let lo = 99, hi = -99;
+  for (let i = 0; i < 12 * 140 * 10; i++) { g.update(0.1); lo = Math.min(lo, g.wl); hi = Math.max(hi, g.wl); }
+  assert.ok(hi - lo > 0.6 && hi - lo < 1.1, 'Tidenhub ' + (hi - lo).toFixed(2));
+  for (let i = 0; i < g.river.top.length; i++) assert.ok(Number.isFinite(g.river.top[i]));
+  assert.ok(Number.isFinite(g.wl) && !g.closed);
+  assert.ok(Math.abs(tAt(0, SEE_WORLD.tide)) < 1e-9 && Math.abs(tAt(17.5, SEE_WORLD.tide)) > 0.2);
+  assert.equal(g.mapCost(), SEE_WORLD.mapCosts[1]); assert.equal(sectionsOf('see').length, SEE_WORLD.maxMaps);
+  assert.equal(lvById('seehafen'), SEE_WORLD); assert.equal(lvById('endlos').world, 'rhein');
+});
+test('Nil und Seehafen: Speichern und Laden behalten Schauplatz und Karten', () => {
+  for (const id of ['nil', 'seehafen']) {
+    const g = new Game(9, id); g.eventsOn = false; g.money = 1e8; g.rank = 5; g.addMap();
+    for (let i = 0; i < 300; i++) g.update(0.1);
+    const back = restoreGame(serializeGame(g));
+    assert.equal(back.level.id, id); assert.equal(back.maps.length, 2); assert.equal(back.maps[1].name, sectionsOf(back.level.world)[1].name);
+    for (let i = 0; i < 100; i++) back.update(0.1);
+    assert.ok(Number.isFinite(back.wl));
+  }
 });

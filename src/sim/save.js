@@ -59,7 +59,7 @@ export function restoreGame(text) {
     game.maps.forEach((m, i) => {
       const src = s.rivers[i], river = new River(src.cols, src.rows);
       for (const [k, v] of Object.entries(src)) river[k] = v && v.b64 !== undefined ? fromB64(v.b64, types[v.type]) : v;
-      const ref = i === 0 && !game.level.endless ? fresh : River.generate(createRng(i === 0 ? game.seed : m.seed), game.level.endless ? endlessRiver(game.seed, i, m.sec ?? null) : game.level.river); // Referenzfluss nur für die Anzeige-Hilfen (Mittellinie, Breite)
+      const ref = i === 0 && !game.level.endless ? fresh : River.generate(createRng(i === 0 ? game.seed : m.seed), game.level.endless ? endlessRiver(game.seed, i, m.sec ?? null, game.level.world) : game.level.river); // Referenzfluss nur für die Anzeige-Hilfen (Mittellinie, Breite)
       river.centerY = ref.centerY; river.halfW = ref.halfW;
       if (!src.keep) river.markKeep(createRng((m.seed ^ 0x5eed1e) >>> 0)); // ältere Stände: unbaubares Land nachträglich festlegen
       m.river = river; m.site = null; m.fair = null;

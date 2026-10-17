@@ -18,7 +18,7 @@ export const createTraffic = () => ({ ships: [], seq: 0, spawnIn: 5 });
 export const bayCapacity = (g) => CONFIG.traffic.bay + g.stats.signals + g.stats.tugs;
 export const maxZones = (g) => CONFIG.zones.baseMax + g.stats.signals;
 
-const rate = (g) => CONFIG.traffic.shipsPerDay * g.level.traffic * g.stats.trafficMult * (g.time < (g.strikeUntil ?? 0) ? 0.3 : 1) * (g.endless ? trafficSeason(g.date.season) : 1); // Winter weniger Verkehr (Eis), Sommer mehr
+const rate = (g) => CONFIG.traffic.shipsPerDay * g.level.traffic * g.stats.trafficMult * (g.time < (g.strikeUntil ?? 0) ? 0.3 : 1) * (g.endless ? trafficSeason(g.date.season, g.level.world ?? 'rhein') : 1); // Winter weniger Verkehr (Eis), Sommer mehr
 
 function pickWeighted(items, weightOf, rng) {
   const w = items.map(weightOf);

@@ -192,6 +192,7 @@ export const SHIPS = [
   { id: 'tank', name: 'Tankschiff', icon: '🛢️', draught: 2.9, beam: 3, len: 3.8, speed: 1.9, tons: 1500, fee: 1800, share: 0.16, cargo: ['oel', 'chemie'], color: '#b5483a' },
   { id: 'container', name: 'Containerschiff', icon: '🚢', draught: 4.0, beam: 3, len: 4.6, speed: 2.2, tons: 2500, fee: 2800, share: 0.13, cargo: ['container'], color: '#3b9a78' },
   { id: 'schub', name: 'Schubverband', icon: '⛴️', draught: 5.2, beam: 4, len: 5.4, speed: 1.7, tons: 4500, fee: 4500, share: 0.07, cargo: ['kohle', 'erz'], color: '#7a69b8' },
+  { id: 'mega', name: 'Megacontainerschiff', icon: '🛳️', draught: 6.3, beam: 5, len: 6.6, speed: 1.9, tons: 9000, fee: 8200, share: 0.09, cargo: ['container'], color: '#1f7a96' }, // nur im Seehafen
 ];
 export const shipById = (id) => SHIPS.find((s) => s.id === id);
 
@@ -250,10 +251,27 @@ export const LEVELS = [
 // Endlos-Modus: Zufallskarten aus einer Seed-Nummer, startet wie der Hochrhein und lässt sich um weitere Engstellen (Karten) erweitern.
 // Jede weitere Karte ist schwerer (schmaler, mehr Fels, Altlasten, Fremdstoffe) und kostet mehr. Kein Ziel, keine Frist: wer pleite geht, verliert.
 export const ENDLESS = {
-  id: 'endlos', endless: true, name: 'Endlos: Flussnetz', short: 'Endlos',
+  id: 'endlos', endless: true, world: 'rhein', theme: 'rhein', icon: '♾', name: 'Endlos: Rhein', short: 'Endlos',
   blurb: 'Zufallskarten mit Seed-Nummer. Du startest wie am Hochrhein und erschliesst mit der Zeit weitere Engstellen als neue Karten, die du alle verwaltest.',
   river: null, classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1, goalTons: Infinity, startMoney: 60000, deadlineDays: Infinity, turbidityMult: 1,
   palette: { water: [44, 112, 150], land: [98, 124, 80] },
   maxMaps: 10, mapCosts: [0, 45000, 90000, 150000, 240000, 380000, 560000, 800000, 1100000, 1500000], // der Rhein: 10 Abschnitte (src/sim/world.js)
 };
-export const levelById = (id) => (id === ENDLESS.id ? ENDLESS : LEVELS.find((l) => l.id === id) ?? LEVELS[0]);
+// Weitere Schauplätze im Endlos-Stil: eigener Fluss mit eigenen Abschnitten (src/sim/world.js), eigenem Aussehen und eigenen Regeln
+export const NIL_WORLD = {
+  id: 'nil', endless: true, world: 'nil', theme: 'nil', icon: '🏜', name: 'Endlos: Nil', short: 'Nil',
+  blurb: 'Von Assuan bis ins Delta: Wüste, Sandbänke und der fruchtbare Streifen am Ufer. Jedes Jahr bringt die Nilflut im Spätsommer Wasser und Schlick, im Frühsommer fällt der Pegel tief. Kein Winter, kein Schnee.',
+  river: null, classes: ['kahn', 'motor', 'tank', 'container', 'schub'], traffic: 1.1, goalTons: Infinity, startMoney: 60000, deadlineDays: Infinity, turbidityMult: 1.15, lowWater: 0.6, sandRate: 1.2,
+  palette: { water: [70, 122, 116], land: [200, 170, 106] },
+  maxMaps: 7, mapCosts: [0, 40000, 80000, 135000, 210000, 320000, 470000],
+};
+export const SEE_WORLD = {
+  id: 'seehafen', endless: true, world: 'see', theme: 'see', icon: '⚓', name: 'Endlos: Seehafen', short: 'Seehafen',
+  blurb: 'Zufahrt zu einem Seehafen: Ebbe und Flut heben und senken den Pegel, Sand wandert, und die Megaschiffe brauchen jeden Zentimeter. Nutze die Hochwasser-Fenster für die Grossen, baggere für die Niedrigwasser-Zeit tiefer.',
+  river: null, classes: ['kahn', 'motor', 'tank', 'container', 'schub', 'mega'], traffic: 1.25, goalTons: Infinity, startMoney: 90000, deadlineDays: Infinity, turbidityMult: 1.3, lowWater: 0.4,
+  tide: { amp: 0.45, period: 70, neap: 0.35 }, sandRate: 1.5,
+  palette: { water: [34, 112, 166], land: [168, 176, 118] },
+  maxMaps: 6, mapCosts: [0, 50000, 110000, 200000, 330000, 520000],
+};
+export const ENDLESS_WORLDS = [ENDLESS, NIL_WORLD, SEE_WORLD];
+export const levelById = (id) => ENDLESS_WORLDS.find((l) => l.id === id) ?? LEVELS.find((l) => l.id === id) ?? LEVELS[0];

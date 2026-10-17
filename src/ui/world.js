@@ -1,4 +1,4 @@
-import { RHEIN } from '../sim/world.js';
+import { WORLDS, sectionsOf } from '../sim/world.js';
 import { depositType, ENDLESS } from '../config.js';
 
 // Weltkarte: der Rhein als Folge von Abschnitten (= Karten). Zeigt, welche erschlossen sind, was sie bieten (Rohstoffe, Öl, regionale Preise) und was der nächste Abschnitt kostet.
@@ -8,7 +8,7 @@ const tag = (b) => (b <= -0.08 ? `<span class="pos">günstig ${Math.round(b * 10
 
 // Daten eines Abschnitts: erschlossene Karten zeigen die echten Werte, noch gesperrte die festen Eigenschaften des Rheins
 export function stationInfo(g, k) {
-  const S = RHEIN[k], m = g.maps[k] ?? null;
+  const S = sectionsOf(g.level.world)[k], m = g.maps[k] ?? null;
   const dep = m ? m.river.deposits.filter((d) => !d.depleted) : null;
   const oil = m ? (m.oilStart !== undefined ? m.oilStart > 0 : m.oil ?? null) : S?.oil ?? null;
   const bias = m ? m.market?.bias ?? S?.bias : S?.bias;
@@ -17,15 +17,22 @@ export function stationInfo(g, k) {
 }
 
 export function worldHtml(g, sel) {
-  const n = Math.min(RHEIN.length, ENDLESS.maxMaps), st = Array.from({ length: n }, (_, k) => stationInfo(g, k));
+  const W0 = WORLDS[g.level.world] ?? WORLDS.rhein, SEC = W0.sections, n = Math.min(SEC.length, (g.level.endless ? g.level : ENDLESS).maxMaps), st = Array.from({ length: n }, (_, k) => stationInfo(g, k));
   const pts = st.map((s) => s.pos), path = (a, b) => pts.slice(a, b).map((p, i) => `${i ? 'L' : 'M'}${p[0]},${p[1]}`).join(' ');
   const open = g.maps.length; // Anzahl erschlossener Abschnitte
-  const svg = `<svg viewBox="0 0 100 100" class="wmap" role="img" aria-label="Rhein von Rheinfelden bis Rotterdam">
-    <rect width="100" height="100" rx="4" fill="#0f2f4d"/>
+  const svg = `<svg viewBox="0 0 100 100" class="wmap" role="img" aria-label="${W0.aria}">
+    ${{ rhein: `<rect width="100" height="100" rx="4" fill="#0f2f4d"/>
     <path d="M0,0 H46 C40,8 32,4 24,14 C16,22 10,18 0,26 Z" fill="#18517a"/>
     <path d="M28,100 L100,100 L100,0 L52,0 C46,12 40,16 36,26 C32,38 26,46 30,60 C34,72 24,86 28,100 Z" fill="#3f6b3a" opacity=".9"/>
     <path d="M60,100 L100,100 L100,60 C86,66 74,62 68,74 C62,84 66,92 60,100 Z" fill="#8a8f98" opacity=".75"/>
-    <text x="8" y="8" class="wlab dim">Nordsee</text><text x="78" y="92" class="wlab dim">Alpen</text>
+    <text x="8" y="8" class="wlab dim">Nordsee</text><text x="78" y="92" class="wlab dim">Alpen</text>`, nil: `<rect width="100" height="100" rx="4" fill="#b99a5e"/>
+    <path d="M0,0 H100 V12 C80,20 70,8 52,16 C38,22 20,12 0,18 Z" fill="#1d5f86"/>
+    <path d="M62,100 C54,84 60,70 52,58 C44,46 52,34 54,22 L62,22 C60,36 54,46 60,58 C66,70 62,86 70,100 Z" fill="#6f9a4a" opacity=".85"/>
+    <path d="M100,40 L100,100 L86,100 C84,80 90,60 100,40 Z" fill="#2a6f8f" opacity=".55"/>
+    <text x="6" y="8" class="wlab dim">Mittelmeer</text><text x="10" y="60" class="wlab dim">Libysche Wüste</text><text x="78" y="70" class="wlab dim">Rotes Meer</text>`, see: `<rect width="100" height="100" rx="4" fill="#1b6f9e"/>
+    <path d="M100,100 L100,30 C86,34 78,44 66,48 C54,52 52,64 40,70 C28,76 30,90 16,100 Z" fill="#a9b476"/>
+    <path d="M100,100 L100,56 C90,58 82,68 70,72 C60,76 58,88 46,100 Z" fill="#7f9a5c" opacity=".9"/>
+    <text x="6" y="8" class="wlab dim">Offene See</text><text x="72" y="96" class="wlab dim">Festland</text>` }[g.level.world ?? 'rhein']}
     <path d="${path(0, n)}" fill="none" stroke="#5a7a8f" stroke-width="1.4" stroke-dasharray="1.6 1.6" stroke-linecap="round"/>
     ${open > 1 ? `<path d="${path(0, Math.min(open, n))}" fill="none" stroke="#5cc8f0" stroke-width="1.8" stroke-linecap="round"/>` : ''}
     ${st.map((s, k) => `<g data-st="${k}" class="wst ${s.unlocked ? 'on' : k === open ? 'next' : 'off'} ${s.current ? 'cur' : ''} ${k === sel ? 'sel' : ''}">
@@ -46,15 +53,15 @@ export function worldHtml(g, sel) {
     <div><b>Öl:</b> ${s.oil === null ? '?' : s.oil ? 'Ölvorkommen (Ölfeld bauen)' : 'kein Öl'}${s.hard ? ' · <b>Fels</b>: Löffel/Fräse nötig' : ''}</div>
     <div class="wprice">${Object.entries(PRICE).map(([id, nm]) => `<span>${nm}: ${tag(s.bias?.[id] ?? 0)}</span>`).join('')}</div>
     <div class="wact">${action}</div></div>`;
-  return `<div class="books-head"><h2>🗺 Rhein</h2><button data-world="close" aria-label="Schliessen">✕</button></div>
+  return `<div class="books-head"><h2>🗺 ${W0.title}</h2><button data-world="close" aria-label="Schliessen">✕</button></div>
     <div class="wlayout">${svg}${card}</div>
-    <small>Der Rhein von Rheinfelden bis Rotterdam, Abschnitt für Abschnitt flussabwärts. 🛢 Öl · 💎 Erzseife · 🌾 Kies-Delta · 🪨 Felsriegel. Preise zeigen, wo Kies, Öl und Container günstig zu kaufen oder teuer zu verkaufen sind.</small>`;
+    <small>${W0.text} 🛢 Öl · 💎 Erzseife · 🌾 Kies-Delta · 🪨 Felsriegel. Preise zeigen, wo Kies, Öl und Container günstig zu kaufen oder teuer zu verkaufen sind.</small>`;
 }
 
 export function setupWorld(getGame, { go, add }) {
   const el = document.createElement('div'); el.id = 'world'; el.hidden = true; document.body.append(el);
   let open = false, sel = 0;
-  const render = () => { const g = getGame(); if (sel >= RHEIN.length) sel = 0; el.innerHTML = `<div class="books-card">${worldHtml(g, sel)}</div>`; };
+  const render = () => { const g = getGame(); if (sel >= sectionsOf(g.level.world).length) sel = 0; el.innerHTML = `<div class="books-card">${worldHtml(g, sel)}</div>`; };
   const set = (v) => { open = v; el.hidden = !v; if (v) { sel = getGame().mapIdx; render(); } };
   el.addEventListener('click', (e) => {
     const st = e.target.closest('[data-st]'); if (st) { sel = +st.dataset.st; render(); return; }

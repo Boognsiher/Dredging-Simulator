@@ -1,5 +1,6 @@
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 import { SLICE } from '../sim/slice.js';
+import { tideState } from '../sim/calendar.js';
 import { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } from '../config.js';
 import { shipPos, queuePos, bayCapacity } from '../sim/traffic.js';
 import { needDepth, minNeedDepth, trasseY } from '../sim/fairway.js';
@@ -658,9 +659,11 @@ function drawMapHud(ctx, game) {
   ctx.font = font(13);
   const lines = [];
   lines.push(`Pegel ${game.wl.toFixed(2)} m${game.wl > CONFIG.water.base + 0.25 ? ' ▲' : game.wl < CONFIG.water.base - 0.25 ? ' ▼' : ''}`);
+  if (game.level.tide) { const td = tideState(game.time, game.level.tide), cm = Math.round(td.level * 100); lines.push(`🌊 ${td.rising ? 'Flut ▲' : 'Ebbe ▼'} ${cm >= 0 ? '+' : '−'}${Math.abs(cm)} cm${td.high ? ' · Hochwasser-Fenster' : td.low ? ' · Niedrigwasser' : ''}`); }
+  if (game.level.world === 'nil' && game.seasonOffset > 0.3) lines.push('🌊 Nilflut: Pegel hoch, der Fluss bringt Schlick');
   if (game.closed) lines.push('⛔ Hochwasser: Schifffahrt gesperrt');
   else if (game.time < (game.strikeUntil ?? 0)) lines.push('✊ Streik: kaum Verkehr');
-  let y = 46; // etwas tiefer: nicht unter der Klassenleiste verschwinden
+  let y = 94; // unterhalb der Klassenleiste (links oben), sonst verdeckt sie die Anzeigen
   for (const t of lines) {
     const w = ctx.measureText(t).width + 14;
     ctx.fillStyle = '#000a'; ctx.fillRect(OX + 6, y - 14, w, fs(13) + 6);

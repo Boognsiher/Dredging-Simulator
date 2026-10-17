@@ -19,12 +19,28 @@ function lut(stops, lo, hi) {
   }
   return out;
 }
-const WATER = lut([[0, hex('#9be3d6')], [0.6, hex('#62c8cf')], [2, hex('#3b9ac0')], [4, hex('#256f9e')], [7, hex('#143f6d')], [12, hex('#0b2547')]], 0, 12);
-const LAND = lut([[-0.2, hex('#e5d49a')], [0.5, hex('#cdbd7a')], [1.2, hex('#87a95a')], [3, hex('#5f8c47')], [6, hex('#3f6b3a')], [12, hex('#5d6b4c')]], -0.2, 12);
-const FOREST = hex('#2f5a33'), SAND = hex('#d8c58a');
+const WATER_R = lut([[0, hex('#9be3d6')], [0.6, hex('#62c8cf')], [2, hex('#3b9ac0')], [4, hex('#256f9e')], [7, hex('#143f6d')], [12, hex('#0b2547')]], 0, 12);
+const LAND_R = lut([[-0.2, hex('#e5d49a')], [0.5, hex('#cdbd7a')], [1.2, hex('#87a95a')], [3, hex('#5f8c47')], [6, hex('#3f6b3a')], [12, hex('#5d6b4c')]], -0.2, 12);
+const FOREST_R = hex('#2f5a33'), SAND_R = hex('#d8c58a');
+// Aussehen je Schauplatz: Rhein (grün, Wald, Jahreszeiten), Nil (Wüste mit fruchtbarem Uferstreifen und Palmen), Seehafen (Küste, Dünen, Gras)
+const THEMES = {
+  rhein: { WATER: WATER_R, LAND: LAND_R, FOREST: FOREST_R, SAND: SAND_R, trees: 1, forestK: 1, seasons: true },
+  nil: {
+    WATER: lut([[0, hex('#9bd0b0')], [0.6, hex('#68b19c')], [2, hex('#40908a')], [4, hex('#2d6f75')], [7, hex('#1c4b58')], [12, hex('#102e3b')]], 0, 12),
+    LAND: lut([[-0.2, hex('#efdca2')], [0.5, hex('#e0c585')], [1.2, hex('#d3b06b')], [3, hex('#c39d58')], [6, hex('#ab8349')], [12, hex('#8e6d40')]], -0.2, 12),
+    FOREST: hex('#6a8a3c'), SAND: hex('#e6d094'), trees: 0.16, forestK: 0.25, palm: true, rock: [176, 134, 92], fertile: hex('#7da24a'), seasons: false,
+  },
+  see: {
+    WATER: lut([[0, hex('#a9e4da')], [0.6, hex('#72cbd2')], [2, hex('#3ca2ce')], [4, hex('#2679af')], [7, hex('#15528c')], [12, hex('#0b2e58')]], 0, 12),
+    LAND: lut([[-0.2, hex('#f0e3b2')], [0.5, hex('#e2d398')], [1.2, hex('#b2bd7e')], [3, hex('#8da568')], [6, hex('#6f8d58')], [12, hex('#66765a')]], -0.2, 12),
+    FOREST: hex('#4f7a46'), SAND: hex('#ecdca4'), trees: 0.4, forestK: 0.4, seasons: false,
+  },
+};
+let TH = THEMES.rhein, WATER = TH.WATER, LAND = TH.LAND, FOREST = TH.FOREST, SAND = TH.SAND;
+const setTheme = (id) => { TH = THEMES[id] ?? THEMES.rhein; WATER = TH.WATER; LAND = TH.LAND; FOREST = TH.FOREST; SAND = TH.SAND; };
 
 const q8 = (v) => Math.round(v * 8) / 8;
-const seasonQ = (game) => { const l = seasonLook(game.date?.doy ?? 100); return { snow: q8(l.snow), autumn: q8(l.autumn), spring: q8(l.spring) }; }; // gerastert: Gelände wird nur bei sichtbarer Änderung neu gezeichnet
+const seasonQ = (game) => { if (game.level?.theme && game.level.theme !== 'rhein') return { snow: 0, autumn: 0, spring: 0 }; const l = seasonLook(game.date?.doy ?? 100); return { snow: q8(l.snow), autumn: q8(l.autumn), spring: q8(l.spring) }; }; // gerastert: Gelände wird nur bei sichtbarer Änderung neu gezeichnet
 const seasonKey = (S) => `${S.snow}/${S.autumn}/${S.spring}`;
 const T = { canvas: null, ctx: null, noise: null, key: '', at: 0, frame: 0, sparks: [], river: null };
 
@@ -61,8 +77,9 @@ function renderTerrain(game) {
   if (!T.canvas) { T.canvas = mk(); T.ctx = T.canvas.getContext('2d'); T.base = mk(); T.bctx = T.base.getContext('2d'); T.deco = mk(); T.hm = new Float32Array(W * H); }
   const noise = noiseTexture(), hm = T.hm; detailNoise();
   const dg = (T.dbg ??= { calls: 0, full: 0, ms: 0, cells: 0 }); dg.calls++;
+  const themeId = game.level?.theme ?? 'rhein', themeChanged = T.themeId !== themeId; setTheme(themeId); T.themeId = themeId;
   const SE = seasonQ(game), sk = seasonKey(SE);
-  const full = T.sKey !== sk || T.river !== r || !T.prevTop || T.prevTop.length !== r.top.length || Math.abs(T.prevWl - wl) > 0.04; // der Pegel schwankt dauernd: erst bei sichtbarer Änderung (4 cm) alles neu
+  const full = themeChanged || T.sKey !== sk || T.river !== r || !T.prevTop || T.prevTop.length !== r.top.length || Math.abs(T.prevWl - wl) > 0.04; // der Pegel schwankt dauernd: erst bei sichtbarer Änderung (4 cm) alles neu
   const paint = (x0, y0, x1, y1) => {
     const hx0 = Math.max(0, x0 - S), hx1 = Math.min(W, x1 + S), hy0 = Math.max(0, y0 - S), hy1 = Math.min(H, y1 + S);
     for (let y = hy0; y < hy1; y++) {
@@ -86,10 +103,11 @@ function renderTerrain(game) {
         if (SS.spring > 0 && -d > 0.5) { G += 10 * SS.spring; R += 4 * SS.spring; }
         if (SS.snow > 0 && -d > 0.2) { const f = Math.min(1, SS.snow * (1.0 + 0.4 * (n - 0.5)) * Math.min(1, (-d - 0.2) / 0.5)); R += (240 - R) * f; G += (246 - G) * f; B += (252 - B) * f; } }
       if (-d < 0.45) { const wet = 1 - (-d) / 0.45; R *= 1 - wet * 0.22; G *= 1 - wet * 0.18; B *= 1 - wet * 0.1; } // feuchte Uferkante
-        if (-d > 2.4) { const f = T.forest[i]; R += (FOREST[0] - R) * f; G += (FOREST[1] - G) * f; B += (FOREST[2] - B) * f; }
+        if (TH.fertile && -d > 0.18 && -d < 1.7) { const f = Math.min(1, (-d - 0.18) / 0.5) * Math.min(1, (1.7 + d) / 0.9) * (0.45 + 0.5 * n); R += (TH.fertile[0] - R) * f; G += (TH.fertile[1] - G) * f; B += (TH.fertile[2] - B) * f; } // Nil: fruchtbarer Streifen am Ufer
+        if (-d > 2.4) { const f = T.forest[i] * TH.forestK; R += (FOREST[0] - R) * f; G += (FOREST[1] - G) * f; B += (FOREST[2] - B) * f; }
         { const bp = T.bump ? T.bump[i] : 0; if (bp > 0.03) { // Fels: Felskuppe mit weichem Rand, Schichten und Moos
           const f = Math.min(1, (bp / 1.6) ** 1.3) * 0.94, wx = (x - OX) / CELL, wy = y / CELL, strata = vnoise(wx * 1.4 + wy * 0.5, wy * 5.5), crag = vnoise(wx * 4.2, wy * 4.2), sp = 0.62 + 0.5 * strata + 0.28 * crag;
-          let rr = 150 * sp, gg = 142 * sp, bb = 128 * sp; const moss = Math.max(0, vnoise(wx * 2.4 + 9, wy * 2.4) - 0.58) * 2.2; rr += (92 * sp - rr) * moss; gg += (118 * sp - gg) * moss; bb += (70 * sp - bb) * moss;
+          const RK = TH.rock ?? [150, 142, 128]; let rr = RK[0] * sp, gg = RK[1] * sp, bb = RK[2] * sp; const moss = Math.max(0, vnoise(wx * 2.4 + 9, wy * 2.4) - 0.58) * 2.2; rr += (92 * sp - rr) * moss; gg += (118 * sp - gg) * moss; bb += (70 * sp - bb) * moss;
           R += (rr - R) * f; G += (gg - G) * f; B += (bb - B) * f; } }
       } else {
         const wi = Math.max(0, Math.min(255, ((d + (n - 0.5) * 0.5) / 12) * 255)) | 0;
@@ -154,7 +172,7 @@ function decorate(c, hm, wl, river, rect = null, SS = { snow: 0, autumn: 0, spri
   const items = [];
   for (let gy = 4; gy < H - 4; gy += 9) for (let gx = OX + 4; gx < W - 4; gx += 9) {
     const x = gx + (hash(gx, gy) - 0.5) * 8, y = gy + (hash(gy, gx) - 0.5) * 8, d = wl - at(x, y), k = hash(gx * 3.1, gy * 1.7);
-    if (d <= -0.9 && k < Math.min(0.7, (-d - 0.8) * 0.28)) items.push({ t: 'tree', x, y, r: 4 + k * 6 + Math.min(3, -d * 0.4) });
+    if (d <= -0.9 && k < Math.min(0.7, (-d - 0.8) * 0.28) * TH.trees && (!TH.palm || -d < 3.4)) items.push({ t: 'tree', x, y, r: 4 + k * 6 + Math.min(3, -d * 0.4) });
     else if (d <= -0.15 && d > -0.9 && k < 0.45) items.push({ t: 'bush', x, y, r: 2.5 + k * 3 });
     else if (d > 0.1 && d < 0.65 && k < 0.55) items.push({ t: 'reed', x, y, r: 3 + k * 4 });
   }
@@ -167,7 +185,12 @@ function decorate(c, hm, wl, river, rect = null, SS = { snow: 0, autumn: 0, spri
   if (T.bump) for (let k = items.length - 1; k >= 0; k--) if (T.bump[(items[k].y | 0) * W + (items[k].x | 0)] > 0.05) items.splice(k, 1); // keine Bäume auf dem Fels
   for (let k = items.length - 1; k >= 0; k--) if (nearCreek(creeks, items[k].x, items[k].y, items[k].r + 3)) items.splice(k, 1); // Bäche bleiben frei: Bäume und Büsche stehen daneben, nicht darauf
   for (const it of items) {
-    if (it.t === 'tree') {
+    if (it.t === 'tree' && TH.palm) { // Dattelpalme: schlanker Stamm, Wedelkrone
+      c.fillStyle = 'rgba(0,0,0,.2)'; c.beginPath(); c.ellipse(it.x + it.r * 0.6, it.y + it.r * 0.5, it.r * 0.9, it.r * 0.4, 0, 0, 7); c.fill();
+      c.strokeStyle = '#7a5a34'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(it.x, it.y + it.r * 0.5); c.lineTo(it.x + 0.6, it.y - it.r * 0.35); c.stroke();
+      c.strokeStyle = '#4f8a3a'; c.lineWidth = 1.7; c.lineCap = 'round';
+      for (let j = 0; j < 7; j++) { const a = (j / 7) * 6.283 + hash(it.x, j); c.beginPath(); c.moveTo(it.x + 0.6, it.y - it.r * 0.35); c.lineTo(it.x + 0.6 + Math.cos(a) * it.r * 0.95, it.y - it.r * 0.35 + Math.sin(a) * it.r * 0.6 + 1); c.stroke(); }
+    } else if (it.t === 'tree') {
       c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(it.x + it.r * 0.5, it.y + it.r * 0.6, it.r * 1.05, it.r * 0.75, 0, 0, 7); c.fill();
       const hv = hash(it.x, it.y), au = SS.autumn, fall = [[214, 132, 40], [186, 70, 36], [220, 168, 52]][Math.floor(hv * 3) % 3], mixc = (a, b) => `rgb(${Math.round(a[0] + (b[0] - a[0]) * au)},${Math.round(a[1] + (b[1] - a[1]) * au)},${Math.round(a[2] + (b[2] - a[2]) * au)})`;
       const g = c.createRadialGradient(it.x - it.r * 0.35, it.y - it.r * 0.4, 1, it.x, it.y, it.r * 1.15); g.addColorStop(0, mixc([111, 162, 79], fall.map((v) => Math.min(255, v + 25)))); g.addColorStop(0.55, mixc([63, 122, 58], fall)); g.addColorStop(1, mixc([39, 82, 43], fall.map((v) => v * 0.65)));
@@ -278,7 +301,7 @@ export function drawAmbient(ctx, game, ui) {
       ctx.restore();
     }
   }
-  { const sl = seasonLook(game.date?.doy ?? 100).snow; // Schneefall im Winter: leise fallende Flocken
+  { const sl = ((game.level?.theme ?? 'rhein') === 'rhein' ? seasonLook(game.date?.doy ?? 100).snow : 0); // Schneefall im Winter: leise fallende Flocken
     if (sl > 0.25) { const t = ui.t ?? 0, n = Math.round(110 * sl); ctx.fillStyle = 'rgba(255,255,255,.85)'; for (let k = 0; k < n; k++) { const sp = 22 + hash(k, 3) * 26, x = ((hash(k, 1) * (W - 2 * OX) + Math.sin(t * 0.8 + k) * 14 + OX) % (W - 2 * OX)) + 0, y = (hash(k, 2) * H + t * sp) % H; ctx.beginPath(); ctx.arc(OX + (x % (W - 2 * OX)), y, 0.9 + hash(k, 4) * 1.3, 0, 7); ctx.fill(); } } }
   if (!T.vig) { // Vignette einmal in ein Bild zeichnen (ein Vollbild-Farbverlauf je Bild ist teuer)
     T.vig = document.createElement('canvas'); T.vig.width = W; T.vig.height = H; const vc = T.vig.getContext('2d');

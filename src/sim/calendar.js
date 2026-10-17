@@ -27,9 +27,12 @@ export function seasonLook(doy) {
   return { snow: Math.max(0, snow), autumn: Math.max(0, autumn), spring };
 }
 // Jahreszeitlicher Wasserstand (m über Bezugspegel): hoch zur Schneeschmelze (Juni, Juli), niedrig im Spätherbst und Winter
-export const waterSeason = (doy) => 0.3 * Math.sin((2 * Math.PI * (doy - 84)) / 365);
+export const waterSeason = (doy, world = 'rhein') => world === 'nil' ? 0.45 * Math.sin((2 * Math.PI * (doy - 165)) / 365) : world === 'see' ? 0.05 * Math.sin((2 * Math.PI * (doy - 84)) / 365) : 0.3 * Math.sin((2 * Math.PI * (doy - 84)) / 365); // Nil: Nilflut im September, Niedrigstand im Frühsommer
+// Gezeiten (Seehafen): Tidenhub in m um den mittleren Pegel; Spring- und Nipptide wechseln im 14-Tage-Takt. cfg = { amp, period (Sekunden), neap (Anteil bei Nipptide) }
+export const tideAt = (time, cfg) => { const springNeap = 1 - (cfg.neap ?? 0.35) * (0.5 - 0.5 * Math.cos((2 * Math.PI * time) / (cfg.period * 7))); return cfg.amp * springNeap * Math.sin((2 * Math.PI * time) / cfg.period); };
+export const tideState = (time, cfg) => { const a = tideAt(time, cfg), b = tideAt(time + 1, cfg); return { level: a, rising: b > a, high: a > cfg.amp * 0.55, low: a < -cfg.amp * 0.55 }; };
 // Verkehr im Jahreslauf: Winter weniger (Eis, Kälte), Sommer mehr
-export const trafficSeason = (season) => ({ winter: 0.8, spring: 1, summer: 1.1, autumn: 1 })[season] ?? 1;
+export const trafficSeason = (season, world = 'rhein') => world !== 'rhein' ? 1 : ({ winter: 0.8, spring: 1, summer: 1.1, autumn: 1 })[season] ?? 1;
 
 // Reale Ereignisse (y, m, d = Beginn; days = Dauer in Spieltagen; flood: s = Stärke 0..1; drought: drop = Absenkung in m)
 export const REAL_EVENTS = [

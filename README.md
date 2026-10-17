@@ -150,6 +150,13 @@ Im Levelmenü gibt es unten **«♾ Endlos: Flussnetz»**: Du gibst eine **Seed-
 - **Wechseln:** Auswahlfeld in der Kopfzeile, Liste im Menü oder `,` / `.` auf der Karte. Der Hafen steht an der ersten Karte.
 - Ereignisse (Hochwasser, Funde ...) treffen eine zufällige Karte. Der Spielstand speichert alle Karten (ältere Spielstände laden weiter und werden zu «Karte 1»).
 
+### Weitere Schauplätze: Nil und Seehafen
+Im Levelmenü gibt es drei Endlos-Spiele (gleicher Seed-Mechanismus, eigene Weltkarte, eigenes Aussehen):
+- **♾ Rhein:** wie beschrieben, 10 Abschnitte, reale Hoch- und Niedrigwasser seit 2010, Jahreszeiten mit Schnee.
+- **🏜 Nil** (7 Abschnitte von Assuan bis Damietta): Wüstenufer mit fruchtbarem Streifen und Dattelpalmen, **Nilflut** im September (Pegel hoch, Schlick) und Niedrigstand im Frühsommer, viele Sandbänke und etwas mehr Sandwanderung, **kein Winter und kein Schnee**, gleichmässiger Verkehr.
+- **⚓ Seehafen** (6 Abschnitte von der Aussenreede bis zum Binnenhafen): **Gezeiten** (Tidenhub ±45 cm, Periode 70 s, Spring- und Nipptide im 7-Perioden-Takt) heben und senken den Pegel; die Anzeige links oben nennt Flut/Ebbe und die «Hochwasser-Fenster», in denen die grossen Schiffe fahren können (bei Niedrigwasser rutscht die befahrbare Klasse eine Stufe zurück). Sand wandert 1,5-mal so schnell, es gibt als sechste Klasse das **Megacontainerschiff** (Tiefgang 6,3 m, 9000 t). Nur im Seehafen fährt es.
+Die Schauplätze sind Daten: `NIL_WORLD`/`SEE_WORLD` in `src/config.js`, Abschnitte (`NIL`, `SEE`, `WORLDS`) in `src/sim/world.js`, Gezeiten in `src/sim/calendar.js` (`tideAt`), Aussehen (`THEMES`) in `src/ui/gfx.js`.
+
 ## Handel zwischen den Karten, eigene Reederei (Endlos)
 - **Regionale Märkte:** Jede Karte hat einen eigenen Frachtmarkt (Preise schwanken getrennt, dazu ein dauerhafter regionaler Aufschlag/Abschlag bei Kies und Öl), einen **eigenen Hafen** (Hafengelände, Kai, Lager, Hafenbecken) und eigene Zwischenlager (Kies- und Tanklager, bis Stufe 3 ausbaubar). Die Aufbereitungsanlage verkauft zu den Preisen der ersten Karte; die beste Sanierungsanlage aller Karten zählt.
 - **Reederei:** Im Menü («Reederei», ab der zweiten Karte) kaufst du Frachter (Frachtkahn 45 000 CHF/240 t Kies, Motorfrachter 110 000/640 t Kies, Tankschiff 200 000/560 t Öl), höchstens 6. Pro Schiff wählst du Start- und Zielkarte; es kauft im Starthafen ein (oder nimmt Ware aus dem Lager), fährt (1 + 0,6 Tage je Kartenschritt), und verkauft im Zielhafen oder lagert dort ein. Beide Häfen brauchen Kai, Lager und ein ausreichend tiefes Hafenbecken, und die Rinne muss auf beiden Karten für die Klasse befahrbar sein. Unterhalt läuft täglich (im Hafen 40 %).
