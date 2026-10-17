@@ -586,3 +586,44 @@ svg.wmap { width: 100%; max-height: 70vh; border-radius: 8px; background: #0f2f4
 .wprice { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0; } .wact { margin-top: 8px; } .wact button { width: 100%; } .wcard .pos { color: #7bd88f; } .wcard .neg { color: #ff8a7a; } .wcard .zero { color: #9fb3c4; }
 
 .routes { margin: 8px 0; padding: 8px; border: 1px solid #f3cf4a55; border-radius: 8px; background: #f3cf4a0f; } .routes .unit { align-items: center; }
+
+/* Startseite und Spielauswahl */
+#overlay > div { max-width: 600px; }
+#overlay .hero, #overlay .steps, #overlay .step, #overlay .menu-page, #overlay .intro-actions, #overlay .lvcard, #overlay .seedbar { max-width: none; }
+.hero { text-align: center; margin: 0 0 14px; }
+.hero-art { width: 100%; height: auto; border-radius: 16px; display: block; box-shadow: 0 10px 30px #0008; }
+.hero h1 { font-size: 34px; margin: 14px 0 4px; letter-spacing: .5px; background: linear-gradient(90deg, #9be3f5, #ffe9a8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero .tag { margin: 0 auto; color: var(--muted); font-size: 15px; line-height: 1.45; max-width: 480px; }
+.hero-boat { animation: hbob 3.2s ease-in-out infinite; transform-origin: 150px 90px; } .hero-ship { animation: hbob 4.4s ease-in-out infinite reverse; transform-origin: 250px 90px; }
+@keyframes hbob { 0%, 100% { transform: translateY(0) rotate(-.8deg); } 50% { transform: translateY(2.5px) rotate(.8deg); } }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+.step { background: #ffffff0f; border: 1px solid #ffffff14; border-radius: 12px; padding: 10px; text-align: left; }
+.step b { display: block; font-size: 14px; margin-bottom: 4px; } .step small { color: var(--muted); font-size: 12px; line-height: 1.35; display: block; }
+@media (max-width: 520px) { .steps { grid-template-columns: 1fr; } .hero h1 { font-size: 28px; } }
+.intro-actions { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 6px; }
+.intro-actions button, #overlay button.big { padding: 14px; font-size: 17px; border-radius: 14px; width: 100%; margin: 4px 0; }
+#overlay button.big.primary { box-shadow: 0 6px 20px #2a8fb855; }
+.howto > summary { font-size: 15px; } .foot { color: var(--muted); font-size: 12px; margin-top: 10px; }
+.menu-page { text-align: left; }
+.page-title { text-align: center; margin: 4px 0 6px; }
+.sec-title { margin: 16px 0 6px; font-size: 18px; } .sec-title small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.lvcard { display: flex; flex-direction: column; text-align: left; width: 100%; padding: 0; margin: 0; border-radius: 14px; overflow: hidden; background: #ffffff0f; border: 1px solid #ffffff1a; cursor: pointer; transition: transform .12s, border-color .12s; }
+.lvcard:not(.locked):hover { transform: translateY(-2px); border-color: #7fd6f0aa; }
+.lvcard.locked { opacity: .55; cursor: not-allowed; }
+.lv-banner { position: relative; display: flex; align-items: center; height: 66px; padding: 0 16px; overflow: hidden; }
+.lv-ico { font-size: 34px; filter: drop-shadow(0 2px 4px #0006); position: relative; z-index: 1; }
+.lv-wave { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 22px; }
+.lvcard .ltxt { padding: 10px 14px 14px; display: block; } .lvcard .ltxt b { font-size: 16px; display: block; }
+.lvcard .ltxt small { display: block; color: var(--muted); font-weight: 400; font-size: 13px; margin: 4px 0; line-height: 1.4; }
+.lvcard .lock { color: #ffb48f; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.chips i { font-style: normal; font-size: 12px; background: #00000040; border-radius: 99px; padding: 3px 9px; } .chips i.rec { background: #5a4a1a; color: #ffe08a; }
+.endless-card .primary { width: 100%; margin-top: 10px; position: static; }
+.seedbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; background: #ffffff0d; border-radius: 12px; padding: 8px 12px; }
+.seedbar small { color: var(--muted); }
+.back-btn { margin: 14px 0 4px; width: 100%; }
+#overlay > div { width: 100%; }
+button.level.lvcard { align-items: stretch; gap: 0; } .lvcard .lv-banner { width: 100%; box-sizing: border-box; }
+#overlay .levels, #overlay .endless-card, #overlay .ltxt, #overlay .chips { max-width: none; }
+#overlay > div { padding-top: 44px; box-sizing: border-box; }
+button.level.lvcard { padding: 0; }

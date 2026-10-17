@@ -1151,21 +1151,30 @@ function applyLevel() {
   document.title = `Fahrrinne frei! · ${nm}`;
 }
 
-function showLevels(note = '') {
-  const best = loadLevels();
+function showLevels(note = '', cancel = false) {
+  const best = loadLevels(), ICONS = ['🏞️', '⛰️', '🏭'];
+  const banner = (pal, icon) => `<span class="lv-banner" style="background:linear-gradient(135deg, rgb(${pal.water.join(',')}) 0%, rgb(${pal.water.map((v, k) => Math.round(v * 0.6 + pal.land[k] * 0.4)).join(',')}) 55%, rgb(${pal.land.join(',')}) 100%)"><span class="lv-ico">${icon}</span><svg viewBox="0 0 120 20" preserveAspectRatio="none" class="lv-wave"><path d="M0,10 C15,2 30,18 45,10 S75,2 90,10 S110,16 120,10 V20 H0 Z" fill="#ffffff22"/></svg></span>`;
   const rows = LEVELS.map((l, i) => {
     const open = levelUnlocked(i), b = best[l.id];
-    return `<button class="level${open ? '' : ' locked'}" data-level="${l.id}" ${open ? '' : 'disabled'}>
-      <span class="swatch" style="background:rgb(${l.palette.water.join(',')})"></span>
-      <span class="ltxt"><b>${open ? '' : '🔒 '}${l.name}</b><small>${l.blurb}</small>
-      <small>Ziel ${num(l.goalTons)} t · ${l.deadlineDays} Tage · Start ${chf(l.startMoney)}${b !== undefined ? ` · Rekord ${chf(b)}` : ''}${open ? '' : ` · erreiche das Ziel in ${LEVELS[i - 1].short} und schliesse mit Gewinn ab`}</small></span></button>`;
+    return `<button class="level lvcard${open ? '' : ' locked'}" data-level="${l.id}" ${open ? '' : 'disabled'}>
+      ${banner(l.palette, open ? ICONS[i] ?? '🌊' : '🔒')}
+      <span class="ltxt"><b>${l.name}</b><small>${l.blurb}</small>
+      <span class="chips"><i>🎯 ${num(l.goalTons)} t</i><i>📅 ${l.deadlineDays} Tage</i><i>💰 ${chf(l.startMoney)}</i>${b !== undefined ? `<i class="rec">🏆 ${chf(b)}</i>` : ''}</span>
+      ${open ? '' : `<small class="lock">Erreiche das Ziel in ${LEVELS[i - 1].short} und schliesse mit Gewinn ab.</small>`}</span></button>`;
   }).join('');
-  const endless = `<div class="seedrow"><label>Seed <input id="seed-in" type="number" min="0" max="99999999" value="${Math.floor(Math.random() * 90000) + 1000}"></label><button id="btn-seed" title="Zufälliger Seed">🎲</button><small>gilt für die Endlos-Spiele</small></div>` +
-    ENDLESS_WORLDS.map((w) => `<div class="endless-row"><b>${w.icon} ${w.name}</b><small>${w.blurb}</small><div class="seedrow"><button class="primary" data-endless="${w.id}">${w.short} starten</button></div></div>`).join('');
-  showOverlay(`<h2>Fahrrinne frei!</h2>${note ? `<p class="good">${note}</p>` : ''}<p>Welcher Fluss soll es sein?</p><div class="levels">${rows}</div>${endless}`);
+  const endless = ENDLESS_WORLDS.map((w) => `<div class="lvcard endless-card">${banner(w.palette, w.icon)}<span class="ltxt"><b>${w.name.replace('Endlos: ', '')}</b><small>${w.blurb}</small>
+      <span class="chips"><i>♾ ohne Ziel</i><i>🗺 ${w.maxMaps} Karten</i><i>💰 ${chf(w.startMoney)}</i></span>
+      <button class="primary" data-endless="${w.id}">${w.short} starten</button></span></div>`).join('');
+  showOverlay(`<div class="menu-page"><h2 class="page-title">Welcher Fluss soll es sein?</h2>${note ? `<p class="good">${note}</p>` : ''}
+    <h3 class="sec-title">Kampagne <small>Level für Level, mit Ziel und Frist</small></h3><div class="levels">${rows}</div>
+    <h3 class="sec-title">Endlos <small>Zufallskarten, kein Ziel, wer pleite geht, verliert</small></h3>
+    <div class="seedrow seedbar"><label>Seed <input id="seed-in" type="number" min="0" max="99999999" value="${Math.floor(Math.random() * 90000) + 1000}"></label><button id="btn-seed" title="Zufälliger Seed">🎲</button><small>gleicher Seed = gleiche Karten</small></div>
+    <div class="levels">${endless}</div>
+    ${cancel ? '<button id="btn-lv-cancel" class="back-btn">← Zurück zum Spiel</button>' : ''}</div>`);
   for (const b of document.querySelectorAll('#overlay .level:not(.locked)')) b.onclick = () => restart(b.dataset.level);
   $('btn-seed').onclick = () => { $('seed-in').value = Math.floor(Math.random() * 90000000); };
   for (const b of document.querySelectorAll('#overlay [data-endless]')) b.onclick = () => restart({ levelId: b.dataset.endless, seed: Math.max(0, Math.floor(+$('seed-in').value) || 0) });
+  if (cancel) $('btn-lv-cancel').onclick = hideOverlay;
 }
 
 function restart(loaded = null) {
@@ -1226,6 +1235,7 @@ $('btn-ff2').onclick = cycleFF; $('btn-ff').onclick = cycleFF;
 
 $('panel-handle').onclick = () => setSheet(!sheetOpen);
 $('map-select').onchange = (e) => changeMap(+e.target.value);
+$('btn-newgame').onclick = () => { $('btn-menu-close')?.click(); showLevels('', true); };
 $('opt-real').onchange = (e) => { game.realEvents = e.target.checked; toast(e.target.checked ? 'Reale Hoch- und Niedrigwasser: an' : 'Reale Ereignisse aus: Zufallsereignisse', 'info', true); };
 const books = setupBooks(() => game);
 const world = setupWorld(() => game, { go: (i) => changeMap(i), add: () => { const k = game.addMap(); if (k !== false) { mapsSig = null; updateMaps(); toast(`Neuer Abschnitt: ${game.maps[k].name}`, 'good', true); } return k; } });
@@ -1477,7 +1487,26 @@ syncMode();
 updatePanel();
 setDepthValue(game.targetDepth);
 function showIntro() {
-  showOverlay(`<h2>Fahrrinne frei!</h2>
+  showOverlay(`<div class="hero">
+      <svg class="hero-art" viewBox="0 0 320 120" aria-hidden="true">
+        <defs><linearGradient id="hg-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16324f"/><stop offset="1" stop-color="#3b78a0"/></linearGradient><linearGradient id="hg-w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b9ac0"/><stop offset="1" stop-color="#15446e"/></linearGradient></defs>
+        <rect width="320" height="120" fill="url(#hg-sky)"/><circle cx="262" cy="30" r="14" fill="#ffe9a8" opacity=".9"/>
+        <path d="M0,64 C40,50 70,60 110,52 S190,56 230,50 S300,58 320,52 V120 H0Z" fill="#4c7d4c"/><path d="M0,72 C50,64 90,72 140,66 S230,70 320,64 V120 H0Z" fill="#6e9a58"/>
+        <path d="M0,84 C40,78 80,90 130,84 S220,80 270,86 S310,82 320,84 V120 H0Z" fill="url(#hg-w)"/>
+        <path d="M0,96 C30,92 60,100 90,96 S150,92 190,98 S260,94 320,98" fill="none" stroke="#ffffff55" stroke-width="1.4"/><path d="M0,106 C40,102 80,110 130,106 S230,102 320,108" fill="none" stroke="#ffffff33" stroke-width="1.2"/>
+        <g class="hero-boat"><rect x="118" y="82" width="58" height="10" rx="3" fill="#e0a43a"/><rect x="128" y="72" width="16" height="11" fill="#f4f0e2"/><path d="M150,82 L168,60 L172,62 L156,82Z" fill="#555"/><path d="M168,60 Q184,74 188,96" fill="none" stroke="#c9b27a" stroke-width="2" stroke-dasharray="3 2"/><rect x="190" y="26" width="0" height="0"/></g>
+        <g class="hero-ship"><path d="M220,86 H282 L276,96 H226Z" fill="#b5483a"/><rect x="236" y="76" width="22" height="10" fill="#e8e2d2"/><rect x="262" y="78" width="12" height="8" fill="#3b9a78"/></g>
+      </svg>
+      <h1>Fahrrinne frei!</h1>
+      <p class="tag">Halte den Fluss befahrbar, verwerte, was du ausbaggerst, und baue dir eine Flotte, einen Hafen und eine Reederei auf.</p>
+    </div>
+    <div class="steps">
+      <div class="step"><b>🌀 Baggern</b><small>Tiefe und Breite der Rinne bestimmen, welche Schiffe fahren können.</small></div>
+      <div class="step"><b>🚢 Verkehr</b><small>Grössere Schiffe bringen mehr Gebühren. Ausbauen lohnt sich.</small></div>
+      <div class="step"><b>⚓ Hafen &amp; Handel</b><small>Material verkaufen, Flotte mieten, mit eigenen Schiffen handeln.</small></div>
+    </div>
+    <div class="intro-actions"><button class="primary big" id="btn-go">Spiel starten</button></div>
+    <details class="howto"><summary>📖 Spielanleitung &amp; Steuerung</summary>
     <p>Du betreibst einen Flussabschnitt. Schiffe brauchen eine <b>Fahrrinne</b> mit genug Wasser unter dem Kiel (Tiefgang + 0,3 m) und genug Breite. Am Anfang kommen nur Lastkähne durch. Wer die Flusssohle <b>ausbaggert</b>, lässt grössere Schiffe und mehr Schiffe durch: für jedes gibt es eine <b>Gebühr</b> und einen Anteil am <b>Frachtwert</b> (die Frachtpreise schwanken). Baggergut wird in der Anlage an Land aufbereitet: Kies und Sand bringen Geld, Schlick und Altlasten kosten Entsorgung.
     Erreichst du das <b>Verkehrsziel</b> (Tonnen Fracht) und hast am Ende Gewinn, schaltest du das nächste Fluss frei. Gewonnen hat, wer am Ende am meisten Geld hat.</p>
     <details ${isTouch ? 'open' : ''}><summary>Steuerung am Handy</summary>
@@ -1488,11 +1517,14 @@ function showIntro() {
       <p>Der Ponton baggert gleichzeitig 4 Spalten in Flussrichtung und 16 Zellen quer. Im Querschnitt zeigt die dicke Linie die <b>engste Stelle</b> (höchster Punkt) im Kasten; orange gestrichelt ist deine Solltiefe, die farbigen Linien sind die Tiefen der Schiffsklassen. Die Pumpe saugt nur am Boden und nur nach rechts.</p>
       <p><b>Böschungen rutschen nach:</b> schmal und tief baggern füllt sich wieder auf. Ufer und Flachwasser sind Naturschutzzone (schraffiert, kostet Busse). <b>Fels</b> (grau) lässt sich ohne Felsfräse kaum abtragen. Der Fluss <b>verlandet</b>: besonders am Rand und nach Hochwasser lagert er Schlick in der Rinne ab. Bei <b>Niedrigwasser</b> fehlt Tiefe (Schiffe können auflaufen: Bergung kostet), bei <b>Hochwasser</b> ist die Schifffahrt gesperrt. Ein Ponton in der Rinne bremst den Verkehr. Fremdstoffe (weisse Punkte) verstopfen die Pumpe: Freispülen im grünen Bereich; bei Fliegerbomben hilft nur ruhig bleiben.</p>
       <p>In einer Einbahnrinne fahren Schiffe nur in einer Richtung; erst mit zwei getrennten Rinnen (⇄) ist Gegenverkehr möglich. Wer nicht durchkommt, dreht nach einer Weile ab und die Fracht geht auf die Bahn. Reedereien bieten <b>Frachtaufträge</b> mit Prämie an.</p></details>
-    <button class="primary" id="btn-go">Los</button>`);
+    </details>
+    <p class="foot">Kampagne am Rhein, Endlos-Spiele am Rhein, Nil und im Seehafen.</p>`);
+  $('btn-go').onclick = () => showLevels();
+
   $('btn-go').onclick = () => showLevels();
   if (saved) {
     const b = document.createElement('button');
-    b.className = 'primary'; b.id = 'btn-continue';
+    b.className = 'primary big'; b.id = 'btn-continue';
     b.textContent = `Weiterspielen (${saved.level}, Tag ${saved.day}, ${chf(saved.money)})`;
     b.onclick = () => { const g = restoreGame(readSave()); if (g) restart(g); else { clearSave(); hideOverlay(); } };
     $('btn-go').before(b);
