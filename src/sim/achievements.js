@@ -6,6 +6,7 @@ export const BONUS = {
   sell: { label: 'Verkaufserlöse der Anlage', cap: 0.15, sign: '+' },
   wage: { label: 'Löhne der Flotte', cap: 0.4, sign: '−' },
   disposal: { label: 'Entsorgungskosten', cap: 0.3, sign: '−' },
+  cement: { label: 'Betonkosten', cap: 0.4, sign: '−' },
 };
 const MONEY = [2000, 6000, 20000, 60000, 180000, 500000]; // Prämie je Stufe
 const fleetUnits = (g) => g.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
@@ -23,6 +24,10 @@ export const SERIES = [
   { id: 'fleet', icon: '🚤', name: 'Flottenchef', unit: 'Pontons in der Flotte', cur: fleetUnits, goals: [1, 3, 6, 10, 20], names: ['Erster Mitarbeiter', 'Kleine Crew', 'Eigene Werft', 'Grosse Flotte', 'Armada'], bonus: { wage: 0.03 } },
   { id: 'contracts', icon: '📜', name: 'Auftragsprofi', unit: 'Aufträge erfüllt', cur: (g) => g.totals.contractsDone, goals: [1, 10, 50, 200], names: ['Erster Auftrag', 'Zuverlässig', 'Stammkunde', 'Erste Adresse'], bonus: { sell: 0.015 } },
   { id: 'altlast', icon: '☢️', name: 'Altlast-Räumer', unit: 'm³ Altlast entsorgt', cur: (g) => g.totals.byKind?.[3] ?? 0, goals: [50, 500, 5000, 20000], names: ['Sauber gemacht', 'Grosse Räumung', 'Umweltpreis', 'Saubere Sohle'], bonus: { disposal: 0.04 } },
+  { id: 'beton', icon: '🧱', name: 'Betonbauer', unit: 'm³ Beton verbaut', cur: (g) => g.totals.concreteUsed ?? 0, goals: [20, 150, 800, 4000], names: ['Erster Guss', 'Ufer gesichert', 'Rinne in Beton', 'Betonbaron'], bonus: { cement: 0.08 } },
+  { id: 'betonwerk', icon: '🏭', name: 'Betonwerk', unit: 'm³ Beton gemischt', cur: (g) => g.totals.concreteMixed ?? 0, goals: [30, 300, 2000], names: ['Erste Charge', 'Eigene Mischung', 'Fertigbeton-Lieferant'], bonus: { cement: 0.08 } },
+  { id: 'missions', icon: '🎯', name: 'Zielstrebig', unit: 'Ziele erreicht', cur: (g) => g.missions?.done ?? 0, goals: [1, 5, 20, 60], names: ['Erstes Ziel', 'Auf Kurs', 'Zuverlässig', 'Projektleiter'], bonus: { wage: 0.02 } },
+  { id: 'streak', icon: '🔥', name: 'Serie', unit: 'Ziele in Folge', cur: (g) => g.missions?.best ?? 0, goals: [3, 6, 12], names: ['Dreierserie', 'Sechserserie', 'Unaufhaltsam'], bonus: { sell: 0.015 } },
   { id: 'floods', icon: '🌊', name: 'Hochwasser-Profi', unit: 'Hochwasser überstanden', cur: (g) => g.totals.floods ?? 0, goals: [1, 5, 20], names: ['Erste Flut', 'Wetterfest', 'Sturmerprobt'], bonus: null },
   { id: 'rescued', icon: '🛟', name: 'Retter', unit: 'Schiffe geborgen', cur: (g) => g.totals.rescued ?? 0, goals: [1, 10, 50], names: ['Erste Bergung', 'Bergungsprofi', 'Seenotretter'], bonus: null },
   { id: 'bestday', icon: '📈', name: 'Spitzentag', unit: 'CHF Gewinn an einem Tag', cur: bestDay, goals: [5000, 20000, 100000, 500000], names: ['Guter Tag', 'Sehr guter Tag', 'Rekordtag', 'Goldener Tag'], bonus: null },
@@ -36,7 +41,7 @@ export const prize = (i) => MONEY[Math.min(i, MONEY.length - 1)];
 
 // Summe der Boni aus freigeschalteten Stufen (gedeckelt)
 export function bonusOf(g) {
-  const b = { power: 0, traffic: 0, sell: 0, wage: 0, disposal: 0 }, got = g.ach ?? {};
+  const b = { power: 0, traffic: 0, sell: 0, wage: 0, disposal: 0, cement: 0 }, got = g.ach ?? {};
   for (const s of SERIES) if (s.bonus) s.goals.forEach((_, i) => { if (got[achId(s, i)] !== undefined) for (const [k, v] of Object.entries(s.bonus)) b[k] += v; });
   for (const k of Object.keys(b)) b[k] = Math.min(BONUS[k].cap, b[k]);
   return b;

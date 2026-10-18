@@ -650,6 +650,7 @@ button.level.lvcard { padding: 0; }
 .ach-card { background: #ffffff0d; border: 1px solid #ffffff14; border-radius: 12px; padding: 10px 12px; margin: 8px 0; } .ach-card.done { opacity: .7; border-color: #3f8a5e66; }
 .ach-top { display: flex; gap: 10px; align-items: center; } .ach-ico { font-size: 26px; } .stars { color: #ffd24a; letter-spacing: 1px; font-size: 13px; }
 .ach-card small { color: var(--muted); }
+.ach-card.goal { border-color: #3fb4d855; } .ach-card.goal.beton { border-color: #c9a24a88; background: #c9a24a14; }
 
 </style>
 </head>
@@ -817,34 +818,36 @@ const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit:
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(8);
 const { LEVELS, ENDLESS, ENDLESS_WORLDS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
 const { Game } = __m(11);
-const { setupBooks } = __m(23);
-const { SEASON_ICON, seasonLook } = __m(18);
-const { setupWorld } = __m(24);
-const { startIcons } = __m(25);
+const { setupBooks } = __m(24);
+const { SEASON_ICON, seasonLook } = __m(19);
+const { setupWorld } = __m(25);
+const { startIcons } = __m(26);
+const { missionProgress, streakBonus, MISSIONS } = __m(17);
 const { progress: achProgress, countAch, bonusOf, BONUS, prize: achPrize } = __m(16);
 const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(10);
-const { acceptContract } = __m(19);
-const { waitingByClass, shipPos } = __m(17);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, smallBlock, hireSmall, smallCount, perMapMax, totalMax, hiredTotal, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(20);
-const { bayCapacity, maxZones, zoneClasses } = __m(17);
-const { materialPrice } = __m(21);
-const { TowSim, groundedNear } = __m(26);
+const { acceptContract } = __m(20);
+const { waitingByClass, shipPos } = __m(18);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, smallBlock, hireSmall, smallCount, perMapMax, totalMax, hiredTotal, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(21);
+const { bayCapacity, maxZones, zoneClasses } = __m(18);
+const { materialPrice } = __m(22);
+const { TowSim, groundedNear } = __m(27);
 const { makeHarborView, HARBOR, waitPos } = __m(4);
 const { toolName } = __m(13);
 const { priceOf, trend } = __m(9);
 const { needDepth, minNeedDepth } = __m(3);
-const { Advisor } = __m(27);
-const { serializeGame, restoreGame, savedSummary } = __m(28);
-const { createInput } = __m(29);
-const { setupTouch } = __m(31);
-const { steerToward } = __m(30);
-const { setupPort } = __m(32);
-const { fitSize, renderQuality } = __m(33);
-const { hintsFor } = __m(34);
-const { Fx } = __m(35);
-const { createAudio } = __m(36);
-const { createMusic } = __m(37);
-const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(38);
+const { Advisor } = __m(28);
+const { serializeGame, restoreGame, savedSummary } = __m(29);
+const { createInput } = __m(30);
+const { setupTouch } = __m(32);
+const { steerToward } = __m(31);
+const { setupPort } = __m(33);
+const { fitSize, renderQuality } = __m(34);
+const { hintsFor } = __m(35);
+const { Fx } = __m(36);
+const { createAudio } = __m(37);
+const { createMusic } = __m(38);
+const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(39);
+
 
 
 
@@ -1399,7 +1402,7 @@ function updateConcrete() {
   const packs = C.packs.map((m) => ({ m, block: game.concreteBlock(m) }));
   box.innerHTML = `<div>Betonvorrat: <b>${num(game.concrete)}</b> / ${C.stockCap} m³ · ${num(game.totals.concreteUsed)} m³ verbaut</div>
     <small>${st.betonrohr > 0 ? 'Betoniergerät: Taste V (Gerät wechseln) im Querschnitt, Leertaste bringt Beton aus.' : 'Betoniergerät (Ausrüstung) bringt Beton aus.'} Beton verhärtet Boden und Ufer: weniger Verlandung, die Böschung hält. Zum Tieferbaggern muss er mit dem Löffel wieder aufgebrochen werden.</small>
-    <div class="packs">${packs.map((p) => `<button data-pack="${p.m}" ${p.block ? 'disabled' : ''} title="${p.block ?? ''}">+${p.m} m³ kaufen (${chf(p.m * C.price)})</button>`).join('')}</div>
+    <div class="packs">${packs.map((p) => `<button data-pack="${p.m}" ${p.block ? 'disabled' : ''} title="${p.block ?? ''}">+${p.m} m³ kaufen (${chf(p.m * game.concretePrice)})</button>`).join('')}</div>
     ${st.mixer > 0 ? `<div class="mixer">Betonwerk Stufe ${st.mixer}: mischt ${st.mixRate.toFixed(1)} m³/s · Lager Kies ${game.agg.kies.toFixed(0)} / Sand ${game.agg.sand.toFixed(0)} m³ (je m³ Beton ${C.mix.kies} Kies, ${C.mix.sand} Sand, Zement ${C.cement} CHF)
       <label><input type="checkbox" id="chk-divert" ${game.divertAgg ? 'checked' : ''}> Kies und Sand aus der Anlage ins Betonwerk statt verkaufen</label></div>` : '<small>Mit dem Betonwerk (Anlage ausbauen) mischst du Beton selbst aus Kies und Sand des Flusses, viel billiger als Zukaufen.</small>'}`;
   for (const b of box.querySelectorAll('[data-pack]')) b.onclick = () => { if (game.buyConcrete(+b.dataset.pack)) { concreteSig = null; updateConcrete(); updatePanel(); } };
@@ -1536,7 +1539,7 @@ const PTABS = [
   { id: 'fleet', label: '🚤', name: 'Flotte', gate: 'tab_fleet' },
   { id: 'trade', label: '💰', name: 'Handel', gate: 'tab_trade' },
   { id: 'maps', label: '🗺', name: 'Karten', gate: 'tab_maps' },
-  { id: 'ach', label: '🏆', name: 'Erfolge' },
+  { id: 'ach', label: '🎯', name: 'Ziele' },
   { id: 'more', label: '☰', name: 'Mehr' },
 ];
 // Freischaltung: Bedingung → Name (für die Meldung «Neu»). Einmal erfüllt bleibt der Bereich offen.
@@ -1581,11 +1584,12 @@ function updateUnlocks() {
 let achSig = '';
 function updateAch() {
   if (curTab !== 'ach') return;
-  const rows = achProgress(game), c = countAch(game), b = bonusOf(game), sig = `${c.n}/${rows.map((r) => r.next + ':' + Math.floor(r.frac * 25)).join()}`;
+  const rows = achProgress(game), c = countAch(game), b = bonusOf(game), M = game.missions ?? { list: [], done: 0, streak: 0 }, sig = `${c.n}/${rows.map((r) => r.next + ':' + Math.floor(r.frac * 25)).join()}|${M.done}/${M.streak}/${game.day}/${M.list.map((m) => m.id + ':' + Math.floor(missionProgress(game, m).frac * 25)).join()}`;
   if (sig === achSig) return; achSig = sig;
   const act = Object.entries(b).filter(([, v]) => v > 0).map(([k, v]) => `<span class="chip on">${BONUS[k].sign}${+(v * 100).toFixed(1)} % ${BONUS[k].label}</span>`).join('') || '<small>Noch keine Boni. Der erste Erfolg schaltet einen frei.</small>';
   const order = [...rows].sort((a, z) => (a.next < 0) - (z.next < 0) || z.frac - a.frac);
-  $('ach-box').innerHTML = `<h2>🏆 Erfolge <small>${c.n} von ${c.t}</small></h2><div class="ach-sum"><div class="bar"><i style="width:${Math.round((100 * c.n) / Math.max(1, c.t))}%"></i></div><div class="chips2"><b>Aktive Boni:</b> ${act}</div></div>` + order.map((r) => {
+  const gcards = M.list.length ? M.list.map((m) => { const p = missionProgress(game, m), pay = Math.round((m.reward * (1 + streakBonus(game))) / 10) * 10; return `<div class="ach-card goal${m.beton ? ' beton' : ''}"><div class="ach-top"><span class="ach-ico">${m.beton ? '🧱' : '🎯'}</span><div><b>${m.text}</b><br><small>noch ${p.left} Tage · Prämie ${chf(pay)}${m.gift ? ` + ${m.gift} m³ Beton` : ''}</small></div></div><div class="bar"><i style="width:${Math.round(p.frac * 100)}%"></i></div><small>${num(Math.min(p.cur, m.target))} / ${num(m.target)} ${m.unit}</small></div>`; }).join('') : `<small>${game.day < MISSIONS.startDay ? 'Das erste Ziel erscheint zum nächsten Tag.' : 'Neue Ziele erscheinen zum nächsten Tag.'}</small>`;
+  $('ach-box').innerHTML = `<h2>🎯 Aktuelle Ziele <small>${M.done} erreicht${M.streak > 1 ? ` · 🔥 Serie ${M.streak} (+${Math.round(streakBonus(game) * 100)} %)` : ''}</small></h2>${gcards}<h2>🏆 Erfolge <small>${c.n} von ${c.t}</small></h2><div class="ach-sum"><div class="bar"><i style="width:${Math.round((100 * c.n) / Math.max(1, c.t))}%"></i></div><div class="chips2"><b>Aktive Boni:</b> ${act}</div></div>` + order.map((r) => {
     const s = r.s, stars = '★'.repeat(r.done) + '☆'.repeat(r.total - r.done), money = r.next >= 0 ? achPrize(r.next) : 0;
     const bonus = r.next >= 0 && s.bonus ? Object.entries(s.bonus).map(([k, v]) => `${BONUS[k].sign}${+(v * 100).toFixed(1)} % ${BONUS[k].label}`).join(', ') : '';
     return `<div class="ach-card${r.next < 0 ? ' done' : ''}"><div class="ach-top"><span class="ach-ico">${s.icon}</span><div><b>${s.name}</b> <span class="stars">${stars}</span><br><small>${r.next < 0 ? '✅ alle Stufen erreicht' : `Nächstes: «${s.names[r.next]}» · ${num(r.goal)} ${s.unit}`}</small></div></div>
@@ -2313,7 +2317,7 @@ function frame(now) {
       tipTimer = 0;
       if (advisor.enabled && !(sim.mode === 'slice' && sim.slice.freeing)) { const tip = advisor.pick(game, sim); if (tip) showTip(tip); }
     }
-    for (const n of game.notes.splice(0)) { toast(n.text, n.kind, false, n.goto); if (n.text.startsWith('🏆') && curTab !== 'ach') { newTabs.add('ach'); $('ptabs').dataset.sig = ''; } }
+    for (const n of game.notes.splice(0)) { toast(n.text, n.kind, false, n.goto); if ((n.text.startsWith('🏆') || n.text.startsWith('🎯')) && curTab !== 'ach') { newTabs.add('ach'); $('ptabs').dataset.sig = ''; } }
     if (game._achNew) { game._achNew = false; sim.setStats(game.stats); if (mainSim) mainSim.setStats(game.stats); }
   }
   readInput.endFrame();
@@ -4498,16 +4502,18 @@ const { DredgeSim } = __m(13);
 const { EVENTS } = __m(14);
 const { computeStats, upgradeCost } = __m(15);
 const { checkAchievements, bonusOf, applyBonus } = __m(16);
+const { createMissions, checkMissions, missionsDay } = __m(17);
 const { createRng } = __m(6);
 const { createMarket, stepMarket } = __m(9);
 const { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } = __m(7);
 const { createShipping, updateShipping } = __m(1);
-const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(17);
-const { processPlant, stockTotal, materialPrice } = __m(21);
-const { updateContracts } = __m(19);
-const { createFleet, updateFleet } = __m(20);
-const { sectionOf, applySection } = __m(22);
-const { dateOf, waterSeason, realEventOn, LAST_REAL_YEAR, tideAt } = __m(18);
+const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(18);
+const { processPlant, stockTotal, materialPrice } = __m(22);
+const { updateContracts } = __m(20);
+const { createFleet, updateFleet } = __m(21);
+const { sectionOf, applySection } = __m(23);
+const { dateOf, waterSeason, realEventOn, LAST_REAL_YEAR, tideAt } = __m(19);
+
 
 
 
@@ -4552,7 +4558,7 @@ function regionBias(seed, k, sec = null, world = 'rhein') {
 }
 const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0, cat: {} });
 // Kategorien der Tagesbilanz (Dashboard): Betrag > 0 = Einnahme, < 0 = Ausgabe
-const BOOK = { baggern: 'Baggern (Entgelt)', rohstoff: 'Rohstoff-Aufschlag', verkehr: 'Verkehrsgebühren', anlage: 'Aufbereitungsanlage', handel: 'Hafenhandel', hafen: 'Hafen-Umschlag', lager: 'Lagerkosten', reederei: 'Reederei', vertrag: 'Verträge', bussen: 'Bussen & Reparaturen', havarie: 'Havarie & Bergung', ereignis: 'Ereignisse', erfolg: 'Erfolgsprämien', beton: 'Beton', betrieb: 'Betrieb', loehne: 'Löhne Flotte' };
+const BOOK = { baggern: 'Baggern (Entgelt)', rohstoff: 'Rohstoff-Aufschlag', verkehr: 'Verkehrsgebühren', anlage: 'Aufbereitungsanlage', handel: 'Hafenhandel', hafen: 'Hafen-Umschlag', lager: 'Lagerkosten', reederei: 'Reederei', vertrag: 'Verträge', bussen: 'Bussen & Reparaturen', havarie: 'Havarie & Bergung', ereignis: 'Ereignisse', erfolg: 'Erfolgsprämien', ziele: 'Zielprämien', beton: 'Beton', betrieb: 'Betrieb', loehne: 'Löhne Flotte' };
 
 // Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
 // Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel (goalTons) schaltet das nächste Level frei.
@@ -4595,6 +4601,7 @@ class Game {
     this.rejectedBy = {};
     this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, premium: 0, sunk: 0, sunkFines: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
     this.today = freshDay(); this.history = []; this.dayStartMoney = this.money;
+    this.missions = createMissions(); // wechselnde Ziele
     this.ach = {}; this._achClock = 0; // freigeschaltete Erfolge: id → Tag
     this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
@@ -4864,12 +4871,13 @@ class Game {
     const C = CONFIG.concrete;
     if (this.status !== 'playing') return 'Spiel beendet';
     if (this.concrete + m3 > C.stockCap + 1e-9) return 'Betonlager voll';
-    if (this.money < m3 * C.price) return `Braucht ${Math.round(m3 * C.price).toLocaleString('de-CH')} CHF`;
+    if (this.money < m3 * this.concretePrice) return `Braucht ${Math.round(m3 * this.concretePrice).toLocaleString('de-CH')} CHF`;
     return null;
   }
+  get concretePrice() { return CONFIG.concrete.price * (1 - bonusOf(this).cement); } // Erfolge senken den Betonpreis
   buyConcrete(m3) {
     if (this.concreteBlock(m3)) return false;
-    const cost = m3 * CONFIG.concrete.price;
+    const cost = m3 * this.concretePrice;
     this.money -= cost; this.concrete += m3; this.totals.concreteBought += m3; this.totals.concreteSpend += cost;
     this.say(`${m3} m³ Beton gekauft (−${Math.round(cost).toLocaleString('de-CH')} CHF)`, 'upgrade');
     return true;
@@ -4944,7 +4952,7 @@ class Game {
       const m = Math.min(this.stats.mixRate * dt, C.stockCap - this.concrete, this.agg.kies / C.mix.kies, this.agg.sand / C.mix.sand);
       if (m > 1e-9) {
         this.agg.kies -= m * C.mix.kies; this.agg.sand -= m * C.mix.sand; this.concrete += m;
-        const cost = m * C.cement; this.money -= cost; this.totals.cementCost += cost; this.totals.concreteMixed += m; this.today.costs += cost; this.book('beton', -cost);
+        const cost = m * C.cement * (1 - bonusOf(this).cement); this.money -= cost; this.totals.cementCost += cost; this.totals.concreteMixed += m; this.today.costs += cost; this.book('beton', -cost);
       }
     }
     if (pl.vol > 0) {
@@ -4971,7 +4979,7 @@ class Game {
     updateShipping(this, dt);
     this.mapIdx = cur;
 
-    this._achClock = (this._achClock ?? 0) + dt; if (this._achClock >= 3) { this._achClock = 0; checkAchievements(this); }
+    this._achClock = (this._achClock ?? 0) + dt; if (this._achClock >= 3) { this._achClock = 0; checkAchievements(this); checkMissions(this); }
     const day = Math.floor(this.time / CONFIG.daySeconds) + 1;
     while (this.day < day && this.status === 'playing') { this.day++; this.dayEnd(); }
     if (this.status === 'playing') {
@@ -5006,6 +5014,7 @@ class Game {
     }
     this.depositsDay();
     updateContracts(this);
+    missionsDay(this);
     if (this.goalReached && !this.goalSeen) {
       this.goalSeen = true;
       this.say(`Verkehrsziel erreicht (${this.level.goalTons.toLocaleString('de-CH')} t)! Du kannst abschliessen oder weiterspielen.`, 'good');
@@ -5598,6 +5607,7 @@ const BONUS = {
   sell: { label: 'Verkaufserlöse der Anlage', cap: 0.15, sign: '+' },
   wage: { label: 'Löhne der Flotte', cap: 0.4, sign: '−' },
   disposal: { label: 'Entsorgungskosten', cap: 0.3, sign: '−' },
+  cement: { label: 'Betonkosten', cap: 0.4, sign: '−' },
 };
 const MONEY = [2000, 6000, 20000, 60000, 180000, 500000]; // Prämie je Stufe
 const fleetUnits = (g) => g.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
@@ -5615,6 +5625,10 @@ const SERIES = [
   { id: 'fleet', icon: '🚤', name: 'Flottenchef', unit: 'Pontons in der Flotte', cur: fleetUnits, goals: [1, 3, 6, 10, 20], names: ['Erster Mitarbeiter', 'Kleine Crew', 'Eigene Werft', 'Grosse Flotte', 'Armada'], bonus: { wage: 0.03 } },
   { id: 'contracts', icon: '📜', name: 'Auftragsprofi', unit: 'Aufträge erfüllt', cur: (g) => g.totals.contractsDone, goals: [1, 10, 50, 200], names: ['Erster Auftrag', 'Zuverlässig', 'Stammkunde', 'Erste Adresse'], bonus: { sell: 0.015 } },
   { id: 'altlast', icon: '☢️', name: 'Altlast-Räumer', unit: 'm³ Altlast entsorgt', cur: (g) => g.totals.byKind?.[3] ?? 0, goals: [50, 500, 5000, 20000], names: ['Sauber gemacht', 'Grosse Räumung', 'Umweltpreis', 'Saubere Sohle'], bonus: { disposal: 0.04 } },
+  { id: 'beton', icon: '🧱', name: 'Betonbauer', unit: 'm³ Beton verbaut', cur: (g) => g.totals.concreteUsed ?? 0, goals: [20, 150, 800, 4000], names: ['Erster Guss', 'Ufer gesichert', 'Rinne in Beton', 'Betonbaron'], bonus: { cement: 0.08 } },
+  { id: 'betonwerk', icon: '🏭', name: 'Betonwerk', unit: 'm³ Beton gemischt', cur: (g) => g.totals.concreteMixed ?? 0, goals: [30, 300, 2000], names: ['Erste Charge', 'Eigene Mischung', 'Fertigbeton-Lieferant'], bonus: { cement: 0.08 } },
+  { id: 'missions', icon: '🎯', name: 'Zielstrebig', unit: 'Ziele erreicht', cur: (g) => g.missions?.done ?? 0, goals: [1, 5, 20, 60], names: ['Erstes Ziel', 'Auf Kurs', 'Zuverlässig', 'Projektleiter'], bonus: { wage: 0.02 } },
+  { id: 'streak', icon: '🔥', name: 'Serie', unit: 'Ziele in Folge', cur: (g) => g.missions?.best ?? 0, goals: [3, 6, 12], names: ['Dreierserie', 'Sechserserie', 'Unaufhaltsam'], bonus: { sell: 0.015 } },
   { id: 'floods', icon: '🌊', name: 'Hochwasser-Profi', unit: 'Hochwasser überstanden', cur: (g) => g.totals.floods ?? 0, goals: [1, 5, 20], names: ['Erste Flut', 'Wetterfest', 'Sturmerprobt'], bonus: null },
   { id: 'rescued', icon: '🛟', name: 'Retter', unit: 'Schiffe geborgen', cur: (g) => g.totals.rescued ?? 0, goals: [1, 10, 50], names: ['Erste Bergung', 'Bergungsprofi', 'Seenotretter'], bonus: null },
   { id: 'bestday', icon: '📈', name: 'Spitzentag', unit: 'CHF Gewinn an einem Tag', cur: bestDay, goals: [5000, 20000, 100000, 500000], names: ['Guter Tag', 'Sehr guter Tag', 'Rekordtag', 'Goldener Tag'], bonus: null },
@@ -5628,7 +5642,7 @@ const prize = (i) => MONEY[Math.min(i, MONEY.length - 1)];
 
 // Summe der Boni aus freigeschalteten Stufen (gedeckelt)
 function bonusOf(g) {
-  const b = { power: 0, traffic: 0, sell: 0, wage: 0, disposal: 0 }, got = g.ach ?? {};
+  const b = { power: 0, traffic: 0, sell: 0, wage: 0, disposal: 0, cement: 0 }, got = g.ach ?? {};
   for (const s of SERIES) if (s.bonus) s.goals.forEach((_, i) => { if (got[achId(s, i)] !== undefined) for (const [k, v] of Object.entries(s.bonus)) b[k] += v; });
   for (const k of Object.keys(b)) b[k] = Math.min(BONUS[k].cap, b[k]);
   return b;
@@ -5673,13 +5687,91 @@ function checkAchievements(g) {
 return { BONUS: BONUS, SERIES: SERIES, achId: achId, seriesVisible: seriesVisible, prize: prize, bonusOf: bonusOf, applyBonus: applyBonus, progress: progress, countAch: countAch, checkAchievements: checkAchievements };
 },
 function(){
-const { trafficSeason } = __m(18);
+const { createRng } = __m(6);
+const { rankOf, hasRank } = __m(10);
+// Wechselnde Ziele: bis zu drei laufende Aufgaben (Baggern, Fracht, Altlasten, Beton ...) mit Frist und Prämie.
+// Erfüllte Ziele werden am nächsten Tag durch neue ersetzt; mehrere Erfolge in Folge geben einen Zuschlag (Serie).
+// Beton-Ziele sind gewichtet und zahlen mehr (plus Beton als Sachprämie): so lohnt sich das Betonieren und das Betonwerk.
+
+
+
+const MISSIONS = { slots: 3, life: [6, 10], streakStep: 0.1, streakMax: 0.5, startDay: 2 };
+const r10 = (v, k = 10) => Math.max(k, Math.round(v / k) * k);
+// Schwierigkeit wächst mit dem Fortschritt: Fracht, Klassenstufe, Karten
+const scale = (g) => Math.min(8, 1 + (g.totals.tons ?? 0) / 20000 + (rankOf(g) - 1) * 0.25 + (g.maps.length - 1) * 0.2);
+const hasHarbor = (g) => g.maps.some((m) => m.port?.open);
+const jobs = (g) => g.maps.reduce((a, m) => a + (m.port?.jobsDone ?? 0), 0);
+
+// key, Gewicht, Bedingung, Messwert (absolut), Erzeugung → { text, target, reward, gift? }
+const TEMPLATES = [
+  { key: 'removed', w: 2, val: (g) => g.totals.removed, make: (g, s) => { const n = r10(250 * s, 50); return { text: `Baggere ${n.toLocaleString('de-CH')} m³`, unit: 'm³', target: n, reward: n * 12 }; } },
+  { key: 'tons', w: 2, val: (g) => g.totals.tons, make: (g, s) => { const n = r10(1200 * s, 100); return { text: `Bringe ${n.toLocaleString('de-CH')} t Fracht durch die Rinne`, unit: 't', target: n, reward: n * 4 }; } },
+  { key: 'ships', w: 1.5, val: (g) => g.totals.ships, make: (g, s) => { const n = r10(7 * s ** 0.8, 1); return { text: `Lass ${n} Schiffe passieren`, unit: 'Schiffe', target: n, reward: n * 420 }; } },
+  { key: 'income', w: 1, val: (g) => g.totals.trafficIncome, make: (g, s) => { const n = r10(2500 * s, 100); return { text: `Verdiene ${n.toLocaleString('de-CH')} CHF Verkehrsgebühren`, unit: 'CHF', target: n, reward: Math.round(n * 0.5) }; } },
+  { key: 'sold', w: 1, when: (g) => hasRank(g, 'trade') || g.totals.sold > 0, val: (g) => g.totals.sold, make: (g, s) => { const n = r10(150 * s, 10); return { text: `Verkaufe ${n.toLocaleString('de-CH')} m³ Material aus der Anlage`, unit: 'm³', target: n, reward: n * 18 }; } },
+  { key: 'altlast', w: 1.5, when: (g) => hasRank(g, 'hazard') && g.river.kind.some((k) => k === 3), val: (g) => g.totals.byKind?.[3] ?? 0, make: (g, s) => { const n = r10(30 * s, 5); return { text: `Entsorge ${n} m³ Altlast`, unit: 'm³', target: n, reward: n * 90 }; } },
+  { key: 'contracts', w: 1, when: (g) => hasRank(g, 'trade'), val: (g) => g.totals.contractsDone, make: (g, s) => { const n = s > 3 ? 2 : 1; return { text: `Erfülle ${n === 1 ? 'einen Frachtauftrag' : `${n} Frachtaufträge`}`, unit: 'Aufträge', target: n, reward: Math.round(n * 4000 * s ** 0.5) }; } },
+  { key: 'jobs', w: 1, when: hasHarbor, val: jobs, make: (g, s) => { const n = s > 3 ? 4 : 2; return { text: `Erledige ${n} Hafen-Aufträge`, unit: 'Aufträge', target: n, reward: Math.round(n * 2500 * s ** 0.5) }; } },
+  // Beton: wichtiger, höher bezahlt, mit Beton als Sachprämie
+  { key: 'buyPour', w: 6, when: (g) => hasRank(g, 'gear') && g.stats.betonrohr === 0, val: (g) => g.levels.betonrohr ?? 0, abs: true, make: () => ({ text: 'Rüste das Betoniergerät aus (Technik → Geräte): Beton schützt Rinne und Ufer vor Verlandung', unit: 'Stufe', target: 1, reward: 6000, gift: 30, beton: true }) },
+  { key: 'buyMixer', w: 5, when: (g) => g.stats.betonrohr > 0 && g.stats.mixer === 0 && g.totals.concreteBought >= 20, val: (g) => g.levels.mixer ?? 0, abs: true, make: () => ({ text: 'Baue das Betonwerk (Technik → Anlage): mischt Beton aus Kies und Sand, viel billiger als Zukaufen', unit: 'Stufe', target: 1, reward: 9000, gift: 60, beton: true }) },
+  { key: 'pour', w: 5, when: (g) => g.stats.betonrohr > 0, val: (g) => g.totals.concreteUsed, make: (g, s) => { const n = r10(30 * s ** 0.7, 5); return { text: `Betoniere ${n} m³ Rinne und Ufer (Beton wirkt gegen Verlandung)`, unit: 'm³ Beton', target: n, reward: Math.round(n * 230), gift: Math.round(n * 0.4), beton: true }; } },
+  { key: 'mix', w: 4, when: (g) => g.stats.mixer > 0, val: (g) => g.totals.concreteMixed, make: (g, s) => { const n = r10(50 * s ** 0.7, 10); return { text: `Mische ${n} m³ Beton im Betonwerk`, unit: 'm³ Beton', target: n, reward: Math.round(n * 200), gift: Math.round(n * 0.3), beton: true }; } },
+];
+const byKey = (k) => TEMPLATES.find((t) => t.key === k);
+
+const createMissions = () => ({ list: [], seq: 0, done: 0, failed: 0, streak: 0, best: 0 });
+const streakBonus = (g) => Math.min(MISSIONS.streakMax, (g.missions?.streak ?? 0) * MISSIONS.streakStep);
+const cur = (g, m) => { const t = byKey(m.key); if (!t) return 0; const v = t.val(g); return t.abs ? v : v - m.base; };
+const missionProgress = (g, m) => { const c = Math.max(0, cur(g, m)); return { cur: c, frac: Math.min(1, c / m.target), left: Math.max(0, Math.ceil(m.due - g.day)) }; };
+
+// neues Ziel erzeugen (eigener Zufall aus Seed und laufender Nummer: verändert den Spielzufall nicht)
+function makeMission(g) {
+  const M = g.missions, rng = createRng(((g.seed >>> 0) * 2654435761 + (M.seq + 1) * 40503 + 777) >>> 0), s = scale(g), used = new Set(M.list.map((m) => m.key));
+  const pool = TEMPLATES.filter((t) => !used.has(t.key) && (!t.when || t.when(g)));
+  if (!pool.length) return null;
+  let pick = rng() * pool.reduce((a, t) => a + t.w, 0), t = pool[0];
+  for (const p of pool) { pick -= p.w; if (pick <= 0) { t = p; break; } }
+  const spec = t.make(g, s);
+  return { id: ++M.seq, key: t.key, ...spec, base: t.abs ? 0 : t.val(g), born: g.day, due: g.day + Math.round(rng.range(...MISSIONS.life)) };
+}
+
+// Ziele prüfen und einlösen (alle paar Sekunden)
+function checkMissions(g) {
+  const M = (g.missions ??= createMissions()); let any = false;
+  for (const m of [...M.list]) {
+    if (cur(g, m) < m.target) continue;
+    any = true; M.list = M.list.filter((x) => x !== m);
+    const k = 1 + streakBonus(g), pay = Math.round((m.reward * k) / 10) * 10; M.streak++; M.done++; M.best = Math.max(M.best, M.streak);
+    g.money += pay; g.book?.('ziele', pay); g.totals.missionPay = (g.totals.missionPay ?? 0) + pay;
+    if (m.gift) g.concrete = Math.min(g.concrete + m.gift, Math.max(g.concrete, 800));
+    const extra = `${k > 1 ? ` (Serie ×${k.toFixed(1)})` : ''}${m.gift ? ` + ${m.gift} m³ Beton` : ''}`;
+    g.say(`🎯 Ziel erreicht: ${m.text}. Prämie ${pay.toLocaleString('de-CH')} CHF${extra}.`, 'good');
+    g.notify(`🎯 Ziel erreicht · +${pay.toLocaleString('de-CH')} CHF${extra}`, 'good');
+  }
+  return any;
+}
+// Täglich: abgelaufene Ziele entfernen (ohne Strafe, die Serie reisst ab), freie Plätze auffüllen
+function missionsDay(g) {
+  const M = (g.missions ??= createMissions());
+  for (const m of [...M.list]) if (g.day > m.due) {
+    M.list = M.list.filter((x) => x !== m); M.streak = 0; M.failed++;
+    g.say(`⏰ Ziel abgelaufen: ${m.text}`, 'info');
+  }
+  if (g.day < MISSIONS.startDay) return;
+  while (M.list.length < MISSIONS.slots) { const m = makeMission(g); if (!m) break; M.list.push(m); g.say(`🎯 Neues Ziel: ${m.text} (Prämie ${m.reward.toLocaleString('de-CH')} CHF${m.gift ? ` + ${m.gift} m³ Beton` : ''}, ${m.due - g.day} Tage)`, 'info'); }
+}
+
+return { MISSIONS: MISSIONS, TEMPLATES: TEMPLATES, createMissions: createMissions, streakBonus: streakBonus, missionProgress: missionProgress, checkMissions: checkMissions, missionsDay: missionsDay };
+},
+function(){
+const { trafficSeason } = __m(19);
 const { reserveBerth, dockShip } = __m(7);
 const { CONFIG, UPGRADES, SHIPS, CARGOS, DEBRIS, shipById, cargoById } = __m(2);
 const { priceOf, ratioOf } = __m(9);
 const { minDepthAt, pointOnPath } = __m(3);
-const { creditContracts } = __m(19);
-const { fleetSites } = __m(20);
+const { creditContracts } = __m(20);
+const { fleetSites } = __m(21);
 
 
 
@@ -6062,7 +6154,7 @@ return { START_YEAR: START_YEAR, MONTHS: MONTHS, SEASON_NAME: SEASON_NAME, SEASO
 function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(2);
 const { priceOf } = __m(9);
-const { activeClasses } = __m(17);
+const { activeClasses } = __m(18);
 
 
 
@@ -6132,7 +6224,7 @@ function(){
 const { fleetMax, rankOf, UNLOCK } = __m(10);
 const { CONFIG, SHIPS, KIND, shipById } = __m(2);
 const { toolAvailable } = __m(12);
-const { zoneSupports } = __m(17);
+const { zoneSupports } = __m(18);
 const { HARBOR, harborTarget } = __m(4);
 const { kaiLevel, werftBonus } = __m(7);
 
@@ -7050,7 +7142,7 @@ function setupBooks(getGame) {
 return { bookData: bookData, booksHtml: booksHtml, setupBooks: setupBooks };
 },
 function(){
-const { WORLDS, sectionsOf } = __m(22);
+const { WORLDS, sectionsOf } = __m(23);
 const { depositType, ENDLESS } = __m(2);
 
 
@@ -7199,7 +7291,7 @@ return { startIcons: startIcons };
 },
 function(){
 const { CONFIG, shipById } = __m(2);
-const { shipPos } = __m(17);
+const { shipPos } = __m(18);
 
 
 
@@ -7267,9 +7359,9 @@ return { TowSim: TowSim, groundedNear: groundedNear };
 function(){
 const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(2);
 const { upgradeCost } = __m(15);
-const { waitingByClass, bayCapacity, activeClasses } = __m(17);
+const { waitingByClass, bayCapacity, activeClasses } = __m(18);
 const { ratioOf } = __m(9);
-const { hireBlock, nextHireCost } = __m(20);
+const { hireBlock, nextHireCost } = __m(21);
 
 
 
@@ -7431,14 +7523,16 @@ class Advisor {
 return { Advisor: Advisor };
 },
 function(){
-const { freeName } = __m(20);
+const { freeName } = __m(21);
 const { Game, endlessRiver } = __m(11);
+const { createMissions } = __m(17);
 const { createRng } = __m(6);
 const { createMarket } = __m(9);
 const { createPort, ensurePort } = __m(7);
 const { ensureHarbor } = __m(4);
 const { levelById, UPGRADES } = __m(2);
 const { River } = __m(5);
+
 
 
 
@@ -7493,7 +7587,7 @@ function restoreGame(text) {
     const game = new Game(s.data.seed, s.data.levelId);
     const fresh = game.maps[0].river; // gleicher Seed: liefert die Anzeige-Hilfen (Mittellinie, Breite) der ersten Karte
     Object.assign(game, s.data);
-    game._stats = null; game.ach ??= {}; game._achClock = 0;
+    game._stats = null; game.ach ??= {}; game._achClock = 0; game.missions ??= createMissions();
     game.levels ??= {}; if (game.levels.buffer === undefined && game.levels.plant) game.levels.buffer = game.levels.plant; for (const k of Object.keys(UPGRADES)) game.levels[k] ??= 0; // Anlage wurde geteilt (Stapelbecken/Verarbeitung); neue Geräte in älteren Ständen (sonst NaN als Preis)
     game.notes = []; game.flash = []; game.mapIdx = Math.min(game.mapIdx ?? 0, game.maps.length - 1);
     const types = { Float32Array, Uint8Array };
@@ -7527,7 +7621,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(30);
+const { isTap } = __m(31);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -7625,7 +7719,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(30);
+const { snapStick } = __m(31);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -8155,17 +8249,17 @@ return { TUNES: TUNES, renderTune: renderTune, createMusic: createMusic };
 },
 function(){
 const { SLICE } = __m(12);
-const { tideState } = __m(18);
+const { tideState } = __m(19);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
-const { shipPos, queuePos, bayCapacity } = __m(17);
+const { shipPos, queuePos, bayCapacity } = __m(18);
 const { needDepth, minNeedDepth, trasseY } = __m(3);
-const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(39);
+const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(40);
 const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(7);
 const { HARBOR, berthPos, waitPos } = __m(4);
-const { areaWork, wallSpans } = __m(20);
+const { areaWork, wallSpans } = __m(21);
 const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(8);
-const { Chain, drawChain } = __m(40);
-const { groundedNear } = __m(26);
+const { Chain, drawChain } = __m(41);
+const { groundedNear } = __m(27);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 
 
@@ -9168,8 +9262,8 @@ const CONFIG_TOW_SNAP = () => CONFIG.tow.snapAt;
 return { CELL: CELL, MARGIN: MARGIN, OX: OX, W: W, H: H, sizeCanvas: sizeCanvas, view: view, fs: fs, mapPx: mapPx, sliceY: sliceY, drawMap: drawMap, drawHarborScene: drawHarborScene, autoLineX: autoLineX, sliceHeadScreen: sliceHeadScreen, sliceMouthScreen: sliceMouthScreen, drawSlice: drawSlice, drawTowView: drawTowView, CARGOS: CARGOS, groundedNear: groundedNear };
 },
 function(){
-const { CELL, OX, W, H } = __m(38);
-const { seasonLook } = __m(18);
+const { CELL, OX, W, H } = __m(39);
+const { seasonLook } = __m(19);
 
 
 

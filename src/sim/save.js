@@ -1,5 +1,6 @@
 import { freeName } from './fleet.js';
 import { Game, endlessRiver } from './game.js';
+import { createMissions } from './missions.js';
 import { createRng } from './rng.js';
 import { createMarket } from './market.js';
 import { createPort, ensurePort } from './port.js';
@@ -52,7 +53,7 @@ export function restoreGame(text) {
     const game = new Game(s.data.seed, s.data.levelId);
     const fresh = game.maps[0].river; // gleicher Seed: liefert die Anzeige-Hilfen (Mittellinie, Breite) der ersten Karte
     Object.assign(game, s.data);
-    game._stats = null; game.ach ??= {}; game._achClock = 0;
+    game._stats = null; game.ach ??= {}; game._achClock = 0; game.missions ??= createMissions();
     game.levels ??= {}; if (game.levels.buffer === undefined && game.levels.plant) game.levels.buffer = game.levels.plant; for (const k of Object.keys(UPGRADES)) game.levels[k] ??= 0; // Anlage wurde geteilt (Stapelbecken/Verarbeitung); neue Geräte in älteren Ständen (sonst NaN als Preis)
     game.notes = []; game.flash = []; game.mapIdx = Math.min(game.mapIdx ?? 0, game.maps.length - 1);
     const types = { Float32Array, Uint8Array };

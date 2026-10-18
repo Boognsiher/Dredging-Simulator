@@ -7,6 +7,7 @@ import { setupBooks } from './ui/books.js';
 import { SEASON_ICON, seasonLook } from './sim/calendar.js';
 import { setupWorld } from './ui/world.js';
 import { startIcons } from './ui/icons.js';
+import { missionProgress, streakBonus, MISSIONS } from './sim/missions.js';
 import { progress as achProgress, countAch, bonusOf, BONUS, prize as achPrize } from './sim/achievements.js';
 import { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } from './sim/rank.js';
 import { acceptContract } from './sim/contracts.js';
@@ -552,7 +553,7 @@ function updateConcrete() {
   const packs = C.packs.map((m) => ({ m, block: game.concreteBlock(m) }));
   box.innerHTML = `<div>Betonvorrat: <b>${num(game.concrete)}</b> / ${C.stockCap} m³ · ${num(game.totals.concreteUsed)} m³ verbaut</div>
     <small>${st.betonrohr > 0 ? 'Betoniergerät: Taste V (Gerät wechseln) im Querschnitt, Leertaste bringt Beton aus.' : 'Betoniergerät (Ausrüstung) bringt Beton aus.'} Beton verhärtet Boden und Ufer: weniger Verlandung, die Böschung hält. Zum Tieferbaggern muss er mit dem Löffel wieder aufgebrochen werden.</small>
-    <div class="packs">${packs.map((p) => `<button data-pack="${p.m}" ${p.block ? 'disabled' : ''} title="${p.block ?? ''}">+${p.m} m³ kaufen (${chf(p.m * C.price)})</button>`).join('')}</div>
+    <div class="packs">${packs.map((p) => `<button data-pack="${p.m}" ${p.block ? 'disabled' : ''} title="${p.block ?? ''}">+${p.m} m³ kaufen (${chf(p.m * game.concretePrice)})</button>`).join('')}</div>
     ${st.mixer > 0 ? `<div class="mixer">Betonwerk Stufe ${st.mixer}: mischt ${st.mixRate.toFixed(1)} m³/s · Lager Kies ${game.agg.kies.toFixed(0)} / Sand ${game.agg.sand.toFixed(0)} m³ (je m³ Beton ${C.mix.kies} Kies, ${C.mix.sand} Sand, Zement ${C.cement} CHF)
       <label><input type="checkbox" id="chk-divert" ${game.divertAgg ? 'checked' : ''}> Kies und Sand aus der Anlage ins Betonwerk statt verkaufen</label></div>` : '<small>Mit dem Betonwerk (Anlage ausbauen) mischst du Beton selbst aus Kies und Sand des Flusses, viel billiger als Zukaufen.</small>'}`;
   for (const b of box.querySelectorAll('[data-pack]')) b.onclick = () => { if (game.buyConcrete(+b.dataset.pack)) { concreteSig = null; updateConcrete(); updatePanel(); } };
@@ -689,7 +690,7 @@ const PTABS = [
   { id: 'fleet', label: '🚤', name: 'Flotte', gate: 'tab_fleet' },
   { id: 'trade', label: '💰', name: 'Handel', gate: 'tab_trade' },
   { id: 'maps', label: '🗺', name: 'Karten', gate: 'tab_maps' },
-  { id: 'ach', label: '🏆', name: 'Erfolge' },
+  { id: 'ach', label: '🎯', name: 'Ziele' },
   { id: 'more', label: '☰', name: 'Mehr' },
 ];
 // Freischaltung: Bedingung → Name (für die Meldung «Neu»). Einmal erfüllt bleibt der Bereich offen.
@@ -734,11 +735,12 @@ function updateUnlocks() {
 let achSig = '';
 function updateAch() {
   if (curTab !== 'ach') return;
-  const rows = achProgress(game), c = countAch(game), b = bonusOf(game), sig = `${c.n}/${rows.map((r) => r.next + ':' + Math.floor(r.frac * 25)).join()}`;
+  const rows = achProgress(game), c = countAch(game), b = bonusOf(game), M = game.missions ?? { list: [], done: 0, streak: 0 }, sig = `${c.n}/${rows.map((r) => r.next + ':' + Math.floor(r.frac * 25)).join()}|${M.done}/${M.streak}/${game.day}/${M.list.map((m) => m.id + ':' + Math.floor(missionProgress(game, m).frac * 25)).join()}`;
   if (sig === achSig) return; achSig = sig;
   const act = Object.entries(b).filter(([, v]) => v > 0).map(([k, v]) => `<span class="chip on">${BONUS[k].sign}${+(v * 100).toFixed(1)} % ${BONUS[k].label}</span>`).join('') || '<small>Noch keine Boni. Der erste Erfolg schaltet einen frei.</small>';
   const order = [...rows].sort((a, z) => (a.next < 0) - (z.next < 0) || z.frac - a.frac);
-  $('ach-box').innerHTML = `<h2>🏆 Erfolge <small>${c.n} von ${c.t}</small></h2><div class="ach-sum"><div class="bar"><i style="width:${Math.round((100 * c.n) / Math.max(1, c.t))}%"></i></div><div class="chips2"><b>Aktive Boni:</b> ${act}</div></div>` + order.map((r) => {
+  const gcards = M.list.length ? M.list.map((m) => { const p = missionProgress(game, m), pay = Math.round((m.reward * (1 + streakBonus(game))) / 10) * 10; return `<div class="ach-card goal${m.beton ? ' beton' : ''}"><div class="ach-top"><span class="ach-ico">${m.beton ? '🧱' : '🎯'}</span><div><b>${m.text}</b><br><small>noch ${p.left} Tage · Prämie ${chf(pay)}${m.gift ? ` + ${m.gift} m³ Beton` : ''}</small></div></div><div class="bar"><i style="width:${Math.round(p.frac * 100)}%"></i></div><small>${num(Math.min(p.cur, m.target))} / ${num(m.target)} ${m.unit}</small></div>`; }).join('') : `<small>${game.day < MISSIONS.startDay ? 'Das erste Ziel erscheint zum nächsten Tag.' : 'Neue Ziele erscheinen zum nächsten Tag.'}</small>`;
+  $('ach-box').innerHTML = `<h2>🎯 Aktuelle Ziele <small>${M.done} erreicht${M.streak > 1 ? ` · 🔥 Serie ${M.streak} (+${Math.round(streakBonus(game) * 100)} %)` : ''}</small></h2>${gcards}<h2>🏆 Erfolge <small>${c.n} von ${c.t}</small></h2><div class="ach-sum"><div class="bar"><i style="width:${Math.round((100 * c.n) / Math.max(1, c.t))}%"></i></div><div class="chips2"><b>Aktive Boni:</b> ${act}</div></div>` + order.map((r) => {
     const s = r.s, stars = '★'.repeat(r.done) + '☆'.repeat(r.total - r.done), money = r.next >= 0 ? achPrize(r.next) : 0;
     const bonus = r.next >= 0 && s.bonus ? Object.entries(s.bonus).map(([k, v]) => `${BONUS[k].sign}${+(v * 100).toFixed(1)} % ${BONUS[k].label}`).join(', ') : '';
     return `<div class="ach-card${r.next < 0 ? ' done' : ''}"><div class="ach-top"><span class="ach-ico">${s.icon}</span><div><b>${s.name}</b> <span class="stars">${stars}</span><br><small>${r.next < 0 ? '✅ alle Stufen erreicht' : `Nächstes: «${s.names[r.next]}» · ${num(r.goal)} ${s.unit}`}</small></div></div>
@@ -1466,7 +1468,7 @@ function frame(now) {
       tipTimer = 0;
       if (advisor.enabled && !(sim.mode === 'slice' && sim.slice.freeing)) { const tip = advisor.pick(game, sim); if (tip) showTip(tip); }
     }
-    for (const n of game.notes.splice(0)) { toast(n.text, n.kind, false, n.goto); if (n.text.startsWith('🏆') && curTab !== 'ach') { newTabs.add('ach'); $('ptabs').dataset.sig = ''; } }
+    for (const n of game.notes.splice(0)) { toast(n.text, n.kind, false, n.goto); if ((n.text.startsWith('🏆') || n.text.startsWith('🎯')) && curTab !== 'ach') { newTabs.add('ach'); $('ptabs').dataset.sig = ''; } }
     if (game._achNew) { game._achNew = false; sim.setStats(game.stats); if (mainSim) mainSim.setStats(game.stats); }
   }
   readInput.endFrame();

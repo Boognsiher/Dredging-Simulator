@@ -2216,3 +2216,40 @@ test('Erfolge: Boni sind gedeckelt, Serien nach Schauplatz sichtbar, Stand wird 
   const back = restoreGame(serializeGame(h)); assert.ok(back.ach['tons:1'] !== undefined && back.ach['tons:0'] !== undefined);
   assert.equal(back.stats.trafficMult, h.stats.trafficMult);
 });
+
+// ---------- Wechselnde Ziele ----------
+import { missionsDay, checkMissions, missionProgress as mProg, TEMPLATES as M_TEMPLATES } from '../src/sim/missions.js';
+test('Ziele: ab Tag 2 drei verschiedene Ziele, Erfüllung zahlt Prämie mit Serienzuschlag', () => {
+  const g = new Game(5, 'hochrhein'); g.eventsOn = false; g.achOn = false;
+  g.day = 1; missionsDay(g); assert.equal(g.missions.list.length, 0, 'Tag 1: noch keine Ziele');
+  g.day = 2; missionsDay(g); assert.equal(g.missions.list.length, 3);
+  assert.equal(new Set(g.missions.list.map((m) => m.key)).size, 3, 'keine doppelte Art');
+  const m = g.missions.list.find((x) => x.key === 'removed' || x.key === 'tons' || x.key === 'ships') ?? g.missions.list[0], t = M_TEMPLATES.find((x) => x.key === m.key);
+  const money = g.money; if (t.abs) g.levels[m.key === 'buyPour' ? 'betonrohr' : 'mixer'] = 1; else if (m.key === 'removed') g.totals.removed += m.target; else if (m.key === 'tons') g.totals.tons += m.target; else if (m.key === 'ships') g.totals.ships += m.target; else if (m.key === 'income') g.totals.trafficIncome += m.target; else if (m.key === 'sold') g.totals.sold += m.target; else if (m.key === 'altlast') g.totals.byKind[3] += m.target; else if (m.key === 'contracts') g.totals.contractsDone += m.target;
+  assert.ok(mProg(g, m).frac >= 1 || m.key === 'jobs' || m.key === 'pour' || m.key === 'mix');
+  checkMissions(g);
+  if (!g.missions.list.includes(m)) { assert.ok(g.money > money); assert.equal(g.missions.streak, 1); assert.equal(g.missions.done, 1); assert.equal(g.missions.list.length, 2); }
+  g.day = 3; missionsDay(g); assert.equal(g.missions.list.length, 3, 'freier Platz wird am nächsten Tag gefüllt');
+});
+test('Ziele: abgelaufene Ziele verschwinden ohne Strafe und beenden die Serie; Stand wird gespeichert', () => {
+  const g = new Game(6, 'hochrhein'); g.eventsOn = false; g.achOn = false; g.day = 2; missionsDay(g);
+  g.missions.streak = 3; const money = g.money, due = Math.max(...g.missions.list.map((m) => m.due));
+  g.day = due + 1; missionsDay(g);
+  assert.equal(g.money, money); assert.equal(g.missions.streak, 0); assert.ok(g.missions.failed >= 3); assert.equal(g.missions.list.length, 3, 'neue Ziele nachgefüllt');
+  const back = restoreGame(serializeGame(g)); assert.deepEqual(back.missions.list.map((m) => m.id), g.missions.list.map((m) => m.id));
+});
+test('Ziele und Beton: ohne Betoniergerät kommt ein Ausbau-Ziel (mit Beton als Prämie), mit Gerät und Werk Beton-Ziele', () => {
+  const g = new Game(7, 'hochrhein'); g.eventsOn = false; g.achOn = false; g.rank = 3; g.day = 2;
+  const want = new Set(); for (let k = 0; k < 40; k++) { g.missions.list = []; g.missions.seq = k; g.day = 2 + k * 20; missionsDay(g); g.missions.list.forEach((m) => want.add(m.key)); }
+  assert.ok(want.has('buyPour'), 'Betoniergerät-Ziel erscheint'); assert.ok(!want.has('pour') && !want.has('mix'));
+  g.levels.betonrohr = 1; g._stats = null; g.levels.mixer = 1; g._stats = null;
+  const w2 = new Set(); for (let k = 0; k < 60; k++) { g.missions.list = []; g.missions.seq = 100 + k; g.day = 2 + k * 20; missionsDay(g); g.missions.list.forEach((m) => w2.add(m.key)); }
+  assert.ok(w2.has('pour') && w2.has('mix'), 'Beton-Ziele bei Gerät und Werk'); assert.ok(!w2.has('buyPour'));
+  const m = { id: 99, key: 'pour', text: 'x', unit: 'm³ Beton', target: 10, reward: 2300, gift: 4, base: g.totals.concreteUsed, due: 50, beton: true };
+  g.missions.list = [m]; g.concrete = 10; g.totals.concreteUsed += 10; const money = g.money; checkMissions(g);
+  assert.ok(g.money >= money + 2300); assert.equal(g.concrete, 14, 'Beton als Sachprämie');
+});
+test('Erfolge: Betonbauer senkt den Betonpreis', () => {
+  const g = new Game(8, 'hochrhein'); g.eventsOn = false; const p0 = g.concretePrice;
+  g.totals.concreteUsed = 30; chkAch(g); assert.ok(Math.abs(g.concretePrice - p0 * 0.92) < 1e-9);
+});

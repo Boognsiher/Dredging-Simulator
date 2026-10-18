@@ -636,3 +636,4 @@ button.level.lvcard { padding: 0; }
 .ach-card { background: #ffffff0d; border: 1px solid #ffffff14; border-radius: 12px; padding: 10px 12px; margin: 8px 0; } .ach-card.done { opacity: .7; border-color: #3f8a5e66; }
 .ach-top { display: flex; gap: 10px; align-items: center; } .ach-ico { font-size: 26px; } .stars { color: #ffd24a; letter-spacing: 1px; font-size: 13px; }
 .ach-card small { color: var(--muted); }
+.ach-card.goal { border-color: #3fb4d855; } .ach-card.goal.beton { border-color: #c9a24a88; background: #c9a24a14; }
