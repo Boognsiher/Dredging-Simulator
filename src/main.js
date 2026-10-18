@@ -7,6 +7,7 @@ import { setupBooks } from './ui/books.js';
 import { SEASON_ICON, seasonLook } from './sim/calendar.js';
 import { setupWorld } from './ui/world.js';
 import { startIcons } from './ui/icons.js';
+import { progress as achProgress, countAch, bonusOf, BONUS, prize as achPrize } from './sim/achievements.js';
 import { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } from './sim/rank.js';
 import { acceptContract } from './sim/contracts.js';
 import { waitingByClass, shipPos } from './sim/traffic.js';
@@ -688,6 +689,7 @@ const PTABS = [
   { id: 'fleet', label: '🚤', name: 'Flotte', gate: 'tab_fleet' },
   { id: 'trade', label: '💰', name: 'Handel', gate: 'tab_trade' },
   { id: 'maps', label: '🗺', name: 'Karten', gate: 'tab_maps' },
+  { id: 'ach', label: '🏆', name: 'Erfolge' },
   { id: 'more', label: '☰', name: 'Mehr' },
 ];
 // Freischaltung: Bedingung → Name (für die Meldung «Neu»). Einmal erfüllt bleibt der Bereich offen.
@@ -729,7 +731,21 @@ function updateUnlocks() {
   }
   for (const el of document.querySelectorAll('#panel .ptab')) el.hidden = el.dataset.tab !== curTab;
 }
-function updatePanel() { updateUnlocks(); updateMaps(); updateShipping(); updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+let achSig = '';
+function updateAch() {
+  if (curTab !== 'ach') return;
+  const rows = achProgress(game), c = countAch(game), b = bonusOf(game), sig = `${c.n}/${rows.map((r) => r.next + ':' + Math.floor(r.frac * 25)).join()}`;
+  if (sig === achSig) return; achSig = sig;
+  const act = Object.entries(b).filter(([, v]) => v > 0).map(([k, v]) => `<span class="chip on">${BONUS[k].sign}${+(v * 100).toFixed(1)} % ${BONUS[k].label}</span>`).join('') || '<small>Noch keine Boni. Der erste Erfolg schaltet einen frei.</small>';
+  const order = [...rows].sort((a, z) => (a.next < 0) - (z.next < 0) || z.frac - a.frac);
+  $('ach-box').innerHTML = `<h2>🏆 Erfolge <small>${c.n} von ${c.t}</small></h2><div class="ach-sum"><div class="bar"><i style="width:${Math.round((100 * c.n) / Math.max(1, c.t))}%"></i></div><div class="chips2"><b>Aktive Boni:</b> ${act}</div></div>` + order.map((r) => {
+    const s = r.s, stars = '★'.repeat(r.done) + '☆'.repeat(r.total - r.done), money = r.next >= 0 ? achPrize(r.next) : 0;
+    const bonus = r.next >= 0 && s.bonus ? Object.entries(s.bonus).map(([k, v]) => `${BONUS[k].sign}${+(v * 100).toFixed(1)} % ${BONUS[k].label}`).join(', ') : '';
+    return `<div class="ach-card${r.next < 0 ? ' done' : ''}"><div class="ach-top"><span class="ach-ico">${s.icon}</span><div><b>${s.name}</b> <span class="stars">${stars}</span><br><small>${r.next < 0 ? '✅ alle Stufen erreicht' : `Nächstes: «${s.names[r.next]}» · ${num(r.goal)} ${s.unit}`}</small></div></div>
+      ${r.next < 0 ? '' : `<div class="bar"><i style="width:${Math.round(r.frac * 100)}%"></i></div><small>${num(r.cur)} / ${num(r.goal)} · Prämie ${chf(money)}${bonus ? ` · dauerhaft ${bonus}` : ''}</small>`}</div>`;
+  }).join('');
+}
+function updatePanel() { updateUnlocks(); updateAch(); updateMaps(); updateShipping(); updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -1450,7 +1466,8 @@ function frame(now) {
       tipTimer = 0;
       if (advisor.enabled && !(sim.mode === 'slice' && sim.slice.freeing)) { const tip = advisor.pick(game, sim); if (tip) showTip(tip); }
     }
-    for (const n of game.notes.splice(0)) toast(n.text, n.kind, false, n.goto);
+    for (const n of game.notes.splice(0)) { toast(n.text, n.kind, false, n.goto); if (n.text.startsWith('🏆') && curTab !== 'ach') { newTabs.add('ach'); $('ptabs').dataset.sig = ''; } }
+    if (game._achNew) { game._achNew = false; sim.setStats(game.stats); if (mainSim) mainSim.setStats(game.stats); }
   }
   readInput.endFrame();
 

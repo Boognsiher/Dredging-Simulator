@@ -6,6 +6,7 @@ import { carveFairway, analyzeFairway, zonePlan } from './fairway.js';
 import { DredgeSim } from './dredge.js';
 import { EVENTS } from './events.js';
 import { computeStats, upgradeCost } from './stats.js';
+import { checkAchievements, bonusOf, applyBonus } from './achievements.js';
 import { createRng } from './rng.js';
 import { createMarket, stepMarket } from './market.js';
 import { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } from './port.js';
@@ -41,7 +42,7 @@ export function regionBias(seed, k, sec = null, world = 'rhein') {
 }
 const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0, cat: {} });
 // Kategorien der Tagesbilanz (Dashboard): Betrag > 0 = Einnahme, < 0 = Ausgabe
-export const BOOK = { baggern: 'Baggern (Entgelt)', rohstoff: 'Rohstoff-Aufschlag', verkehr: 'Verkehrsgebühren', anlage: 'Aufbereitungsanlage', handel: 'Hafenhandel', hafen: 'Hafen-Umschlag', lager: 'Lagerkosten', reederei: 'Reederei', vertrag: 'Verträge', bussen: 'Bussen & Reparaturen', havarie: 'Havarie & Bergung', ereignis: 'Ereignisse', beton: 'Beton', betrieb: 'Betrieb', loehne: 'Löhne Flotte' };
+export const BOOK = { baggern: 'Baggern (Entgelt)', rohstoff: 'Rohstoff-Aufschlag', verkehr: 'Verkehrsgebühren', anlage: 'Aufbereitungsanlage', handel: 'Hafenhandel', hafen: 'Hafen-Umschlag', lager: 'Lagerkosten', reederei: 'Reederei', vertrag: 'Verträge', bussen: 'Bussen & Reparaturen', havarie: 'Havarie & Bergung', ereignis: 'Ereignisse', erfolg: 'Erfolgsprämien', beton: 'Beton', betrieb: 'Betrieb', loehne: 'Löhne Flotte' };
 
 // Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
 // Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel (goalTons) schaltet das nächste Level frei.
@@ -84,6 +85,7 @@ export class Game {
     this.rejectedBy = {};
     this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, premium: 0, sunk: 0, sunkFines: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
     this.today = freshDay(); this.history = []; this.dayStartMoney = this.money;
+    this.ach = {}; this._achClock = 0; // freigeschaltete Erfolge: id → Tag
     this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
     this.tabsSeen = {}; // freigeschaltete Menü-Bereiche (Stufensystem der Oberfläche), bleiben freigeschaltet
@@ -146,7 +148,7 @@ export class Game {
     return k;
   }
   switchMap(i) { if (i < 0 || i >= this.maps.length || i === this.mapIdx) return false; this.mapIdx = i; return true; }
-  get stats() { return (this._stats ??= computeStats(this.levels)); }
+  get stats() { return (this._stats ??= applyBonus(computeStats(this.levels), bonusOf(this))); }
   get stockTotal() { return stockTotal(this.stock); }
   get bufferRoom() { return Math.max(0, this.stats.bufferCapacity - this.stockTotal); }
   get deadlineDays() { return this.level.deadlineDays ?? CONFIG.deadlineDays; }
@@ -420,6 +422,7 @@ export class Game {
     for (const m of this.maps) { m.river.wl = this.wl; if (m.port?.harbor) m.port.harbor.river.wl = this.wl; }
     const wasClosed = this.closed;
     this.closed = this.wl > K.base + K.floodClose;
+    if (this.closed && !wasClosed) this.totals.floods = (this.totals.floods ?? 0) + 1;
     if (this.closed !== wasClosed) { this.say(this.closed ? 'Schifffahrt gesperrt (Hochwasser).' : 'Schifffahrt wieder frei.', this.closed ? 'bad' : 'good'); if (!this.closed) this.notify('Schifffahrt wieder frei', 'good'); }
 
     const mixerOn = this.stats.mixer > 0 && this.divertAgg, C = CONFIG.concrete;
@@ -458,6 +461,7 @@ export class Game {
     updateShipping(this, dt);
     this.mapIdx = cur;
 
+    this._achClock = (this._achClock ?? 0) + dt; if (this._achClock >= 3) { this._achClock = 0; checkAchievements(this); }
     const day = Math.floor(this.time / CONFIG.daySeconds) + 1;
     while (this.day < day && this.status === 'playing') { this.day++; this.dayEnd(); }
     if (this.status === 'playing') {
@@ -469,7 +473,7 @@ export class Game {
   dayEnd() {
     const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
     const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
-    const wagesOf = (m) => m.fleet.units.reduce((a, u) => a + (u.self ? 0 : u.small ? CONFIG.fleet.small.wage : CONFIG.fleet.wage), 0);
+    const wageK = 1 - bonusOf(this).wage, wagesOf = (m) => wageK * m.fleet.units.reduce((a, u) => a + (u.self ? 0 : u.small ? CONFIG.fleet.small.wage : CONFIG.fleet.wage), 0);
     const wages = this.maps.reduce((a, m) => a + wagesOf(m), 0);
     this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;

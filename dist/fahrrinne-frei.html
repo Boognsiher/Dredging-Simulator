@@ -642,6 +642,15 @@ button.level.lvcard { align-items: stretch; gap: 0; } .lvcard .lv-banner { width
 #overlay > div { padding-top: 44px; box-sizing: border-box; }
 button.level.lvcard { padding: 0; }
 
+/* Erfolge */
+#ach-box h2 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+.ach-sum { margin: 6px 0 12px; } .chips2 { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.chip.on { background: #1f4d3a; color: #b9f3d3; border-radius: 99px; padding: 3px 9px; font-size: 12px; }
+.bar { height: 8px; border-radius: 99px; background: #00000055; overflow: hidden; margin: 6px 0 4px; } .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #3fb4d8, #8fe3a0); border-radius: 99px; transition: width .4s; }
+.ach-card { background: #ffffff0d; border: 1px solid #ffffff14; border-radius: 12px; padding: 10px 12px; margin: 8px 0; } .ach-card.done { opacity: .7; border-color: #3f8a5e66; }
+.ach-top { display: flex; gap: 10px; align-items: center; } .ach-ico { font-size: 26px; } .stars { color: #ffd24a; letter-spacing: 1px; font-size: 13px; }
+.ach-card small { color: var(--muted); }
+
 </style>
 </head>
 <body>
@@ -762,6 +771,9 @@ button.level.lvcard { padding: 0; }
         <h2 id="h-maps" hidden>Karten</h2>
         <div id="maps" hidden></div>
       </div>
+      <div class="ptab" data-tab="ach" hidden>
+        <div id="ach-box"></div>
+      </div>
       <div class="ptab" data-tab="more" hidden>
         <details id="help"><summary>Steuerung &amp; Legende</summary>
         <div id="hints" aria-label="Steuerung"></div>
@@ -805,33 +817,35 @@ const { PORT, buyPrice, sellPrice, machineOf, isDocked, cycleWaitCargo, loadHit:
 const { buildRoad, buildHall, autoRoad, demolishAt, roadBlock, hallBlock, landOf, LAND } = __m(8);
 const { LEVELS, ENDLESS, ENDLESS_WORLDS, levelById, CONFIG, UPGRADES, SHIPS, CARGOS, KIND, shipById, cargoById, depositType } = __m(2);
 const { Game } = __m(11);
-const { setupBooks } = __m(22);
-const { SEASON_ICON, seasonLook } = __m(17);
-const { setupWorld } = __m(23);
-const { startIcons } = __m(24);
+const { setupBooks } = __m(23);
+const { SEASON_ICON, seasonLook } = __m(18);
+const { setupWorld } = __m(24);
+const { startIcons } = __m(25);
+const { progress: achProgress, countAch, bonusOf, BONUS, prize: achPrize } = __m(16);
 const { rankOf, hasRank, rankName, upgradeRank, RANK_INFO, PLANT_IDS, plantUnlocked, BUF_FULL_NEED } = __m(10);
-const { acceptContract } = __m(18);
-const { waitingByClass, shipPos } = __m(16);
-const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, smallBlock, hireSmall, smallCount, perMapMax, totalMax, hiredTotal, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(19);
-const { bayCapacity, maxZones, zoneClasses } = __m(16);
-const { materialPrice } = __m(20);
-const { TowSim, groundedNear } = __m(25);
+const { acceptContract } = __m(19);
+const { waitingByClass, shipPos } = __m(17);
+const { lentUnit, lendBlock, lendPonton, recallPonton, hireUnit, hireBlock, dismissUnit, nextHireCost, moveBlock, moveUnit, moveCost, renameUnit, smallBlock, hireSmall, smallCount, perMapMax, totalMax, hiredTotal, setGoal, setWiden, setPour, setMine, setAvoid, targetClass, addArea, addRoute, setAreaWidth, setZoneUnit, setUnitLoc, setSecond, setFocus, startPiles, planPile, planRemoval, clearPilePlan, lineCells, pileConcrete, removeArea, setAreaDepth, setAreaUnit, areaWork, MAX_AREAS } = __m(20);
+const { bayCapacity, maxZones, zoneClasses } = __m(17);
+const { materialPrice } = __m(21);
+const { TowSim, groundedNear } = __m(26);
 const { makeHarborView, HARBOR, waitPos } = __m(4);
 const { toolName } = __m(13);
 const { priceOf, trend } = __m(9);
 const { needDepth, minNeedDepth } = __m(3);
-const { Advisor } = __m(26);
-const { serializeGame, restoreGame, savedSummary } = __m(27);
-const { createInput } = __m(28);
-const { setupTouch } = __m(30);
-const { steerToward } = __m(29);
-const { setupPort } = __m(31);
-const { fitSize, renderQuality } = __m(32);
-const { hintsFor } = __m(33);
-const { Fx } = __m(34);
-const { createAudio } = __m(35);
-const { createMusic } = __m(36);
-const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(37);
+const { Advisor } = __m(27);
+const { serializeGame, restoreGame, savedSummary } = __m(28);
+const { createInput } = __m(29);
+const { setupTouch } = __m(31);
+const { steerToward } = __m(30);
+const { setupPort } = __m(32);
+const { fitSize, renderQuality } = __m(33);
+const { hintsFor } = __m(34);
+const { Fx } = __m(35);
+const { createAudio } = __m(36);
+const { createMusic } = __m(37);
+const { view, CELL, OX, sizeCanvas, drawMap, drawHarborScene, drawSlice, drawTowView, autoLineX, sliceHeadScreen, sliceMouthScreen, sliceY } = __m(38);
+
 
 
 
@@ -1522,6 +1536,7 @@ const PTABS = [
   { id: 'fleet', label: '🚤', name: 'Flotte', gate: 'tab_fleet' },
   { id: 'trade', label: '💰', name: 'Handel', gate: 'tab_trade' },
   { id: 'maps', label: '🗺', name: 'Karten', gate: 'tab_maps' },
+  { id: 'ach', label: '🏆', name: 'Erfolge' },
   { id: 'more', label: '☰', name: 'Mehr' },
 ];
 // Freischaltung: Bedingung → Name (für die Meldung «Neu»). Einmal erfüllt bleibt der Bereich offen.
@@ -1563,7 +1578,21 @@ function updateUnlocks() {
   }
   for (const el of document.querySelectorAll('#panel .ptab')) el.hidden = el.dataset.tab !== curTab;
 }
-function updatePanel() { updateUnlocks(); updateMaps(); updateShipping(); updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
+let achSig = '';
+function updateAch() {
+  if (curTab !== 'ach') return;
+  const rows = achProgress(game), c = countAch(game), b = bonusOf(game), sig = `${c.n}/${rows.map((r) => r.next + ':' + Math.floor(r.frac * 25)).join()}`;
+  if (sig === achSig) return; achSig = sig;
+  const act = Object.entries(b).filter(([, v]) => v > 0).map(([k, v]) => `<span class="chip on">${BONUS[k].sign}${+(v * 100).toFixed(1)} % ${BONUS[k].label}</span>`).join('') || '<small>Noch keine Boni. Der erste Erfolg schaltet einen frei.</small>';
+  const order = [...rows].sort((a, z) => (a.next < 0) - (z.next < 0) || z.frac - a.frac);
+  $('ach-box').innerHTML = `<h2>🏆 Erfolge <small>${c.n} von ${c.t}</small></h2><div class="ach-sum"><div class="bar"><i style="width:${Math.round((100 * c.n) / Math.max(1, c.t))}%"></i></div><div class="chips2"><b>Aktive Boni:</b> ${act}</div></div>` + order.map((r) => {
+    const s = r.s, stars = '★'.repeat(r.done) + '☆'.repeat(r.total - r.done), money = r.next >= 0 ? achPrize(r.next) : 0;
+    const bonus = r.next >= 0 && s.bonus ? Object.entries(s.bonus).map(([k, v]) => `${BONUS[k].sign}${+(v * 100).toFixed(1)} % ${BONUS[k].label}`).join(', ') : '';
+    return `<div class="ach-card${r.next < 0 ? ' done' : ''}"><div class="ach-top"><span class="ach-ico">${s.icon}</span><div><b>${s.name}</b> <span class="stars">${stars}</span><br><small>${r.next < 0 ? '✅ alle Stufen erreicht' : `Nächstes: «${s.names[r.next]}» · ${num(r.goal)} ${s.unit}`}</small></div></div>
+      ${r.next < 0 ? '' : `<div class="bar"><i style="width:${Math.round(r.frac * 100)}%"></i></div><small>${num(r.cur)} / ${num(r.goal)} · Prämie ${chf(money)}${bonus ? ` · dauerhaft ${bonus}` : ''}</small>`}</div>`;
+  }).join('');
+}
+function updatePanel() { updateUnlocks(); updateAch(); updateMaps(); updateShipping(); updateDeposits(); updateShore(); updateHazard(); updateToolButton(); updateTowButton(); updateTrafficPanel(); updateConcrete(); updateFleet(); updateGoal(); updateFairway(); updateMarket(); updateContracts(); updateUpgrades(); updatePlant(); updateLog(); updateClassbar(); }
 
 // ---------- Overlay, Toast ----------
 function showOverlay(html) { const o = $('overlay'); o.innerHTML = `<div>${html}</div>`; o.classList.add('show'); }
@@ -2284,7 +2313,8 @@ function frame(now) {
       tipTimer = 0;
       if (advisor.enabled && !(sim.mode === 'slice' && sim.slice.freeing)) { const tip = advisor.pick(game, sim); if (tip) showTip(tip); }
     }
-    for (const n of game.notes.splice(0)) toast(n.text, n.kind, false, n.goto);
+    for (const n of game.notes.splice(0)) { toast(n.text, n.kind, false, n.goto); if (n.text.startsWith('🏆') && curTab !== 'ach') { newTabs.add('ach'); $('ptabs').dataset.sig = ''; } }
+    if (game._achNew) { game._achNew = false; sim.setStats(game.stats); if (mainSim) mainSim.setStats(game.stats); }
   }
   readInput.endFrame();
 
@@ -4467,16 +4497,18 @@ const { carveFairway, analyzeFairway, zonePlan } = __m(3);
 const { DredgeSim } = __m(13);
 const { EVENTS } = __m(14);
 const { computeStats, upgradeCost } = __m(15);
+const { checkAchievements, bonusOf, applyBonus } = __m(16);
 const { createRng } = __m(6);
 const { createMarket, stepMarket } = __m(9);
 const { createPort, portDay, refundFrac, updatePort, carveBay, plantLimit } = __m(7);
 const { createShipping, updateShipping } = __m(1);
-const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(16);
-const { processPlant, stockTotal, materialPrice } = __m(20);
-const { updateContracts } = __m(18);
-const { createFleet, updateFleet } = __m(19);
-const { sectionOf, applySection } = __m(21);
-const { dateOf, waterSeason, realEventOn, LAST_REAL_YEAR, tideAt } = __m(17);
+const { createTraffic, updateTraffic, maxZones, zoneClasses, zoneSupports, activeClasses } = __m(17);
+const { processPlant, stockTotal, materialPrice } = __m(21);
+const { updateContracts } = __m(19);
+const { createFleet, updateFleet } = __m(20);
+const { sectionOf, applySection } = __m(22);
+const { dateOf, waterSeason, realEventOn, LAST_REAL_YEAR, tideAt } = __m(18);
+
 
 
 
@@ -4520,7 +4552,7 @@ function regionBias(seed, k, sec = null, world = 'rhein') {
 }
 const freshDay = () => ({ ships: 0, tons: 0, income: 0, costs: 0, plant: 0, pay: 0, rejected: 0, cat: {} });
 // Kategorien der Tagesbilanz (Dashboard): Betrag > 0 = Einnahme, < 0 = Ausgabe
-const BOOK = { baggern: 'Baggern (Entgelt)', rohstoff: 'Rohstoff-Aufschlag', verkehr: 'Verkehrsgebühren', anlage: 'Aufbereitungsanlage', handel: 'Hafenhandel', hafen: 'Hafen-Umschlag', lager: 'Lagerkosten', reederei: 'Reederei', vertrag: 'Verträge', bussen: 'Bussen & Reparaturen', havarie: 'Havarie & Bergung', ereignis: 'Ereignisse', beton: 'Beton', betrieb: 'Betrieb', loehne: 'Löhne Flotte' };
+const BOOK = { baggern: 'Baggern (Entgelt)', rohstoff: 'Rohstoff-Aufschlag', verkehr: 'Verkehrsgebühren', anlage: 'Aufbereitungsanlage', handel: 'Hafenhandel', hafen: 'Hafen-Umschlag', lager: 'Lagerkosten', reederei: 'Reederei', vertrag: 'Verträge', bussen: 'Bussen & Reparaturen', havarie: 'Havarie & Bergung', ereignis: 'Ereignisse', erfolg: 'Erfolgsprämien', beton: 'Beton', betrieb: 'Betrieb', loehne: 'Löhne Flotte' };
 
 // Gesamtzustand des Spiels (Management-Ebene), läuft in Echtzeit. Kein DOM, kein Canvas.
 // Gewonnen hat, wer am Ende am meisten Geld hat; das Verkehrsziel (goalTons) schaltet das nächste Level frei.
@@ -4563,6 +4595,7 @@ class Game {
     this.rejectedBy = {};
     this.totals = { removed: 0, pay: 0, fines: 0, repairs: 0, protectFines: 0, plantNet: 0, sold: 0, disposal: 0, tons: 0, ships: 0, trafficIncome: 0, spawned: 0, turnedAway: 0, rejected: 0, lostValue: 0, groundings: 0, towed: 0, salvage: 0, contractsPaid: 0, contractsPenalty: 0, contractsDone: 0, contractsFailed: 0, opCost: 0, eventCosts: 0, eventGains: 0, bombs: 0, premium: 0, sunk: 0, sunkFines: 0, concreteBought: 0, concreteSpend: 0, concreteUsed: 0, concreteMixed: 0, cementCost: 0, rescued: 0, rescueRefund: 0, landFees: 0, landRemoved: 0, fleetRemoved: 0, wages: 0, byCargo: {}, byClass: {}, byKind: [0, 0, 0, 0, 0] };
     this.today = freshDay(); this.history = []; this.dayStartMoney = this.money;
+    this.ach = {}; this._achClock = 0; // freigeschaltete Erfolge: id → Tag
     this.eventsOn = true; // Zufallsereignisse (Tests schalten sie ab)
     this.goalSeen = false;
     this.tabsSeen = {}; // freigeschaltete Menü-Bereiche (Stufensystem der Oberfläche), bleiben freigeschaltet
@@ -4625,7 +4658,7 @@ class Game {
     return k;
   }
   switchMap(i) { if (i < 0 || i >= this.maps.length || i === this.mapIdx) return false; this.mapIdx = i; return true; }
-  get stats() { return (this._stats ??= computeStats(this.levels)); }
+  get stats() { return (this._stats ??= applyBonus(computeStats(this.levels), bonusOf(this))); }
   get stockTotal() { return stockTotal(this.stock); }
   get bufferRoom() { return Math.max(0, this.stats.bufferCapacity - this.stockTotal); }
   get deadlineDays() { return this.level.deadlineDays ?? CONFIG.deadlineDays; }
@@ -4899,6 +4932,7 @@ class Game {
     for (const m of this.maps) { m.river.wl = this.wl; if (m.port?.harbor) m.port.harbor.river.wl = this.wl; }
     const wasClosed = this.closed;
     this.closed = this.wl > K.base + K.floodClose;
+    if (this.closed && !wasClosed) this.totals.floods = (this.totals.floods ?? 0) + 1;
     if (this.closed !== wasClosed) { this.say(this.closed ? 'Schifffahrt gesperrt (Hochwasser).' : 'Schifffahrt wieder frei.', this.closed ? 'bad' : 'good'); if (!this.closed) this.notify('Schifffahrt wieder frei', 'good'); }
 
     const mixerOn = this.stats.mixer > 0 && this.divertAgg, C = CONFIG.concrete;
@@ -4937,6 +4971,7 @@ class Game {
     updateShipping(this, dt);
     this.mapIdx = cur;
 
+    this._achClock = (this._achClock ?? 0) + dt; if (this._achClock >= 3) { this._achClock = 0; checkAchievements(this); }
     const day = Math.floor(this.time / CONFIG.daySeconds) + 1;
     while (this.day < day && this.status === 'playing') { this.day++; this.dayEnd(); }
     if (this.status === 'playing') {
@@ -4948,7 +4983,7 @@ class Game {
   dayEnd() {
     const t = this.totals, levelSum = Object.values(this.levels).reduce((a, b) => a + b, 0);
     const cost = CONFIG.dailyCost + CONFIG.perUpgradeLevelCost * levelSum;
-    const wagesOf = (m) => m.fleet.units.reduce((a, u) => a + (u.self ? 0 : u.small ? CONFIG.fleet.small.wage : CONFIG.fleet.wage), 0);
+    const wageK = 1 - bonusOf(this).wage, wagesOf = (m) => wageK * m.fleet.units.reduce((a, u) => a + (u.self ? 0 : u.small ? CONFIG.fleet.small.wage : CONFIG.fleet.wage), 0);
     const wages = this.maps.reduce((a, m) => a + wagesOf(m), 0);
     this.money -= cost + wages; t.opCost += cost; t.wages += wages;
     const y = this.today;
@@ -5554,13 +5589,97 @@ function upgradeCost(id, level) {
 return { computeStats: computeStats, upgradeCost: upgradeCost };
 },
 function(){
-const { trafficSeason } = __m(17);
+
+// Erfolge und Meilensteine: Serien mit Stufen. Jede Stufe zahlt eine Prämie und schaltet oft einen dauerhaften Bonus frei.
+// Bonusarten (BONUS) wirken im Spiel; die Summen sind gedeckelt, damit das Gleichgewicht erhalten bleibt.
+const BONUS = {
+  power: { label: 'Baggerleistung', cap: 0.25, sign: '+' },
+  traffic: { label: 'Verkehr (mehr Schiffe)', cap: 0.25, sign: '+' },
+  sell: { label: 'Verkaufserlöse der Anlage', cap: 0.15, sign: '+' },
+  wage: { label: 'Löhne der Flotte', cap: 0.4, sign: '−' },
+  disposal: { label: 'Entsorgungskosten', cap: 0.3, sign: '−' },
+};
+const MONEY = [2000, 6000, 20000, 60000, 180000, 500000]; // Prämie je Stufe
+const fleetUnits = (g) => g.maps.reduce((a, m) => a + m.fleet.units.filter((u) => !u.self).length, 0);
+const bestDay = (g) => (g.history ?? []).reduce((a, h) => Math.max(a, h.net ?? 0), 0);
+
+// id, Symbol, Name der Serie, Einheit, Messwert, Stufenziele, Namen der Stufen, Bonus je Stufe, sichtbar
+const SERIES = [
+  { id: 'tons', icon: '🚢', name: 'Frachtmeister', unit: 't Fracht', cur: (g) => g.totals.tons, goals: [1000, 10000, 50000, 200000, 1000000], names: ['Erste Ladung', 'Kleiner Hafen', 'Verkehrsader', 'Schwerlastroute', 'Wasserstrassen-Gigant'], bonus: { traffic: 0.02 } },
+  { id: 'ships', icon: '🛳️', name: 'Schiffsparade', unit: 'Schiffe durchgeschleust', cur: (g) => g.totals.ships, goals: [10, 100, 500, 2000, 10000], names: ['Erste Schiffe', 'Reger Betrieb', 'Dauerverkehr', 'Verkehrsknoten', 'Nie wieder leer'], bonus: { wage: 0.02 } },
+  { id: 'removed', icon: '⛏️', name: 'Baggerkönig', unit: 'm³ gebaggert', cur: (g) => g.totals.removed, goals: [500, 5000, 25000, 100000, 500000], names: ['Erste Schaufel', 'Flusswäscher', 'Sohlenkünstler', 'Erdbewegung', 'Berge versetzt'], bonus: { power: 0.025 } },
+  { id: 'money', icon: '💰', name: 'Kapitalist', unit: 'CHF Vermögen', cur: (g) => g.money, goals: [100000, 500000, 2000000, 10000000, 50000000], names: ['Sechsstellig', 'Halbe Million', 'Millionär', 'Zehn Millionen', 'Wasserstrassen-Mogul'], bonus: { sell: 0.015 } },
+  { id: 'days', icon: '📅', name: 'Durchhalter', unit: 'Tage im Geschäft', cur: (g) => g.day, goals: [30, 100, 365, 1000, 3650], names: ['Ein Monat', '100 Tage', 'Ein Jahr', 'Fast drei Jahre', 'Ein Jahrzehnt'], bonus: { wage: 0.03 } },
+  { id: 'maps', icon: '🗺️', name: 'Flussnetz', unit: 'Karten erschlossen', cur: (g) => g.maps.length, goals: [2, 3, 5, 7, 10], names: ['Zweite Heimat', 'Flussabschnitt', 'Netzbetreiber', 'Grosser Fluss', 'Ganzer Strom'], bonus: { traffic: 0.02 }, when: (g) => g.endless },
+  { id: 'rank', icon: '🎖️', name: 'Schiffsklasse', unit: 'Klassenstufe', cur: (g) => g.rank ?? 1, goals: [2, 3, 4, 5], names: ['Motorschiffe fahren', 'Tanker fahren', 'Containerschiffe fahren', 'Schubverbände fahren'], bonus: { power: 0.02 } },
+  { id: 'fleet', icon: '🚤', name: 'Flottenchef', unit: 'Pontons in der Flotte', cur: fleetUnits, goals: [1, 3, 6, 10, 20], names: ['Erster Mitarbeiter', 'Kleine Crew', 'Eigene Werft', 'Grosse Flotte', 'Armada'], bonus: { wage: 0.03 } },
+  { id: 'contracts', icon: '📜', name: 'Auftragsprofi', unit: 'Aufträge erfüllt', cur: (g) => g.totals.contractsDone, goals: [1, 10, 50, 200], names: ['Erster Auftrag', 'Zuverlässig', 'Stammkunde', 'Erste Adresse'], bonus: { sell: 0.015 } },
+  { id: 'altlast', icon: '☢️', name: 'Altlast-Räumer', unit: 'm³ Altlast entsorgt', cur: (g) => g.totals.byKind?.[3] ?? 0, goals: [50, 500, 5000, 20000], names: ['Sauber gemacht', 'Grosse Räumung', 'Umweltpreis', 'Saubere Sohle'], bonus: { disposal: 0.04 } },
+  { id: 'floods', icon: '🌊', name: 'Hochwasser-Profi', unit: 'Hochwasser überstanden', cur: (g) => g.totals.floods ?? 0, goals: [1, 5, 20], names: ['Erste Flut', 'Wetterfest', 'Sturmerprobt'], bonus: null },
+  { id: 'rescued', icon: '🛟', name: 'Retter', unit: 'Schiffe geborgen', cur: (g) => g.totals.rescued ?? 0, goals: [1, 10, 50], names: ['Erste Bergung', 'Bergungsprofi', 'Seenotretter'], bonus: null },
+  { id: 'bestday', icon: '📈', name: 'Spitzentag', unit: 'CHF Gewinn an einem Tag', cur: bestDay, goals: [5000, 20000, 100000, 500000], names: ['Guter Tag', 'Sehr guter Tag', 'Rekordtag', 'Goldener Tag'], bonus: null },
+  { id: 'reederei', icon: '🚛', name: 'Reeder', unit: 'eigene Frachtschiffe', cur: (g) => g.shipping?.ships?.length ?? 0, goals: [1, 3, 6], names: ['Erstes Schiff', 'Kleine Reederei', 'Grosse Reederei'], bonus: { sell: 0.01 }, when: (g) => g.endless },
+  { id: 'harbor', icon: '🏗️', name: 'Hafenbetreiber', unit: 'Häfen eröffnet', cur: (g) => g.maps.filter((m) => m.port?.open).length, goals: [1, 3, 6], names: ['Erster Hafen', 'Hafengruppe', 'Hafenimperium'], bonus: { traffic: 0.015 } },
+  { id: 'mega', icon: '⚓', name: 'Megaschiff-Lotse', unit: 'Megaschiffe abgefertigt', cur: (g) => g.totals.byClass?.mega ?? 0, goals: [1, 25, 200], names: ['Das erste Riesenschiff', 'Tiefwasser-Profi', 'Herr der Gezeiten'], bonus: { traffic: 0.02 }, when: (g) => g.level.classes.includes('mega') },
+];
+const achId = (s, i) => `${s.id}:${i}`;
+const seriesVisible = (g, s) => !s.when || s.when(g);
+const prize = (i) => MONEY[Math.min(i, MONEY.length - 1)];
+
+// Summe der Boni aus freigeschalteten Stufen (gedeckelt)
+function bonusOf(g) {
+  const b = { power: 0, traffic: 0, sell: 0, wage: 0, disposal: 0 }, got = g.ach ?? {};
+  for (const s of SERIES) if (s.bonus) s.goals.forEach((_, i) => { if (got[achId(s, i)] !== undefined) for (const [k, v] of Object.entries(s.bonus)) b[k] += v; });
+  for (const k of Object.keys(b)) b[k] = Math.min(BONUS[k].cap, b[k]);
+  return b;
+}
+// Bonus auf die Werte der Anlagen anwenden (computeStats), ohne die Upgrade-Tabelle zu verändern
+function applyBonus(stats, b) {
+  stats.power *= 1 + b.power; stats.trafficMult *= 1 + b.traffic; stats.sortBonus *= 1 + b.sell; stats.disposalFactor *= 1 - b.disposal;
+  return stats;
+}
+
+// Fortschritt je Serie für die Anzeige: nächste Stufe, Anteil, Anzahl erledigter Stufen
+function progress(g) {
+  const got = g.ach ?? {};
+  return SERIES.filter((s) => seriesVisible(g, s)).map((s) => {
+    const cur = s.cur(g), done = s.goals.filter((_, i) => got[achId(s, i)] !== undefined).length, next = done < s.goals.length ? done : -1;
+    const prev = done ? s.goals[done - 1] : 0, goal = next >= 0 ? s.goals[next] : null;
+    return { s, cur, done, total: s.goals.length, next, goal, frac: goal ? Math.max(0, Math.min(1, (cur - prev) / (goal - prev))) : 1 };
+  });
+}
+const countAch = (g) => { const got = g.ach ?? {}; let n = 0, t = 0; for (const s of SERIES) if (seriesVisible(g, s)) s.goals.forEach((_, i) => { t++; if (got[achId(s, i)] !== undefined) n++; }); return { n, t }; };
+
+// Prüft alle Serien und schaltet erreichte Stufen frei; gibt die neuen Erfolge zurück
+function checkAchievements(g) {
+  if (g.achOn === false) return []; g.ach ??= {}; const fresh = [];
+  for (const s of SERIES) {
+    if (!seriesVisible(g, s)) continue;
+    const cur = s.cur(g);
+    s.goals.forEach((goal, i) => {
+      const id = achId(s, i);
+      if (g.ach[id] !== undefined || cur < goal) return;
+      g.ach[id] = g.day; fresh.push({ s, i, id });
+      const m = prize(i); g.money += m; g.totals.achPrize = (g.totals.achPrize ?? 0) + m; g.book?.('erfolg', m);
+      const bonus = s.bonus ? Object.entries(s.bonus).map(([k, v]) => `${BONUS[k].sign}${+(v * 100).toFixed(1)} % ${BONUS[k].label}`).join(', ') : '';
+      g.say(`${s.icon} Erfolg «${s.names[i]}»: ${s.unit.includes('CHF') ? goal.toLocaleString('de-CH') : goal.toLocaleString('de-CH')} ${s.unit}. Prämie ${m.toLocaleString('de-CH')} CHF${bonus ? `, dauerhaft ${bonus}` : ''}.`, 'good');
+      g.notify(`🏆 ${s.names[i]} · +${m.toLocaleString('de-CH')} CHF${bonus ? ` · ${bonus}` : ''}`, 'good');
+    });
+  }
+  if (fresh.some((f) => f.s.bonus)) { g._stats = null; g._achNew = true; }
+  return fresh;
+}
+
+return { BONUS: BONUS, SERIES: SERIES, achId: achId, seriesVisible: seriesVisible, prize: prize, bonusOf: bonusOf, applyBonus: applyBonus, progress: progress, countAch: countAch, checkAchievements: checkAchievements };
+},
+function(){
+const { trafficSeason } = __m(18);
 const { reserveBerth, dockShip } = __m(7);
 const { CONFIG, UPGRADES, SHIPS, CARGOS, DEBRIS, shipById, cargoById } = __m(2);
 const { priceOf, ratioOf } = __m(9);
 const { minDepthAt, pointOnPath } = __m(3);
-const { creditContracts } = __m(18);
-const { fleetSites } = __m(19);
+const { creditContracts } = __m(19);
+const { fleetSites } = __m(20);
 
 
 
@@ -5943,7 +6062,7 @@ return { START_YEAR: START_YEAR, MONTHS: MONTHS, SEASON_NAME: SEASON_NAME, SEASO
 function(){
 const { CONFIG, SHIPS, cargoById, shipById } = __m(2);
 const { priceOf } = __m(9);
-const { activeClasses } = __m(16);
+const { activeClasses } = __m(17);
 
 
 
@@ -6013,7 +6132,7 @@ function(){
 const { fleetMax, rankOf, UNLOCK } = __m(10);
 const { CONFIG, SHIPS, KIND, shipById } = __m(2);
 const { toolAvailable } = __m(12);
-const { zoneSupports } = __m(16);
+const { zoneSupports } = __m(17);
 const { HARBOR, harborTarget } = __m(4);
 const { kaiLevel, werftBonus } = __m(7);
 
@@ -6931,7 +7050,7 @@ function setupBooks(getGame) {
 return { bookData: bookData, booksHtml: booksHtml, setupBooks: setupBooks };
 },
 function(){
-const { WORLDS, sectionsOf } = __m(21);
+const { WORLDS, sectionsOf } = __m(22);
 const { depositType, ENDLESS } = __m(2);
 
 
@@ -7080,7 +7199,7 @@ return { startIcons: startIcons };
 },
 function(){
 const { CONFIG, shipById } = __m(2);
-const { shipPos } = __m(16);
+const { shipPos } = __m(17);
 
 
 
@@ -7148,9 +7267,9 @@ return { TowSim: TowSim, groundedNear: groundedNear };
 function(){
 const { CONFIG, UPGRADES, SHIPS, shipById, cargoById } = __m(2);
 const { upgradeCost } = __m(15);
-const { waitingByClass, bayCapacity, activeClasses } = __m(16);
+const { waitingByClass, bayCapacity, activeClasses } = __m(17);
 const { ratioOf } = __m(9);
-const { hireBlock, nextHireCost } = __m(19);
+const { hireBlock, nextHireCost } = __m(20);
 
 
 
@@ -7312,7 +7431,7 @@ class Advisor {
 return { Advisor: Advisor };
 },
 function(){
-const { freeName } = __m(19);
+const { freeName } = __m(20);
 const { Game, endlessRiver } = __m(11);
 const { createRng } = __m(6);
 const { createMarket } = __m(9);
@@ -7334,7 +7453,7 @@ const { River } = __m(5);
 // Die laufende Pontonfahrt wird nicht gespeichert: nach dem Laden steht der Ponton wieder auf der Karte.
 const SAVE_VERSION = 7; // 7: Karte mit 36 statt 24 Zeilen (ältere Spielstände passen nicht mehr)
 
-const SKIP = new Set(['rng', 'notes', 'flash', '_stats']);
+const SKIP = new Set(['rng', 'notes', 'flash', '_stats', '_achNew', '_achClock']);
 const toB64 = (arr) => {
   const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
   let s = '';
@@ -7374,7 +7493,7 @@ function restoreGame(text) {
     const game = new Game(s.data.seed, s.data.levelId);
     const fresh = game.maps[0].river; // gleicher Seed: liefert die Anzeige-Hilfen (Mittellinie, Breite) der ersten Karte
     Object.assign(game, s.data);
-    game._stats = null;
+    game._stats = null; game.ach ??= {}; game._achClock = 0;
     game.levels ??= {}; if (game.levels.buffer === undefined && game.levels.plant) game.levels.buffer = game.levels.plant; for (const k of Object.keys(UPGRADES)) game.levels[k] ??= 0; // Anlage wurde geteilt (Stapelbecken/Verarbeitung); neue Geräte in älteren Ständen (sonst NaN als Preis)
     game.notes = []; game.flash = []; game.mapIdx = Math.min(game.mapIdx ?? 0, game.maps.length - 1);
     const types = { Float32Array, Uint8Array };
@@ -7408,7 +7527,7 @@ const savedSummary = (text) => {
 return { SAVE_VERSION: SAVE_VERSION, serializeGame: serializeGame, restoreGame: restoreGame, savedSummary: savedSummary };
 },
 function(){
-const { isTap } = __m(29);
+const { isTap } = __m(30);
 
 
 // Tastatur (WASD/Pfeile, Leertaste), Maus und Touch. Einmal-Tasten (Anker werfen/lichten) via tap().
@@ -7506,7 +7625,7 @@ function isTap(dist, ms, maxDist = 12, maxMs = 400) { return dist <= maxDist && 
 return { snapStick: snapStick, steerToward: steerToward, isTap: isTap };
 },
 function(){
-const { snapStick } = __m(29);
+const { snapStick } = __m(30);
 
 
 // Touch-Bedienung: Daumen-Stick links (vier Richtungen) auf der Karte, Pfeil-Knöpfe im Querschnitt, grosser Knopf rechts
@@ -8036,17 +8155,17 @@ return { TUNES: TUNES, renderTune: renderTune, createMusic: createMusic };
 },
 function(){
 const { SLICE } = __m(12);
-const { tideState } = __m(17);
+const { tideState } = __m(18);
 const { CONFIG, SHIPS, KIND, CARGOS, shipById, cargoById, depositType } = __m(2);
-const { shipPos, queuePos, bayCapacity } = __m(16);
+const { shipPos, queuePos, bayCapacity } = __m(17);
 const { needDepth, minNeedDepth, trasseY } = __m(3);
-const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(38);
+const { drawTerrain, drawWaterFx, drawShipSprite, drawPontoonSprite, drawAmbient } = __m(39);
 const { PORT, bayDepth, bayReady, bayTarget, dockPos, berthsOf, waitsOf, isDocked, kaiLevel, bridgeLevel } = __m(7);
 const { HARBOR, berthPos, waitPos } = __m(4);
-const { areaWork, wallSpans } = __m(19);
+const { areaWork, wallSpans } = __m(20);
 const { LAND, landOf, connectedRoads, hallConnected, roadBlock, hallBlock } = __m(8);
-const { Chain, drawChain } = __m(39);
-const { groundedNear } = __m(25);
+const { Chain, drawChain } = __m(40);
+const { groundedNear } = __m(26);
 // Zeichnet Karte und Querschnitt. Kennt keine Spiellogik, liest nur Zustand.
 
 
@@ -9049,8 +9168,8 @@ const CONFIG_TOW_SNAP = () => CONFIG.tow.snapAt;
 return { CELL: CELL, MARGIN: MARGIN, OX: OX, W: W, H: H, sizeCanvas: sizeCanvas, view: view, fs: fs, mapPx: mapPx, sliceY: sliceY, drawMap: drawMap, drawHarborScene: drawHarborScene, autoLineX: autoLineX, sliceHeadScreen: sliceHeadScreen, sliceMouthScreen: sliceMouthScreen, drawSlice: drawSlice, drawTowView: drawTowView, CARGOS: CARGOS, groundedNear: groundedNear };
 },
 function(){
-const { CELL, OX, W, H } = __m(37);
-const { seasonLook } = __m(17);
+const { CELL, OX, W, H } = __m(38);
+const { seasonLook } = __m(18);
 
 
 

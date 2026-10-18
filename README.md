@@ -150,6 +150,9 @@ Im Levelmenü gibt es unten **«♾ Endlos: Flussnetz»**: Du gibst eine **Seed-
 - **Wechseln:** Auswahlfeld in der Kopfzeile, Liste im Menü oder `,` / `.` auf der Karte. Der Hafen steht an der ersten Karte.
 - Ereignisse (Hochwasser, Funde ...) treffen eine zufällige Karte. Der Spielstand speichert alle Karten (ältere Spielstände laden weiter und werden zu «Karte 1»).
 
+### Erfolge und Boni (🏆 im Menü)
+16 Serien mit insgesamt rund 55 Stufen (Fracht, Schiffe, Baggermenge, Vermögen, Tage im Geschäft, Karten, Schiffsklassen, Flotte, Aufträge, Altlasten, Hochwasser, Bergungen, Spitzentag, Reederei, Häfen, Megaschiffe). Jede Stufe zahlt eine **Prämie** (2 000 bis 500 000 CHF, in der Bilanz als «Erfolgsprämien») und schaltet meist einen **dauerhaften Bonus** frei: Baggerleistung (bis +25 %), Verkehr (bis +25 %), Verkaufserlöse der Anlage (bis +15 %), Löhne der Flotte (bis −40 %), Entsorgungskosten (bis −30 %). Die Summen sind gedeckelt. Im Reiter 🏆 zeigt jede Serie die nächste Stufe mit Fortschrittsbalken; ein Banner meldet neue Erfolge. Definitionen: `src/sim/achievements.js`; der Stand (`game.ach`) wird mit dem Spielstand gespeichert.
+
 ### Weitere Schauplätze: Nil und Seehafen
 Im Levelmenü gibt es drei Endlos-Spiele (gleicher Seed-Mechanismus, eigene Weltkarte, eigenes Aussehen):
 - **♾ Rhein:** wie beschrieben, 10 Abschnitte, reale Hoch- und Niedrigwasser seit 2010, Jahreszeiten mit Schnee.

@@ -627,3 +627,12 @@ button.level.lvcard { align-items: stretch; gap: 0; } .lvcard .lv-banner { width
 #overlay .levels, #overlay .endless-card, #overlay .ltxt, #overlay .chips { max-width: none; }
 #overlay > div { padding-top: 44px; box-sizing: border-box; }
 button.level.lvcard { padding: 0; }
+
+/* Erfolge */
+#ach-box h2 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+.ach-sum { margin: 6px 0 12px; } .chips2 { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.chip.on { background: #1f4d3a; color: #b9f3d3; border-radius: 99px; padding: 3px 9px; font-size: 12px; }
+.bar { height: 8px; border-radius: 99px; background: #00000055; overflow: hidden; margin: 6px 0 4px; } .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #3fb4d8, #8fe3a0); border-radius: 99px; transition: width .4s; }
+.ach-card { background: #ffffff0d; border: 1px solid #ffffff14; border-radius: 12px; padding: 10px 12px; margin: 8px 0; } .ach-card.done { opacity: .7; border-color: #3f8a5e66; }
+.ach-top { display: flex; gap: 10px; align-items: center; } .ach-ico { font-size: 26px; } .stars { color: #ffd24a; letter-spacing: 1px; font-size: 13px; }
+.ach-card small { color: var(--muted); }

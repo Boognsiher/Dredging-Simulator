@@ -400,7 +400,7 @@ test('Upgrades: Kosten steigen, Kauf und Rückbau buchen Geld', () => {
 });
 
 function emptyGame(seed = 1) {
-  const g = new Game(seed);
+  const g = new Game(seed); g.achOn = false;
   g.river.setFlat(2.6, 9); // gerade, ausreichend tiefe Rinne
   g.analyze(true);
   return g;
@@ -1980,7 +1980,7 @@ test('Kreuzungsstelle: Ein- und Ausfahrt gehören zum Plan, gemeinsame Spurzeile
 
 import { unloadNow, holdInfo } from '../src/sim/shipping.js';
 test('Reederei: Ankunft mit Wahl: abladen oder warten, Abladen ab Preis, Wartezeit kostet Unterhalt', () => {
-  const g = new Game(8, 'endlos'); g.eventsOn = false; g.money = 1e8;
+  const g = new Game(8, 'endlos'); g.eventsOn = false; g.achOn = false; g.money = 1e8;
   // zwei Karten mit Hafen vorbereiten wie im bestehenden Reederei-Test
   const base = g.maps[0]; void base;
   const S = g.shipping; S.ships.push({ id: 1, type: 'kahn', name: 'T', from: 0, to: 1, cargo: 'kies', autoBuy: false, toStock: false, backhaul: false, unload: 'manual', unloadMin: 0, minMargin: 0, state: 'sail', leg: 'out', t: 10, dur: 10, load: 100, basis: 10, profit: 0, trips: 0, note: '' });
@@ -2191,4 +2191,28 @@ test('Nil und Seehafen: Speichern und Laden behalten Schauplatz und Karten', () 
     for (let i = 0; i < 100; i++) back.update(0.1);
     assert.ok(Number.isFinite(back.wl));
   }
+});
+
+// ---------- Erfolge ----------
+import { checkAchievements as chkAch, bonusOf as achBonus, progress as achProg, SERIES as ACH_SERIES, prize as achPrize2, BONUS as ACH_BONUS } from '../src/sim/achievements.js';
+test('Erfolge: Stufe wird einmal freigeschaltet, zahlt Prämie und wirkt als Bonus', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false;
+  const t0 = g.stats.trafficMult, m0 = g.money;
+  g.totals.tons = 1500; const f = chkAch(g);
+  assert.equal(f.length, 1); assert.ok(g.ach['tons:0'] !== undefined);
+  assert.equal(g.money, m0 + achPrize2(0)); assert.ok(Math.abs(g.stats.trafficMult - t0 * 1.02) < 1e-9, 'Verkehrsbonus +2 %');
+  assert.equal(chkAch(g).length, 0, 'keine doppelte Prämie');
+  g.totals.removed = 600; chkAch(g); assert.ok(Math.abs(g.stats.power - 10 * 1.025) < 1e-9, 'Baggerleistung +2,5 %');
+  assert.ok((g.today.cat.erfolg ?? 0) > 0, 'Prämie in der Bilanz verbucht');
+  const row = achProg(g).find((r) => r.s.id === 'tons'); assert.equal(row.done, 1); assert.equal(row.next, 1); assert.ok(row.frac > 0 && row.frac < 1);
+});
+test('Erfolge: Boni sind gedeckelt, Serien nach Schauplatz sichtbar, Stand wird gespeichert', () => {
+  const g = new Game(3, 'hochrhein'); g.eventsOn = false;
+  for (const s of ACH_SERIES) s.goals.forEach((_, i) => { g.ach[`${s.id}:${i}`] = 1; });
+  const b = achBonus(g); for (const k of Object.keys(b)) assert.ok(b[k] <= ACH_BONUS[k].cap + 1e-9, k);
+  assert.ok(!achProg(g).some((r) => r.s.id === 'mega' || r.s.id === 'maps'), 'Megaschiffe nur im Seehafen, Karten nur Endlos');
+  assert.ok(achProg(new Game(3, 'seehafen')).some((r) => r.s.id === 'mega'));
+  const h = new Game(4, 'hochrhein'); h.totals.tons = 20000; chkAch(h);
+  const back = restoreGame(serializeGame(h)); assert.ok(back.ach['tons:1'] !== undefined && back.ach['tons:0'] !== undefined);
+  assert.equal(back.stats.trafficMult, h.stats.trafficMult);
 });
